@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+curl --fail --silent --show-error "${API_URL:-http://localhost:8088/api}/health"
+printf '\n'
+

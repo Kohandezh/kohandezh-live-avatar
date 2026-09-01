@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+docker compose down
+echo "Containers stopped. Named database/Redis volumes and media files were preserved."
+

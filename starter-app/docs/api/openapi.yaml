@@ -1,0 +1,147 @@
+openapi: 3.1.0
+info:
+  title: Starter App API contract
+  version: 0.1.0
+  description: |
+    The contract the frontend depends on. Backend implementations (and mock-backend/) must conform.
+    Rules: docs/engineering/API_STANDARDS.md.
+servers:
+  - url: http://localhost:8787
+    description: mock-backend
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: sid }
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [VALIDATION, UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, INTERNAL] }
+            message: { type: string }
+            details: {}
+    User:
+      type: object
+      required: [id, email, displayName, role, createdAt]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        role: { type: string, enum: [user, admin] }
+        createdAt: { type: string, format: date-time }
+    PublicUser:
+      description: Explicit public allowlist. Never add fields here without a decision record.
+      type: object
+      required: [id, displayName]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+    Page:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items: { type: array, items: {} }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+  parameters:
+    page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    pageSize: { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+    q: { name: q, in: query, schema: { type: string } }
+  responses:
+    Unauthorized: { description: Not authenticated, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: Not allowed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Validation: { description: Invalid input, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+paths:
+  /health:
+    get:
+      summary: Liveness
+      responses:
+        '200': { description: OK }
+  /auth/login:
+    post:
+      summary: Log in (cookie or bearer transport)
+      parameters:
+        - name: X-Auth-Mode
+          in: header
+          schema: { type: string, enum: [cookie, bearer], default: cookie }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: Logged in. Cookie mode sets `sid` (HttpOnly). Bearer mode returns accessToken.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  accessToken: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /auth/logout:
+    post:
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        '204': { description: Session invalidated }
+  /auth/me:
+    get:
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        '200': { description: Current user, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /public/users:
+    get:
+      summary: Public tier — allowlisted fields only
+      parameters: [{ $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/pageSize' }, { $ref: '#/components/parameters/q' }]
+      responses:
+        '200':
+          description: Page of public users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - properties: { items: { type: array, items: { $ref: '#/components/schemas/PublicUser' } } }
+  /users/{id}:
+    get:
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: User, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /users/me:
+    patch:
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { displayName: { type: string, minLength: 2 } } }
+      responses:
+        '200': { description: Updated user, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /admin/users:
+    get:
+      summary: Privileged tier
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        '200': { description: All users, content: { application/json: { schema: { $ref: '#/components/schemas/Page' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }

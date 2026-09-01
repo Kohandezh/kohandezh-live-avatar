@@ -1,0 +1,26 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+.DS_Store
+services/media/audio/*
+!services/media/audio/.gitkeep
+services/media/video/*
+!services/media/video/.gitkeep
+services/media/metadata/*
+!services/media/metadata/.gitkeep
+infra/postgres/data/
+*.log
+
+
+# Frontend build output
+services/frontend/dist/
+services/frontend/dev-dist/
+services/frontend/.env.local
+services/frontend/.env.*.local

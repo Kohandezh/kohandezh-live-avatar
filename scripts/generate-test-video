@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+echo "This is a CREDIT-CONSUMING end-to-end smoke test wrapper." >&2
+exec "$(dirname "$0")/real-provider-smoke"
+

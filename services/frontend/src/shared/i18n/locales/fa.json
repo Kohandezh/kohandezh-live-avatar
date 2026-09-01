@@ -1,0 +1,173 @@
+{
+  "app": {
+    "name": "آواتار زنده دکتر کهندژ",
+    "tagline": "کنسول خط لولهٔ رسانه — فاز یک",
+    "offline": "اتصال اینترنت قطع است. تولید صدا، پخش آواتار و ضبط به شبکه نیاز دارند.",
+    "phaseNotice": "محیط آزمایشی فاز یک — هیچ دارایی به‌صورت خودکار تأیید نمی‌شود.",
+    "updateAvailable": "نسخهٔ جدیدی در دسترس است.",
+    "reload": "بارگذاری مجدد",
+    "offlineReady": "پوستهٔ برنامه برای استفادهٔ آفلاین ذخیره شد. پخش زنده همچنان به اینترنت نیاز دارد.",
+    "dismiss": "بستن"
+  },
+  "nav": {
+    "home": "خانه",
+    "session": "کنسول آواتار",
+    "main": "ناوبری اصلی"
+  },
+  "settings": {
+    "language": "زبان",
+    "theme": "پوسته",
+    "themeSystem": "سیستم",
+    "themeLight": "روشن",
+    "themeDark": "تیره"
+  },
+  "state": {
+    "loading": "در حال بارگذاری…",
+    "empty": "چیزی برای نمایش نیست",
+    "error": "مشکلی پیش آمد",
+    "retry": "تلاش دوباره",
+    "notFound": "صفحه پیدا نشد",
+    "offlineShort": "آفلاین"
+  },
+  "health": {
+    "title": "سلامت بک‌اند",
+    "checking": "در حال بررسی بک‌اند…",
+    "ok": "همهٔ سرویس‌ها سالم هستند",
+    "degraded": "بک‌اند ناقص است",
+    "unreachable": "بک‌اند در دسترس نیست",
+    "offline": "آفلاین",
+    "dependency": "وابستگی",
+    "status": "وضعیت",
+    "latency": "تأخیر",
+    "lastChecked": "آخرین بررسی",
+    "refresh": "بررسی مجدد",
+    "activeSessions": "نشست‌های فعال",
+    "heartbeat": "آخرین ضربان",
+    "socketConnected": "سوکت وضعیت متصل است",
+    "socketDisconnected": "سوکت وضعیت قطع است",
+    "deps": {
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "livekit": "LiveKit",
+      "livekit_egress": "LiveKit Egress"
+    }
+  },
+  "home": {
+    "title": "کنسول آواتار زنده",
+    "intro": "رابط توسعه برای مسیر متن ← ElevenLabs ← LiveAvatar LITE ← LiveKit ← Egress. همهٔ ارتباط با ارائه‌دهندگان سمت سرور انجام می‌شود؛ این برنامه فقط برای مدت یک نشست، توکن محدودشدهٔ مشترک LiveKit را در اختیار دارد.",
+    "open": "باز کردن کنسول آواتار",
+    "phaseTitle": "وضعیت فاز یک",
+    "phaseVerdict": "PHASE 1: FAIL — مسیر واقعی ارائه‌دهندگان هنوز تأیید نشده است.",
+    "phasePending": "در انتظار: API واقعی ElevenLabs، API واقعی LiveAvatar LITE، نقطهٔ اتصال عمومی WSS برای LiveKit، پخش واقعی در مرورگر، خروجی واقعی MP4 از Egress.",
+    "creditNotice": "«تولید صدا» و «ارسال به آواتار» در صورت پیکربندی اعتبارنامه‌های واقعی روی سرور، اعتبار ElevenLabs / LiveAvatar مصرف می‌کنند.",
+    "webrtcTitle": "این دستگاه",
+    "webrtcSupported": "WebRTC پشتیبانی می‌شود",
+    "webrtcUnsupported": "WebRTC در این مرورگر در دسترس نیست",
+    "insecureContext": "بستر امن نیست: پخش رسانه و WebRTC ممکن است مسدود شوند",
+    "platform": "سکو"
+  },
+  "tts": {
+    "title": "تبدیل متن به گفتار",
+    "label": "متن فارسی",
+    "placeholder": "جمله‌ای را که آواتار باید بگوید بنویسید…",
+    "hint": "متن UTF-8 تا ۵۰۰۰ نویسه. درخواست‌های تکراری از حافظهٔ نهان سرور پاسخ داده می‌شوند و دوباره ElevenLabs را صدا نمی‌زنند.",
+    "characters": "{{count}} نویسه",
+    "generate": "تولید صدا",
+    "generating": "در حال تولید صدا…",
+    "empty": "هنوز صدایی تولید نشده است.",
+    "cacheHit": "از حافظهٔ نهان",
+    "cacheMiss": "تولیدشده توسط ElevenLabs",
+    "duration": "مدت",
+    "seconds": "{{value}} ثانیه",
+    "preview": "پیش‌نمایش صدا",
+    "loadingPreview": "در حال بارگذاری صدا…",
+    "previewError": "صدا بارگذاری نشد.",
+    "assetId": "دارایی صوتی",
+    "download": "دریافت PCM",
+    "error": "تولید صدا ناموفق بود.",
+    "blank": "ابتدا متنی وارد کنید."
+  },
+  "session": {
+    "title": "نشست آواتار",
+    "start": "شروع آواتار",
+    "starting": "در حال شروع نشست…",
+    "connecting": "در حال اتصال به LiveKit…",
+    "speak": "ارسال به آواتار",
+    "speaking": "در حال ارسال…",
+    "interrupt": "قطع گفتار",
+    "close": "پایان نشست",
+    "closing": "در حال بستن…",
+    "closeBlocked": "پیش از پایان نشست، ضبط فعال را متوقف کنید.",
+    "noSession": "نشست فعالی وجود ندارد.",
+    "sessionInfo": "نشست {{id}} در اتاق {{room}}",
+    "sandbox": "سندباکس",
+    "live": "اعتبار واقعی",
+    "status": {
+      "idle": "بی‌کار",
+      "starting": "در حال شروع",
+      "connecting": "در حال اتصال",
+      "connected": "متصل",
+      "reconnecting": "در حال اتصال مجدد",
+      "disconnected": "قطع‌شده",
+      "closing": "در حال بستن",
+      "error": "خطا"
+    },
+    "video": {
+      "idle": "برای دیدن آواتار، یک نشست را شروع کنید.",
+      "waiting": "متصل شد. در انتظار تصویر آواتار…",
+      "disconnected": "اتصال LiveKit قطع شد.",
+      "reconnect": "شروع نشست جدید",
+      "audioBlocked": "مرورگر پخش صدا را مسدود کرده است. برای فعال‌سازی ضربه بزنید.",
+      "enableAudio": "فعال‌سازی صدا",
+      "label": "جریان ویدئوی آواتار"
+    },
+    "configError": "سرور هنوز برای نشست واقعی LiveAvatar پیکربندی نشده است (PUBLIC_LIVEKIT_URL باید یک نقطهٔ اتصال عمومی wss:// باشد).",
+    "error": "نشست شروع نشد.",
+    "speakError": "ارسال متن به آواتار ناموفق بود.",
+    "labels": {
+      "session": "نشست",
+      "provider": "نشست ارائه‌دهنده",
+      "room": "اتاق",
+      "livekit": "LiveKit"
+    }
+  },
+  "recording": {
+    "title": "ضبط",
+    "start": "شروع ضبط",
+    "starting": "در حال شروع Egress…",
+    "stop": "توقف ضبط",
+    "finalizing": "در حال نهایی‌سازی MP4…",
+    "recording": "در حال ضبط با LiveKit Egress",
+    "needsSession": "پیش از ضبط، یک نشست آواتار را شروع کنید.",
+    "idle": "ضبطی در جریان نیست.",
+    "assetId": "دارایی ویدئویی",
+    "egressId": "Egress",
+    "download": "باز کردن MP4 تولیدشده",
+    "probe": "بررسی فنی",
+    "done": "MP4 تولید شد. تأیید دستی همچنان لازم است.",
+    "error": "ضبط ناموفق بود.",
+    "status": {
+      "idle": "بی‌کار",
+      "starting": "در حال شروع",
+      "recording": "در حال ضبط",
+      "finalizing": "در حال نهایی‌سازی",
+      "done": "انجام شد",
+      "error": "خطا"
+    }
+  },
+  "diagnostics": {
+    "title": "عیب‌یابی",
+    "empty": "هنوز رویدادی ثبت نشده است. اقدام‌ها و رویدادهای LiveKit اینجا نمایش داده می‌شوند.",
+    "clear": "پاک کردن",
+    "events": "{{count}} رویداد",
+    "level": {
+      "info": "اطلاع",
+      "warn": "هشدار",
+      "error": "خطا"
+    },
+    "details": "جزئیات",
+    "time": "زمان",
+    "source": "منبع",
+    "message": "پیام"
+  }
+}

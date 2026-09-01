@@ -1,0 +1,77 @@
+import json
+
+import httpx
+import pytest
+
+from services.liveavatar.client import LiveAvatarClient
+from services.orchestrator.src.errors import ProviderError
+
+
+@pytest.mark.asyncio
+async def test_session_creation_is_explicit_lite_byo_livekit():
+    requests = []
+
+    async def handler(request: httpx.Request):
+        requests.append(request)
+        if request.url.path.endswith("/token"):
+            return httpx.Response(200, json={"data": {"session_id": "provider", "session_token": "jwt"}})
+        return httpx.Response(201, json={"data": {"session_id": "provider", "ws_url": "wss://events"}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+    data = await client.create_token(
+        avatar_id="avatar",
+        sandbox=True,
+        max_session_duration=60,
+        livekit_url="wss://livekit.example",
+        livekit_agent_token="publisher-jwt",  # noqa: S106 - inert fixture credential
+    )
+    assert data["session_token"] == "jwt"  # noqa: S105 - provider fixture response
+    body = json.loads(requests[0].content)
+    assert body["mode"] == "LITE"
+    assert body["video_settings"]["encoding"] == "H264"
+    assert body["livekit_config"] == {"url": "wss://livekit.example", "token": "publisher-jwt"}
+    await client.start_session("jwt")
+    assert requests[1].headers["authorization"] == "Bearer jwt"
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_quota_failure_is_classified_without_retry():
+    calls = 0
+
+    async def handler(_: httpx.Request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(429, json={"message": "credits exhausted"})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+    with pytest.raises(ProviderError) as error:
+        await client.create_token(
+            avatar_id="avatar",
+            sandbox=False,
+            max_session_duration=60,
+            livekit_url="wss://livekit.example",
+            livekit_agent_token="token",  # noqa: S106 - inert fixture credential
+        )
+    assert error.value.code == "liveavatar_quota"
+    assert calls == 1
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_session_teardown_uses_current_canonical_contract():
+    requests = []
+
+    async def handler(request: httpx.Request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": {}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+    await client.stop_session("session-jwt")
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/v1/sessions"
+    assert requests[0].headers["authorization"] == "Bearer session-jwt"
+    await http.aclose()

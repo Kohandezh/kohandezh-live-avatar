@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${REAL_PROVIDER_TESTS:-false}" != "true" || "${CONFIRM_CREDIT_USAGE:-NO}" != "YES" ]]; then
+  echo "CREDIT-SAFE STOP: set REAL_PROVIDER_TESTS=true and CONFIRM_CREDIT_USAGE=YES for exactly one real provider run." >&2
+  exit 2
+fi
+
+api_url="${API_URL:-http://localhost:8088/api}"
+sentence='سلام، این یک تست کوتاه برای بررسی هماهنگی صدا و تصویر است.'
+
+session_json=$(curl --fail --silent --show-error -H 'Content-Type: application/json' -d '{}' "$api_url/avatar/session")
+session_id=$(jq -r .id <<<"$session_json")
+asset_name="SMOKE_$(date +%Y%m%d_%H%M%S)"
+
+cleanup_session() {
+  curl --silent --show-error -H 'Content-Type: application/json' \
+    -d "{\"session_id\":\"$session_id\"}" "$api_url/avatar/close" >/dev/null || true
+}
+trap cleanup_session EXIT
+
+record_json=$(curl --fail --silent --show-error -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"$session_id\",\"asset_id\":\"$asset_name\",\"text\":\"$sentence\"}" \
+  "$api_url/assets/generate-video")
+video_id=$(jq -r .id <<<"$record_json")
+
+curl --fail --silent --show-error -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"$session_id\",\"text\":\"$sentence\"}" "$api_url/avatar/speak" | jq .
+
+cache_json=$(curl --fail --silent --show-error -H 'Content-Type: application/json' \
+  -d "{\"text\":\"$sentence\"}" "$api_url/tts/generate")
+if [[ "$(jq -r .cache_hit <<<"$cache_json")" != "true" ]]; then
+  echo "Expected the repeated identical TTS request to be a cache hit" >&2
+  exit 1
+fi
+
+final_json=$(curl --fail --silent --show-error -X POST "$api_url/assets/video/$video_id/finalize")
+video_url=$(jq -r .media_url <<<"$final_json")
+tmp_mp4=$(mktemp "${TMPDIR:-/tmp}/kohandezh-smoke.XXXXXX.mp4")
+curl --fail --silent --show-error "${api_url%/api}$video_url" -o "$tmp_mp4"
+ffprobe -v error -show_entries stream=codec_type,codec_name,width,height,avg_frame_rate \
+  -show_entries format=format_name,duration -of json "$tmp_mp4"
+rm -f "$tmp_mp4"
+cleanup_session
+trap - EXIT
+echo "One real provider smoke test completed. Review provider usage at $api_url/usage"

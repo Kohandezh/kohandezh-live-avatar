@@ -1,0 +1,19 @@
+ws_url: ws://livekit:7880
+insecure: true
+redis:
+  address: redis:6379
+health_port: 8080
+template_port: 7980
+logging:
+  level: info
+  json: true
+backup_storage: /out
+enable_chrome_sandbox: false
+cpu_cost:
+  room_composite_cpu_cost: 2.0
+  web_cpu_cost: 2.0
+  track_composite_cpu_cost: 1.0
+  track_cpu_cost: 0.5
+session_limits:
+  file_output_max_duration: 10m
+

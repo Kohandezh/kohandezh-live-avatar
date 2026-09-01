@@ -1,0 +1,46 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm --dir mock-backend typecheck
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Start mock backend
+        run: (pnpm --dir mock-backend start &) && sleep 3
+      - name: Contract smoke
+        run: |
+          set -e
+          curl -fsS localhost:8787/health
+          curl -fsS localhost:8787/public/users | grep -q '"items"'
+          curl -fsS localhost:8787/public/users | grep -vq '"email"'   # allowlist holds
+          curl -fsS -o /dev/null -w '%{http_code}' localhost:8787/auth/me | grep -q 401
+          curl -fsS -c c.txt -X POST localhost:8787/auth/login -H 'content-type: application/json' \
+            -d '{"email":"demo@example.com","password":"demo1234"}' | grep -q '"user"'
+          curl -fsS -b c.txt localhost:8787/auth/me | grep -q 'demo@example.com'
+          curl -s -o /dev/null -w '%{http_code}' -b c.txt localhost:8787/admin/users | grep -q 403

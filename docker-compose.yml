@@ -1,0 +1,152 @@
+name: kohandezh-live-avatar
+
+services:
+  media-init:
+    image: alpine:3.22
+    command: ["sh", "-c", "chmod -R 0777 /media"]
+    volumes:
+      - ./services/media:/media
+    restart: "no"
+    networks: [avatar]
+
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kohandezh_avatar}
+      POSTGRES_USER: ${POSTGRES_USER:-kohandezh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [avatar]
+
+  redis:
+    image: redis:7-bookworm
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [avatar]
+
+  livekit:
+    image: ${LIVEKIT_IMAGE:-livekit/livekit-server:v1.13.5}
+    command: ["--config", "/etc/livekit/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}"
+      LIVEKIT_NODE_IP: ${LIVEKIT_NODE_IP:-}
+    volumes:
+      - ./infra/livekit/livekit.yaml:/etc/livekit/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "${LIVEKIT_RTC_TCP_PORT:-7881}:7881/tcp"
+      - "${LIVEKIT_RTC_UDP_PORT:-7882}:7882/udp"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:7880/ >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks: [avatar]
+
+  livekit-egress:
+    image: ${LIVEKIT_EGRESS_IMAGE:-livekit/egress:v1.14.1}
+    cap_add: [SYS_ADMIN]
+    environment:
+      EGRESS_CONFIG_FILE: /etc/livekit-egress/egress.yaml
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}
+      LIVEKIT_WS_URL: ws://livekit:7880
+    volumes:
+      - ./infra/livekit-egress/egress.yaml:/etc/livekit-egress/egress.yaml:ro
+      - ./services/media/video:/out
+    depends_on:
+      media-init:
+        condition: service_completed_successfully
+      livekit:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+    networks: [avatar]
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: services/orchestrator/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kohandezh}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kohandezh_avatar}
+      REDIS_URL: redis://redis:6379/0
+      LIVEKIT_URL: http://livekit:7880
+      LIVEKIT_WS_URL: ws://livekit:7880
+      LIVEKIT_EGRESS_HEALTH_URL: http://livekit-egress:8080
+      MEDIA_ROOT: /media
+      AUDIO_CACHE_DIR: /media/audio
+      VIDEO_CACHE_DIR: /media/video
+      METADATA_DIR: /media/metadata
+      EGRESS_OUTPUT_DIR: /out
+    volumes:
+      - ./services/media:/media
+    depends_on:
+      media-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+      livekit-egress:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks: [avatar]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-8088}:80"
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [avatar]
+
+networks:
+  avatar:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

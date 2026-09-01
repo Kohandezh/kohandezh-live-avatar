@@ -1,0 +1,23 @@
+{
+  "app": { "name": "Starter App", "offline": "You are offline" },
+  "nav": { "home": "Home", "profile": "Profile", "login": "Log in", "logout": "Log out" },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "submit": "Log in",
+    "submitting": "Logging in…",
+    "invalid": "Wrong email or password",
+    "hint": "Try: demo@example.com / demo1234"
+  },
+  "state": {
+    "loading": "Loading…",
+    "empty": "Nothing to show",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "unauthorized": "Please log in to continue",
+    "notFound": "Page not found"
+  },
+  "home": { "title": "Welcome", "publicUsers": "Public users", "category": "Categories" },
+  "profile": { "title": "Profile", "displayName": "Display name", "save": "Save", "saved": "Saved", "photo": "Take photo" },
+  "settings": { "language": "Language", "theme": "Theme" }
+}

@@ -1,0 +1,23 @@
+{
+  "app": { "name": "اپلیکیشن پایه", "offline": "اتصال اینترنت قطع است" },
+  "nav": { "home": "خانه", "profile": "پروفایل", "login": "ورود", "logout": "خروج" },
+  "auth": {
+    "email": "ایمیل",
+    "password": "رمز عبور",
+    "submit": "ورود",
+    "submitting": "در حال ورود…",
+    "invalid": "ایمیل یا رمز عبور اشتباه است",
+    "hint": "نمونه: demo@example.com / demo1234"
+  },
+  "state": {
+    "loading": "در حال بارگذاری…",
+    "empty": "چیزی برای نمایش نیست",
+    "error": "مشکلی پیش آمد",
+    "retry": "تلاش دوباره",
+    "unauthorized": "برای ادامه وارد شوید",
+    "notFound": "صفحه پیدا نشد"
+  },
+  "home": { "title": "خوش آمدید", "publicUsers": "کاربران عمومی", "category": "دسته‌بندی‌ها" },
+  "profile": { "title": "پروفایل", "displayName": "نام نمایشی", "save": "ذخیره", "saved": "ذخیره شد", "photo": "گرفتن عکس" },
+  "settings": { "language": "زبان", "theme": "پوسته" }
+}

@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+if [ "${CONFIRM_CREDIT_USAGE:-NO}" != "YES" ]; then
+  echo "CREDIT-SAFE STOP: this command may call ElevenLabs. Re-run with CONFIRM_CREDIT_USAGE=YES." >&2
+  exit 2
+fi
+curl --fail --silent --show-error \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"سلام، این یک تست کوتاه صدا است."}' \
+  "${API_URL:-http://localhost:8088/api}/tts/generate"
+printf '\n'
+

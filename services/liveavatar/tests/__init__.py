@@ -1,0 +1,1 @@
+"""LiveAvatar unit tests."""
