@@ -27,13 +27,7 @@ async def test_v3_generation_uses_text_to_dialogue_contract():
         assert request.headers["xi-api-key"] == "secret"
         body = __import__("json").loads(request.content)
         assert body["inputs"] == [{"text": "سلام", "voice_id": "voice-id"}]
-        assert body["settings"] == {
-            "stability": 0.5,
-            "similarity_boost": 0.75,
-            "style": 0.0,
-            "speed": 1.0,
-            "use_speaker_boost": True,
-        }
+        assert body["settings"] == {"stability": 0.5}
         return httpx.Response(200, content=struct.pack("<h", 0) * 24)
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://api.test")

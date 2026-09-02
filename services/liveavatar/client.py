@@ -35,7 +35,8 @@ class LiveAvatarClient:
         sandbox: bool,
         max_session_duration: int,
         livekit_url: str,
-        livekit_agent_token: str,
+        livekit_room: str,
+        livekit_client_token: str,
     ) -> dict:
         self._require_key()
         payload = {
@@ -44,7 +45,11 @@ class LiveAvatarClient:
             "is_sandbox": sandbox,
             "max_session_duration": max_session_duration,
             "video_settings": {"quality": "high", "encoding": "H264"},
-            "livekit_config": {"url": livekit_url, "token": livekit_agent_token},
+            "livekit_config": {
+                "livekit_url": livekit_url,
+                "livekit_room": livekit_room,
+                "livekit_client_token": livekit_client_token,
+            },
         }
         response = await self._request(
             "POST",
@@ -60,9 +65,14 @@ class LiveAvatarClient:
         )
         return self._data(response)
 
-    async def stop_session(self, session_token: str) -> None:
-        # The current official SDK demo terminates the provider session with this canonical request.
-        await self._request("DELETE", "/v1/sessions", headers={"Authorization": f"Bearer {session_token}"})
+    async def stop_session(self, session_token: str, session_id: str, *, reason: str) -> None:
+        """Stop a LITE session using the session token returned by create_token."""
+        await self._request(
+            "POST",
+            "/v1/sessions/stop",
+            headers={"Authorization": f"Bearer {session_token}"},
+            json={"session_id": session_id, "reason": reason},
+        )
 
     async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         for attempt in range(3):

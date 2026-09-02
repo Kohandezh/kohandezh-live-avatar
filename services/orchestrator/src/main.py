@@ -219,9 +219,9 @@ async def create_avatar_session(payload: AvatarSessionRequest, request: Request)
     config: Settings = request.app.state.settings
     sandbox = config.liveavatar_sandbox if payload.sandbox is None else payload.sandbox
     managed = await request.app.state.avatar.create(
-        avatar_id=payload.avatar_id,
+        avatar_id=str(payload.avatar_id) if payload.avatar_id else None,
         sandbox=sandbox,
-        max_session_duration=payload.max_session_duration,
+        max_session_duration=payload.max_session_duration or config.liveavatar_max_session_seconds,
     )
     return AvatarSessionResponse(
         id=managed.id,

@@ -24,13 +24,18 @@ async def test_session_creation_is_explicit_lite_byo_livekit():
         sandbox=True,
         max_session_duration=60,
         livekit_url="wss://livekit.example",
-        livekit_agent_token="publisher-jwt",  # noqa: S106 - inert fixture credential
+        livekit_room="avatar-room",
+        livekit_client_token="publisher-jwt",  # noqa: S106 - inert fixture credential
     )
     assert data["session_token"] == "jwt"  # noqa: S105 - provider fixture response
     body = json.loads(requests[0].content)
     assert body["mode"] == "LITE"
     assert body["video_settings"]["encoding"] == "H264"
-    assert body["livekit_config"] == {"url": "wss://livekit.example", "token": "publisher-jwt"}
+    assert body["livekit_config"] == {
+        "livekit_url": "wss://livekit.example",
+        "livekit_room": "avatar-room",
+        "livekit_client_token": "publisher-jwt",
+    }
     await client.start_session("jwt")
     assert requests[1].headers["authorization"] == "Bearer jwt"
     await http.aclose()
@@ -53,7 +58,8 @@ async def test_quota_failure_is_classified_without_retry():
             sandbox=False,
             max_session_duration=60,
             livekit_url="wss://livekit.example",
-            livekit_agent_token="token",  # noqa: S106 - inert fixture credential
+            livekit_room="avatar-room",
+            livekit_client_token="token",  # noqa: S106 - inert fixture credential
         )
     assert error.value.code == "liveavatar_quota"
     assert calls == 1
@@ -70,8 +76,12 @@ async def test_session_teardown_uses_current_canonical_contract():
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
-    await client.stop_session("session-jwt")
-    assert requests[0].method == "DELETE"
-    assert requests[0].url.path == "/v1/sessions"
+    await client.stop_session("session-jwt", "provider-session", reason="USER_DISCONNECTED")
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/v1/sessions/stop"
     assert requests[0].headers["authorization"] == "Bearer session-jwt"
+    assert json.loads(requests[0].content) == {
+        "session_id": "provider-session",
+        "reason": "USER_DISCONNECTED",
+    }
     await http.aclose()

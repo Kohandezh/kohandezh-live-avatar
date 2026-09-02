@@ -54,9 +54,9 @@ class AudioAssetResponse(BaseModel):
 
 
 class AvatarSessionRequest(BaseModel):
-    avatar_id: str | None = None
+    avatar_id: UUID | None = None
     sandbox: bool | None = None
-    max_session_duration: int = Field(default=60, ge=15, le=3600)
+    max_session_duration: int | None = Field(default=None, ge=15, le=3600)
 
 
 class AvatarSessionResponse(BaseModel):

@@ -6,6 +6,7 @@ import pytest
 from services.elevenlabs.audio import REQUIRED_PCM
 from services.liveavatar.connection import FIRST_CHUNK_BYTES, LiveAvatarConnection
 from services.liveavatar.events import LiveAvatarEventType
+from services.orchestrator.src.errors import AudioFormatError
 
 
 class FakeSocket:
@@ -37,6 +38,18 @@ async def test_speak_chunks_share_event_id_and_end_once():
     assert len(ends) == 1
     assert {item["event_id"] for item in speaks + ends} == {event_id}
     assert len(__import__("base64").b64decode(speaks[0]["audio"])) == FIRST_CHUNK_BYTES
+
+
+@pytest.mark.asyncio
+async def test_speak_bytes_rejects_unaligned_pcm_before_sending():
+    connection = LiveAvatarConnection("wss://unused")
+    connection.socket = FakeSocket(connection)
+    connection.connected.set()
+
+    with pytest.raises(AudioFormatError):
+        await connection.speak_bytes(b"x")
+
+    assert connection.socket.messages == []
 
 
 @pytest.mark.asyncio

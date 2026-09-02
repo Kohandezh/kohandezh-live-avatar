@@ -47,6 +47,11 @@ class ElevenLabsClient:
             "use_speaker_boost": True,
         }
 
+    @staticmethod
+    def _dialogue_settings(params: dict) -> dict:
+        """Text-to-Dialogue v3 accepts stability only."""
+        return {"stability": params["stability"]}
+
     async def generate(self, params: dict) -> tuple[bytes, dict[str, str]]:
         self._require_credentials(params["voice_id"])
         if params["model_id"].startswith("eleven_v3"):
@@ -55,7 +60,7 @@ class ElevenLabsClient:
                 "inputs": [{"text": params["text"], "voice_id": params["voice_id"]}],
                 "model_id": params["model_id"],
                 "language_code": params["language"],
-                "settings": self._voice_settings(params),
+                "settings": self._dialogue_settings(params),
             }
         else:
             url = f"{self.base_url}/v1/text-to-speech/{params['voice_id']}"
@@ -116,7 +121,13 @@ class ElevenLabsClient:
                 yield chunk
 
     async def _stream_dialogue(self, params: dict) -> AsyncIterator[bytes]:
-        query = urlencode({"model_id": params["model_id"], "output_format": params["output_format"]})
+        query = urlencode(
+            {
+                "model_id": params["model_id"],
+                "output_format": params["output_format"],
+                "language_code": params["language"],
+            }
+        )
         uri = f"{self.websocket_url}/v1/text-to-dialogue/stream-input?{query}"
         try:
             async with websockets.connect(uri, open_timeout=self.timeout_seconds) as socket:
@@ -124,7 +135,7 @@ class ElevenLabsClient:
                     json.dumps(
                         {
                             "voices": [params["voice_id"]],
-                            "voice_settings": self._voice_settings(params),
+                            "voice_settings": self._dialogue_settings(params),
                             "xi_api_key": self.api_key,
                         }
                     )
@@ -140,7 +151,8 @@ class ElevenLabsClient:
                     )
                 )
                 await socket.send(json.dumps({"close_socket": True}))
-                async for raw in socket:
+                while True:
+                    raw = await asyncio.wait_for(socket.recv(), timeout=self.timeout_seconds)
                     message = json.loads(raw)
                     if message.get("error"):
                         raise ProviderError(
@@ -180,7 +192,8 @@ class ElevenLabsClient:
                 )
                 await socket.send(json.dumps({"text": params["text"] + " ", "flush": True}))
                 await socket.send(json.dumps({"text": ""}))
-                async for raw in socket:
+                while True:
+                    raw = await asyncio.wait_for(socket.recv(), timeout=self.timeout_seconds)
                     message = json.loads(raw)
                     if message.get("error"):
                         raise ProviderError(

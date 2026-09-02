@@ -5,13 +5,14 @@ from uuid import UUID
 
 from services.orchestrator.src.coordination import Coordinator
 from services.orchestrator.src.database import Database
-from services.orchestrator.src.errors import ConfigurationError, NotFoundError
+from services.orchestrator.src.errors import ConfigurationError, NotFoundError, ProviderError
 from services.orchestrator.src.livekit_gateway import LiveKitGateway
 
 from .client import LiveAvatarClient
 from .connection import LiveAvatarConnection
 
 logger = logging.getLogger(__name__)
+PROVIDER_STOP_REASON = "USER_DISCONNECTED"
 
 
 @dataclass
@@ -69,18 +70,25 @@ class LiveAvatarManager:
             sandbox=sandbox,
             max_session_duration=max_session_duration,
             livekit_url=self.livekit.public_url,
-            livekit_agent_token=room.avatar_token,
+            livekit_room=room.room_name,
+            livekit_client_token=room.avatar_token,
         )
-        provider_token = token_data["session_token"]
-        start_data = await self.client.start_session(provider_token)
-        connection = LiveAvatarConnection(start_data["ws_url"], self.connect_timeout)
+        provider_token: str | None = None
+        provider_session_id: str | None = None
+        connection: LiveAvatarConnection | None = None
         row = None
         managed = None
         try:
+            provider_token = self._required_provider_value(token_data, "session_token")
+            provider_session_id = self._required_provider_value(token_data, "session_id")
+            start_data = await self.client.start_session(provider_token)
+            ws_url = self._required_provider_value(start_data, "ws_url")
+            provider_session_id = start_data.get("session_id") or provider_session_id
+            connection = LiveAvatarConnection(ws_url, self.connect_timeout)
             await connection.connect()
             row = await self.database.create_session(
                 {
-                    "provider_session_id": start_data.get("session_id") or token_data["session_id"],
+                    "provider_session_id": provider_session_id,
                     "avatar_id": selected_avatar,
                     "room_name": room.room_name,
                     "sandbox": sandbox,
@@ -117,12 +125,20 @@ class LiveAvatarManager:
                 if managed.keepalive_task:
                     managed.keepalive_task.cancel()
                     await asyncio.gather(managed.keepalive_task, return_exceptions=True)
-            await connection.close()
-            try:
-                await self.client.stop_session(provider_token)
-            finally:
-                if row:
-                    await self.database.close_session(row["id"], "START_FAILED")
+            if connection:
+                await connection.close()
+            if provider_token and provider_session_id:
+                try:
+                    await self.client.stop_session(
+                        provider_token, provider_session_id, reason=PROVIDER_STOP_REASON
+                    )
+                except Exception:
+                    logger.exception(
+                        "liveavatar_session_start_cleanup_failed",
+                        extra={"session_id": provider_session_id},
+                    )
+            if row:
+                await self.database.close_session(row["id"], "START_FAILED")
             raise
         logger.info(
             "liveavatar_session_started",
@@ -152,7 +168,9 @@ class LiveAvatarManager:
             await session.connection.close()
         finally:
             try:
-                await self.client.stop_session(session.provider_token)
+                await self.client.stop_session(
+                    session.provider_token, session.provider_session_id, reason=PROVIDER_STOP_REASON
+                )
             finally:
                 await self.database.close_session(session_id, status)
                 await self.coordinator.delete_session(str(session_id))
@@ -187,3 +205,12 @@ class LiveAvatarManager:
             raise
         except Exception:
             logger.exception("liveavatar_keepalive_failed", extra={"session_id": session.provider_session_id})
+
+    @staticmethod
+    def _required_provider_value(data: dict, key: str) -> str:
+        value = data.get(key)
+        if not isinstance(value, str) or not value:
+            raise ProviderError(
+                "liveavatar_protocol", f"LiveAvatar response is missing a valid {key}", 502, False
+            )
+        return value

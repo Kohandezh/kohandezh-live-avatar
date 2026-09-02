@@ -44,6 +44,11 @@ class LiveAvatarConnection:
                 504,
                 True,
             ) from exc
+        except (OSError, websockets.WebSocketException) as exc:
+            await self.close()
+            raise ProviderError(
+                "liveavatar_session_failure", "LiveAvatar WebSocket connection failed", 502, True
+            ) from exc
 
     async def close(self) -> None:
         if self.socket:
@@ -115,6 +120,8 @@ class LiveAvatarConnection:
         )
 
     async def speak_bytes(self, audio: bytes) -> str:
+        validate_pcm(audio)
+
         async def one_chunk() -> AsyncIterator[bytes]:
             yield audio
 
@@ -164,6 +171,7 @@ class LiveAvatarConnection:
                 waiter.cancel()
 
     async def _send_audio(self, event_id: str, audio: bytes) -> None:
+        validate_pcm(audio)
         await self.send(
             {
                 "type": LiveAvatarEventType.AGENT_SPEAK.value,

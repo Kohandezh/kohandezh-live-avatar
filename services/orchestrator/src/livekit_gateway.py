@@ -39,6 +39,7 @@ class LiveKitGateway:
         room_name: str,
         can_publish: bool,
         can_subscribe: bool,
+        can_publish_data: bool = False,
     ) -> str:
         return (
             api.AccessToken(self.api_key, self.api_secret)
@@ -50,7 +51,7 @@ class LiveKitGateway:
                     room=room_name,
                     can_publish=can_publish,
                     can_subscribe=can_subscribe,
-                    can_publish_data=False,
+                    can_publish_data=can_publish_data,
                 )
             )
             .to_jwt()
@@ -67,6 +68,7 @@ class LiveKitGateway:
             room_name=room_name,
             can_publish=True,
             can_subscribe=False,
+            can_publish_data=True,
         )
         browser_token = self.token(
             identity=f"browser-{suffix}",

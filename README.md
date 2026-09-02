@@ -127,7 +127,7 @@ The PCM is stored as `services/media/audio/<sha256>.pcm`; metadata is stored as 
 
 ### LiveAvatar LITE
 
-The orchestrator creates a BYO LiveKit room and two least-privilege tokens: a publish-only token for LiveAvatar and a subscribe-only token for the browser. It creates and starts a LITE session, waits for `session.state_updated` with state `connected`, then supports the exact LITE commands:
+The orchestrator creates a BYO LiveKit room and two least-privilege tokens: a publisher token for LiveAvatar (including Data Channel publish permission for LITE control events) and a subscribe-only token for the browser. It creates and starts a LITE session, waits for `session.state_updated` with state `connected`, then supports the exact LITE commands:
 
 - `agent.speak`, with one shared `event_id` and raw PCM chunks
 - `agent.speak_end`
@@ -135,7 +135,7 @@ The orchestrator creates a BYO LiveKit room and two least-privilege tokens: a pu
 - `agent.start_listening` / `agent.stop_listening`
 - `session.keep_alive`
 
-Speech requests wait for the matching `agent.speak_ended`, so Egress is not finalized before rendering completes. Current canonical teardown is `DELETE /v1/sessions` with the bearer session token. Cleanup closes the event socket and explicitly terminates the provider session even on start failure or application shutdown.
+Speech requests wait for the matching `agent.speak_ended`, so Egress is not finalized before rendering completes. Teardown uses `POST /v1/sessions/stop` with the provider session id and an explicit reason. Cleanup closes the event socket and explicitly terminates the provider session even on start failure or application shutdown.
 
 ### Public BYO LiveKit prerequisite
 
