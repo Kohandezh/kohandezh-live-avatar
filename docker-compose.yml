@@ -5,7 +5,7 @@ services:
     image: alpine:3.22
     command: ["sh", "-c", "chmod -R 0777 /media"]
     volumes:
-      - ./services/media:/media
+      - ./media:/media
     restart: "no"
     networks: [avatar]
 
@@ -71,7 +71,7 @@ services:
       LIVEKIT_WS_URL: ws://livekit:7880
     volumes:
       - ./infra/livekit-egress/egress.yaml:/etc/livekit-egress/egress.yaml:ro
-      - ./services/media/video:/out
+      - ./media/video:/out
     depends_on:
       media-init:
         condition: service_completed_successfully
@@ -91,7 +91,7 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: services/orchestrator/Dockerfile
+      dockerfile: apps/api/services/orchestrator/Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-kohandezh}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kohandezh_avatar}
@@ -105,7 +105,7 @@ services:
       METADATA_DIR: /media/metadata
       EGRESS_OUTPUT_DIR: /out
     volumes:
-      - ./services/media:/media
+      - ./media:/media
     depends_on:
       media-init:
         condition: service_completed_successfully
@@ -129,7 +129,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: services/frontend/Dockerfile
+      dockerfile: apps/frontend/Dockerfile
     ports:
       - "${FRONTEND_PORT:-8088}:80"
     depends_on:

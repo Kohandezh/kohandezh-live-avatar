@@ -1,0 +1,234 @@
+{
+  "app": {
+    "name": "Cross-Platform App",
+    "tagline": "One codebase for mobile, web, and admin.",
+    "offline": "You are offline. Audio generation, avatar streaming and recording need a network connection.",
+    "phaseNotice": "Phase 1 test environment. Generated assets are never approved automatically.",
+    "updateAvailable": "A new version is available.",
+    "reload": "Reload",
+    "offlineReady": "App shell is cached for offline use. Streaming still requires a network connection.",
+    "dismiss": "Dismiss"
+  },
+  "nav": {
+    "home": "Home",
+    "profile": "Profile",
+    "login": "Log in",
+    "logout": "Log out",
+    "menu": "Menu",
+    "session": "Avatar console",
+    "main": "Main navigation"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "fa": "فارسی"
+  },
+  "states": {
+    "loading": "Loading…",
+    "retry": "Retry",
+    "offline": "You are offline. Some data may be out of date.",
+    "empty": {
+      "title": "Nothing here yet",
+      "description": "There is no data to show."
+    },
+    "error": {
+      "title": "Something went wrong",
+      "description": "We could not load this data. Check your connection and try again."
+    }
+  },
+  "auth": {
+    "title": "Welcome back",
+    "subtitle": "Log in to continue.",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Log in",
+    "demoHint": "Demo accounts: admin@example.com or user@example.com. Password: password",
+    "errors": {
+      "invalidEmail": "Enter a valid email address.",
+      "passwordMin": "Password must be at least 6 characters.",
+      "invalidCredentials": "Email or password is wrong.",
+      "failed": "Login failed. Please try again."
+    }
+  },
+  "roles": {
+    "admin": "Admin",
+    "user": "User"
+  },
+  "status": {
+    "active": "Active",
+    "disabled": "Disabled"
+  },
+  "home": {
+    "title": "Cross-Platform App",
+    "description": "React + Vite + Capacitor starter with a shared codebase for the mobile app, the web PWA, and the admin dashboard.",
+    "goToProfile": "Open your profile",
+    "loginCta": "Log in to see your profile",
+    "intro": "Development UI for the text → ElevenLabs → LiveAvatar LITE → LiveKit → Egress pipeline. Everything provider-related runs on the server; this app only holds a scoped LiveKit subscriber token for the duration of a session.",
+    "open": "Open avatar console",
+    "phaseTitle": "Phase 1 status",
+    "phaseVerdict": "PHASE 1: FAIL — the real provider path has not been verified yet.",
+    "phasePending": "Pending: ElevenLabs real API, LiveAvatar LITE real API, public WSS LiveKit endpoint, real browser playback, real Avatar → Egress MP4.",
+    "creditNotice": "Generate Audio and Send to Avatar can consume ElevenLabs / LiveAvatar credits when real credentials are configured on the server.",
+    "webrtcTitle": "This device",
+    "webrtcSupported": "WebRTC supported",
+    "webrtcUnsupported": "WebRTC is not available in this browser",
+    "insecureContext": "Not a secure context: media playback and WebRTC may be blocked",
+    "platform": "Platform"
+  },
+  "profile": {
+    "title": "Your profile",
+    "email": "Email",
+    "role": "Role",
+    "memberSince": "Member since"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you asked for does not exist.",
+    "back": "Back to home"
+  },
+  "forbidden": {
+    "title": "No access",
+    "description": "Your account is not allowed to open this page.",
+    "switchAccount": "Log in with another account"
+  },
+  "pwa": {
+    "updateAvailable": "A new version is available.",
+    "offlineReady": "The app is ready to work offline.",
+    "reload": "Reload",
+    "dismiss": "Dismiss"
+  },
+  "settings": {
+    "language": "Language",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark"
+  },
+  "health": {
+    "title": "Backend health",
+    "checking": "Checking backend…",
+    "ok": "All services healthy",
+    "degraded": "Backend degraded",
+    "unreachable": "Backend unreachable",
+    "offline": "Offline",
+    "dependency": "Dependency",
+    "status": "Status",
+    "latency": "Latency",
+    "lastChecked": "Last checked",
+    "refresh": "Refresh",
+    "activeSessions": "Active sessions",
+    "heartbeat": "Last heartbeat",
+    "socketConnected": "Status socket connected",
+    "socketDisconnected": "Status socket disconnected",
+    "deps": {
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "livekit": "LiveKit",
+      "livekit_egress": "LiveKit Egress"
+    }
+  },
+  "tts": {
+    "title": "Text to speech",
+    "label": "Persian text",
+    "placeholder": "Type the sentence the avatar should say…",
+    "hint": "UTF-8 text, up to 5000 characters. Identical requests are served from the server cache and do not call ElevenLabs again.",
+    "characters": "{{count}} characters",
+    "generate": "Generate audio",
+    "generating": "Generating audio…",
+    "empty": "No audio generated yet.",
+    "cacheHit": "Served from cache",
+    "cacheMiss": "Generated by ElevenLabs",
+    "duration": "Duration",
+    "seconds": "{{value}} s",
+    "preview": "Audio preview",
+    "loadingPreview": "Loading audio…",
+    "previewError": "Audio could not be loaded.",
+    "assetId": "Audio asset",
+    "download": "Download PCM",
+    "error": "Audio generation failed.",
+    "blank": "Enter some text first."
+  },
+  "session": {
+    "title": "Avatar session",
+    "start": "Start avatar",
+    "starting": "Starting session…",
+    "connecting": "Connecting to LiveKit…",
+    "speak": "Send to avatar",
+    "speaking": "Sending…",
+    "interrupt": "Interrupt",
+    "close": "Close session",
+    "closing": "Closing…",
+    "closeBlocked": "Stop the active recording before closing the session.",
+    "noSession": "No active session.",
+    "sessionInfo": "Session {{id}} in room {{room}}",
+    "sandbox": "Sandbox",
+    "live": "Live credits",
+    "status": {
+      "idle": "Idle",
+      "starting": "Starting",
+      "connecting": "Connecting",
+      "connected": "Connected",
+      "reconnecting": "Reconnecting",
+      "disconnected": "Disconnected",
+      "closing": "Closing",
+      "error": "Error"
+    },
+    "video": {
+      "idle": "Start a session to see the avatar here.",
+      "waiting": "Connected. Waiting for avatar video…",
+      "disconnected": "The LiveKit connection was lost.",
+      "reconnect": "Start a new session",
+      "audioBlocked": "Audio is blocked by the browser. Tap to enable playback.",
+      "enableAudio": "Enable audio",
+      "label": "Avatar video stream"
+    },
+    "configError": "The server is not configured for a real LiveAvatar session yet (PUBLIC_LIVEKIT_URL must be a public wss:// endpoint).",
+    "error": "The session could not be started.",
+    "speakError": "Sending text to the avatar failed.",
+    "labels": {
+      "session": "Session",
+      "provider": "Provider session",
+      "room": "Room",
+      "livekit": "LiveKit"
+    }
+  },
+  "recording": {
+    "title": "Recording",
+    "start": "Start recording",
+    "starting": "Starting Egress…",
+    "stop": "Stop recording",
+    "finalizing": "Finalizing MP4…",
+    "recording": "Recording via LiveKit Egress",
+    "needsSession": "Start an avatar session before recording.",
+    "idle": "No recording in progress.",
+    "assetId": "Video asset",
+    "egressId": "Egress",
+    "download": "Open generated MP4",
+    "probe": "Probe",
+    "done": "MP4 generated. Manual approval is still required.",
+    "error": "Recording failed.",
+    "status": {
+      "idle": "Idle",
+      "starting": "Starting",
+      "recording": "Recording",
+      "finalizing": "Finalizing",
+      "done": "Done",
+      "error": "Error"
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "empty": "No events yet. Actions and LiveKit events will appear here.",
+    "clear": "Clear log",
+    "events": "{{count}} events",
+    "level": {
+      "info": "info",
+      "warn": "warn",
+      "error": "error"
+    },
+    "details": "Details",
+    "time": "Time",
+    "source": "Source",
+    "message": "Message"
+  }
+}

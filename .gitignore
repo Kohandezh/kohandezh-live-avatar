@@ -9,18 +9,19 @@ htmlcov/
 .mypy_cache/
 node_modules/
 .DS_Store
-services/media/audio/*
-!services/media/audio/.gitkeep
-services/media/video/*
-!services/media/video/.gitkeep
-services/media/metadata/*
-!services/media/metadata/.gitkeep
+
+# Runtime media written by the orchestrator and the Egress worker.
+media/audio/*
+!media/audio/.gitkeep
+media/video/*
+!media/video/.gitkeep
+media/metadata/*
+!media/metadata/.gitkeep
 infra/postgres/data/
 *.log
 
-
 # Frontend build output
-services/frontend/dist/
-services/frontend/dev-dist/
-services/frontend/.env.local
-services/frontend/.env.*.local
+apps/frontend/dist/
+apps/frontend/dev-dist/
+apps/frontend/.env.local
+apps/frontend/.env.*.local

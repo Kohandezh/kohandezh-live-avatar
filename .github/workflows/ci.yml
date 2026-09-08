@@ -11,22 +11,39 @@ jobs:
   frontend:
     name: Frontend check + build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/frontend
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11.1.2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: services/frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test --run
       - run: pnpm build
+
+  e2e:
+    name: Frontend end-to-end
+    runs-on: ubuntu-latest
+    needs: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @app/frontend exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/frontend/playwright-report
+          retention-days: 7
 
   backend:
     name: Backend tests (Compose)
