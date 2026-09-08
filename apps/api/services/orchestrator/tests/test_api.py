@@ -23,9 +23,19 @@ async def test_validation_happens_before_provider_access():
 
 
 def test_frontend_has_no_server_secrets():
-    """The React/Vite bundle source and its public env files must never reference server secrets."""
-    # tests -> orchestrator -> services -> api -> apps
-    frontend_dir = __import__("pathlib").Path(__file__).parents[4] / "frontend"
+    """The React/Vite bundle source and its public env files must never reference server secrets.
+
+    The orchestrator image ships only apps/api/services, so the frontend tree is absent there and
+    this skips. CI still runs the same check on the full checkout via scripts/check-frontend-secrets
+    in the frontend job.
+    """
+    import pathlib
+
+    # tests -> orchestrator -> services -> api -> apps -> repository root
+    frontend_dir = pathlib.Path(__file__).resolve().parents[5] / "apps" / "frontend"
+    if not frontend_dir.is_dir():
+        pytest.skip("frontend tree is not present in this image; see scripts/check-frontend-secrets")
+
     sources = list((frontend_dir / "src").rglob("*.ts")) + list((frontend_dir / "src").rglob("*.tsx"))
     sources += [path for path in frontend_dir.glob(".env*") if path.is_file()]
     assert sources, "frontend sources were not found"
