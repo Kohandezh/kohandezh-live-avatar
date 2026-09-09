@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -66,6 +66,8 @@ class AvatarSessionResponse(BaseModel):
     livekit_url: str
     livekit_client_token: str
     sandbox: bool
+    # "managed" means LiveAvatar hosts the room, so recording is unavailable.
+    transport: Literal["managed", "byo"]
 
 
 class AvatarSpeakRequest(BaseModel):

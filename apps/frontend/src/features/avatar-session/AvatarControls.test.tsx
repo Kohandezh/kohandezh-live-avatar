@@ -19,6 +19,7 @@ const connected: AvatarSessionState = {
     roomName: 'room-1',
     livekitUrl: 'wss://live.example.test',
     sandbox: true,
+    transport: 'managed' as const,
   },
   media: { audio: true, video: false },
   audioBlocked: true,
@@ -28,23 +29,42 @@ const connected: AvatarSessionState = {
 
 describe('AvatarSessionPanel states', () => {
   it('idle: only Start is enabled and the empty video state is shown', () => {
-    renderWithProviders(<AvatarSessionPanel text="سلام" recordingActive={false} />);
+    renderWithProviders(
+      <AvatarSessionPanel text="سلام" recordingActive={false} />,
+    );
     expect(screen.getByRole('button', { name: /start avatar/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /send to avatar/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /send to avatar/i }),
+    ).toBeDisabled();
     expect(screen.getByRole('button', { name: /^interrupt$/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /close session/i })).toBeDisabled();
-    expect(screen.getByText(/start a session to see the avatar/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /close session/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/start a session to see the avatar/i),
+    ).toBeInTheDocument();
   });
 
   it('connected: speak/interrupt/close enabled, audio-blocked prompt and identifiers shown', () => {
-    renderWithProviders(<AvatarSessionPanel text="سلام" recordingActive={false} />, {
-      preloadedState: { avatarSession: connected },
-    });
-    expect(screen.getByRole('button', { name: /start avatar/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /send to avatar/i })).toBeEnabled();
+    renderWithProviders(
+      <AvatarSessionPanel text="سلام" recordingActive={false} />,
+      {
+        preloadedState: { avatarSession: connected },
+      },
+    );
+    expect(
+      screen.getByRole('button', { name: /start avatar/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /send to avatar/i }),
+    ).toBeEnabled();
     expect(screen.getByRole('button', { name: /^interrupt$/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /close session/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /enable audio/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /close session/i }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: /enable audio/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText('room-1')).toBeInTheDocument();
     expect(screen.getByText(/waiting for avatar video/i)).toBeInTheDocument();
   });
@@ -53,19 +73,34 @@ describe('AvatarSessionPanel states', () => {
     renderWithProviders(<AvatarSessionPanel text="   " recordingActive />, {
       preloadedState: { avatarSession: connected },
     });
-    expect(screen.getByRole('button', { name: /send to avatar/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /close session/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /send to avatar/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /close session/i }),
+    ).toBeDisabled();
     expect(screen.getByText(/stop the active recording/i)).toBeInTheDocument();
   });
 
   it('disconnected: explains the lost connection and allows Close for cleanup', () => {
-    renderWithProviders(<AvatarSessionPanel text="سلام" recordingActive={false} />, {
-      preloadedState: {
-        avatarSession: { ...connected, status: 'disconnected', error: 'SERVER_SHUTDOWN' },
+    renderWithProviders(
+      <AvatarSessionPanel text="سلام" recordingActive={false} />,
+      {
+        preloadedState: {
+          avatarSession: {
+            ...connected,
+            status: 'disconnected',
+            error: 'SERVER_SHUTDOWN',
+          },
+        },
       },
-    });
+    );
     expect(screen.getByText(/connection was lost/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /close session/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /send to avatar/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /close session/i }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: /send to avatar/i }),
+    ).toBeDisabled();
   });
 });

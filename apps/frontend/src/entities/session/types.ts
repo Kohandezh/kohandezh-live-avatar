@@ -11,6 +11,7 @@ export interface AvatarSession {
   roomName: string;
   livekitUrl: string;
   sandbox: boolean;
+  transport: 'managed' | 'byo';
 }
 
 export function sessionFromDto(dto: AvatarSessionDto): AvatarSession {
@@ -20,5 +21,6 @@ export function sessionFromDto(dto: AvatarSessionDto): AvatarSession {
     roomName: dto.room_name,
     livekitUrl: dto.livekit_url,
     sandbox: dto.sandbox,
+    transport: dto.transport,
   };
 }

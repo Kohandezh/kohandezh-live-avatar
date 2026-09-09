@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,6 +32,12 @@ class Settings(BaseSettings):
     liveavatar_sandbox: bool = True
     liveavatar_max_session_seconds: int = 60
     liveavatar_connect_timeout_seconds: float = 30.0
+    # "managed": LiveAvatar provisions the LiveKit room and returns its URL and a browser token.
+    # Works from a laptop because nothing of ours has to be reachable from the internet, but the
+    # room is theirs, so our Egress worker cannot record it.
+    # "byo": we create the room in our own LiveKit and hand LiveAvatar a publisher token. Needs a
+    # public wss:// endpoint and reachable media ports, and is the only mode that can record.
+    liveavatar_transport: Literal["managed", "byo"] = "managed"
 
     livekit_url: str = "http://livekit:7880"
     livekit_ws_url: str = "ws://livekit:7880"
@@ -57,6 +64,10 @@ class Settings(BaseSettings):
     @property
     def real_livekit_ready(self) -> bool:
         return self.public_livekit_url.startswith("wss://") and "localhost" not in self.public_livekit_url
+
+    @property
+    def managed_livekit(self) -> bool:
+        return self.liveavatar_transport == "managed"
 
     def ensure_media_dirs(self) -> None:
         for path in (self.audio_cache_dir, self.video_cache_dir, self.metadata_dir):
