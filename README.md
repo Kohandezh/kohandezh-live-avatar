@@ -5,7 +5,7 @@ Local, Dockerized infrastructure proof for a hybrid cached/live Persian avatar. 
 ## Architecture
 
 ```text
-React + TypeScript + Vite + HeroUI (PWA, Capacitor-ready)
+React + TypeScript + Vite + Tailwind (PWA, Capacitor-ready)
   | HTTPS/WS + scoped subscriber JWT (same-origin /api)
   v
 Nginx :8088 ---> FastAPI orchestrator
@@ -26,7 +26,7 @@ Nginx :8088 ---> FastAPI orchestrator
                                               |
                                          H.264/AAC MP4
                                               |
-                                      services/media/video
+                                        media/video
 ```
 
 LiveAvatar is only the real-time renderer. The application owns TTS, caching, session lifecycle, interruption, listening state, Egress, media metadata, and usage accounting.
@@ -45,7 +45,7 @@ The frontend is a standalone application, not a WordPress plugin or embed. WordP
 | `redis` | Locks, deduplication, short-lived session state | internal only |
 | `media-init` | Local-development bind-mount permissions | one-shot, internal only |
 
-PostgreSQL and Redis use named volumes. Audio, video, and JSON metadata use bind-mounted directories under `services/media/` so test artifacts are directly inspectable. `media-init` makes those local development directories writable by the non-root application and Egress containers; production should use purpose-built ownership and permissions instead of mode `0777`.
+PostgreSQL and Redis use named volumes. Audio, video, and JSON metadata use bind-mounted directories under `media/` so test artifacts are directly inspectable. `media-init` makes those local development directories writable by the non-root application and Egress containers; production should use purpose-built ownership and permissions instead of mode `0777`.
 
 ## Setup
 
@@ -72,43 +72,94 @@ docker compose down
 
 Open <http://localhost:8088>. Provider credentials stay in the orchestrator container and are never placed in the browser bundle. `docker compose up -d --build frontend` rebuilds the web bundle after frontend changes.
 
-## Frontend (services/frontend)
+## Repository layout
 
-React 19 + TypeScript + Vite 7 + HeroUI v3 (Tailwind CSS v4) + TanStack Query + Redux Toolkit + React Router + i18next (Persian RTL default, English) + `vite-plugin-pwa` + `livekit-client`. Capacitor is configured (`capacitor.config.ts`) but no native shells are generated in Phase 1.
+The repository follows the cross-platform starter (`ARCHITECTURE.md`): one pnpm workspace with
+two applications, plus the infrastructure the avatar stack needs.
 
 ```text
-services/frontend/src
-├── app/        bootstrap, providers (Redux, Query, i18n, theme), router, store, layout
-├── pages/      home (health + phase status), avatar-session (console), not-found
-├── features/   avatar-session, text-to-speech, recording, diagnostics
-├── entities/   session, audio-asset, video-asset (DTO -> domain mapping, queries)
-└── shared/     api (the only fetch), config, i18n, platform, storage, hooks, ui, utils
+apps/frontend/     React + TypeScript, one codebase, three build targets (mobile, web, admin)
+apps/api/          Python / FastAPI: orchestrator, ElevenLabs and LiveAvatar clients
+infra/             LiveKit, Egress, Nginx and datastore configuration
+media/             bind-mounted audio, video and metadata written at runtime
+scripts/           health checks and the gated real-provider smoke test
+docs/              API contract and architecture decision records
 ```
 
-Rules enforced by ESLint: `UI component -> feature hook -> shared/api client -> FastAPI`. No `fetch()` outside `shared/api/client.ts`; `shared/` never imports higher layers; `features`/`entities`/`shared` never import `app` or `pages`. Server state lives in TanStack Query; Redux holds only client-owned UI state (locale, theme, composer draft, session/recording handles, diagnostics log). The scoped LiveKit browser token is passed straight to the LiveKit SDK and is never stored in Redux, persisted or logged (the diagnostics log redacts credential-shaped values).
+## Frontend (apps/frontend)
 
-Development against the running Compose stack (Vite proxies `/api` to `http://localhost:8088`):
+React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + TanStack Query + Redux Toolkit + React Router
++ i18next (English and Persian RTL) + `vite-plugin-pwa` + `livekit-client`. Capacitor is
+configured (`capacitor.config.ts`) but no native shells are generated in Phase 1.
+
+One codebase builds three targets. The avatar workbench lives on the web target at `/avatar`.
+
+```text
+apps/frontend/src
+├── app/        one entry per target (mobile, web, admin), providers, router, store
+├── pages/      home, avatar-session (the workbench), login, profile, admin, not-found
+├── features/   avatar-session, text-to-speech, recording, diagnostics, authentication, settings
+├── entities/   session, audio-asset, video-asset, user, dashboard (DTO -> domain mapping)
+├── i18n/       en and fa resources
+└── shared/     api (the only HTTP client), config, platform, storage, hooks, ui, utils
+```
+
+Rules enforced by ESLint: `UI component -> feature hook -> shared/api client -> FastAPI`. Every
+request goes through the single axios instance in `shared/api/client.ts`; `shared/` never imports
+higher layers; `features`/`entities`/`shared` never import `app` or `pages`. Server state lives in
+TanStack Query; Redux holds only client-owned state (locale, composer draft, session and recording
+handles, diagnostics log). The scoped LiveKit browser token is passed straight to the LiveKit SDK
+and is never stored in Redux, persisted or logged (the diagnostics log redacts credential-shaped
+values).
+
+Commands run from the repository root:
 
 ```bash
-cd services/frontend
 pnpm install
-pnpm dev            # http://localhost:5173
-pnpm check          # typecheck + lint + prettier + vitest
-pnpm test           # vitest only
-pnpm build          # production bundle + service worker in dist/
-pnpm preview        # serve dist/ locally
-pnpm icons          # regenerate PNG icons from public/icons/*.svg (macOS qlmanage)
+pnpm dev            # web target, http://localhost:5174
+pnpm dev:mobile     # http://localhost:5173
+pnpm dev:admin      # http://localhost:5175
+pnpm typecheck
+pnpm lint
+pnpm test --run     # vitest
+pnpm test:e2e       # playwright
+pnpm build          # all three targets into apps/frontend/dist/<target>
+pnpm icons          # regenerate PNG icons from public/icons/*.svg
 ```
 
-Environment files: `.env.development`, `.env.production`, `.env.test` (see `.env.example`). Only `VITE_*` values reach the bundle and all are public. `VITE_API_BASE_URL` defaults to the same-origin `/api`; a Capacitor build must use an absolute URL.
+Environment files live in `apps/frontend/`. Only `VITE_*` values reach the bundle and all are
+public. `VITE_API_BASE_URL` is the API origin; the `/api` prefix belongs to the request path, so
+a same-origin deployment can leave it empty. A Capacitor build must set an absolute URL.
 
-PWA: `vite-plugin-pwa` generates the manifest (`fa`/`rtl`, installable, SVG + 192/512 PNG icons, maskable icon) and a Workbox service worker that precaches only the app shell (`js/css/html/svg/png/woff2/webmanifest`). `/api` is on the navigate-fallback denylist and no API or media response is ever cached. Offline mode shows a banner and disables network actions; LiveKit/WebRTC streaming and provider calls genuinely require a network connection.
+PWA: only the web target registers a service worker (the Capacitor app serves files locally).
+Workbox precaches the app shell; `/api` is on the navigate-fallback denylist and no API or media
+response is ever cached. Offline mode shows a banner and disables network actions; LiveKit/WebRTC
+streaming and provider calls genuinely require a network connection.
 
-Manual QA (not a Phase 1 blocker): service-worker registration and the install prompt are verified only at the HTTP level (`/sw.js` and `/manifest.webmanifest` served with the right MIME types and `no-cache`). Confirm registration and installability once in a normal Chrome/Edge profile on `http://localhost:8088` (DevTools → Application → Service Workers / Manifest); embedded browser panes block registration.
+Manual QA (not a Phase 1 blocker): confirm service-worker registration and installability once in
+a normal Chrome/Edge profile on `http://localhost:8088` (DevTools → Application → Service Workers /
+Manifest); embedded browser panes block registration.
 
-Capacitor: `capacitor.config.ts` keeps the bundle compatible (`appId` `com.kohandezh.liveavatar`, `webDir` `dist`). Platform-specific code stays behind `shared/platform/` (`isNative`, connectivity, deep links, WebRTC capability probe) and `shared/storage/` (preferences). Android/iOS release builds are not part of Phase 1, and the `Capacitor WebView -> WebRTC -> LiveKit -> media permissions` path still needs explicit validation before any native build counts.
+Capacitor: `capacitor.config.ts` keeps the bundle compatible. Platform-specific code stays behind
+`shared/platform/` and `shared/storage/`. Android/iOS release builds are not part of Phase 1, and
+the `Capacitor WebView -> WebRTC -> LiveKit -> media permissions` path still needs explicit
+validation before any native build counts.
 
-Authentication is not implemented. `shared/api/client.ts` exposes `setCredentialsProvider` / `setUnauthorizedHandler` so the future model (web: HttpOnly Secure SameSite cookie; native: Bearer token in platform secure storage) can be added without rewriting feature calls.
+## Backend (apps/api)
+
+`apps/api/services/` holds the Python package. Imports are rooted at `apps/api`, which the
+orchestrator image sets as `PYTHONPATH`:
+
+```text
+apps/api/services/orchestrator/   FastAPI app, schemas, migrations, LiveKit gateway
+apps/api/services/elevenlabs/     TTS client, PCM validation, deterministic cache
+apps/api/services/liveavatar/     LITE session client, event socket, session manager
+```
+
+```bash
+docker compose run --rm orchestrator pytest -q
+docker compose run --rm orchestrator ruff check .
+```
 
 ## Provider contracts
 
@@ -123,7 +174,7 @@ text, voice_id, model_id, speed, stability, similarity,
 style, language, output_format
 ```
 
-The PCM is stored as `services/media/audio/<sha256>.pcm`; metadata is stored as `services/media/metadata/audio-<sha256>.json` and in PostgreSQL. A Redis lock prevents simultaneous duplicate billing. Cache hits are recorded as usage events but do not call ElevenLabs.
+The PCM is stored as `media/audio/<sha256>.pcm`; metadata is stored as `media/metadata/audio-<sha256>.json` and in PostgreSQL. A Redis lock prevents simultaneous duplicate billing. Cache hits are recorded as usage events but do not call ElevenLabs.
 
 ### LiveAvatar LITE
 
@@ -150,7 +201,7 @@ Do not replace this with LiveAvatar-managed LiveKit: doing so would bypass the p
 
 ## API
 
-The UI uses these same-origin routes through Nginx (typed wrappers live in `services/frontend/src/shared/api/`):
+The UI uses these same-origin routes through Nginx (typed wrappers live in `apps/frontend/src/shared/api/`):
 
 ```text
 GET    /api/health
@@ -179,7 +230,7 @@ Automated tests use mocks and synthetic media. Real provider tests are disabled 
 docker compose build
 docker compose run --rm orchestrator pytest -q
 docker compose run --rm orchestrator ruff check .
-(cd services/frontend && pnpm check)
+pnpm typecheck && pnpm lint && pnpm test --run
 ./scripts/healthcheck
 ```
 
@@ -223,7 +274,7 @@ Repeating the identical request must return `cache_hit: true` and must not make 
 - **Avatar video has no sound:** browsers block autoplay audio without a gesture; the video panel shows an *Enable audio* button when LiveKit reports playback is blocked.
 - **Frontend shows an old bundle:** the image bakes `dist/` at build time; run `docker compose up -d --build frontend`.
 - **Egress unhealthy:** allocate at least 4 CPU/4 GB, retain `SYS_ADMIN`, verify it shares Redis with LiveKit, and check `docker compose logs livekit-egress`.
-- **No MP4:** ensure `services/media/video` is writable and Egress can resolve `livekit` and `redis`. Finalization rejects missing, corrupt, zero-duration, non-H.264, or audio-less output.
+- **No MP4:** ensure `media/video` is writable and Egress can resolve `livekit` and `redis`. Finalization rejects missing, corrupt, zero-duration, non-H.264, or audio-less output.
 - **PCM rejection:** raw PCM has no header. It must contain complete signed 16-bit LE frames at 24 kHz mono; use `ffmpeg -f s16le -ar 24000 -ac 1` explicitly when inspecting/converting.
 - **Quota errors:** no indefinite retries occur. ElevenLabs `429` and LiveAvatar credit/quota failures return actionable categories.
 - **PostgreSQL/Redis unavailable:** `/api/health` becomes degraded and Compose health dependencies prevent the orchestrator from starting prematurely.

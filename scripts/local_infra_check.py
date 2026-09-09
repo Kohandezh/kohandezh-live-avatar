@@ -15,7 +15,7 @@ Usage (one-off container on the compose network):
   docker run --rm --network kohandezh-live-avatar_avatar \
     -e LIVEKIT_URL=ws://livekit:7880 \
     -e LIVEKIT_API_KEY=... -e LIVEKIT_API_SECRET=... \
-    -v "$PWD/scripts:/scripts" -v "$PWD/services/media:/media" \
+    -v "$PWD/scripts:/scripts" -v "$PWD/media:/media" \
     python:3.12-slim sh -c "pip install -q livekit livekit-api && python /scripts/local_infra_check.py"
 """
 

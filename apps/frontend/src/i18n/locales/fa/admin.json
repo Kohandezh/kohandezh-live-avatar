@@ -1,0 +1,44 @@
+{
+  "title": "ادمین",
+  "nav": {
+    "dashboard": "داشبورد",
+    "users": "کاربران"
+  },
+  "layout": {
+    "signedInAs": "وارد شده به‌عنوان",
+    "openMenu": "باز کردن منو",
+    "closeMenu": "بستن منو"
+  },
+  "dashboard": {
+    "title": "داشبورد",
+    "subtitle": "نمای کلی اپلیکیشن شما.",
+    "stats": {
+      "totalUsers": "همهٔ کاربران",
+      "activeUsers": "کاربران فعال",
+      "disabledUsers": "کاربران غیرفعال",
+      "newUsersThisWeek": "جدید در این هفته"
+    },
+    "manageUsers": "مدیریت کاربران"
+  },
+  "users": {
+    "title": "کاربران",
+    "subtitle": "جستجو و بررسی حساب‌های کاربری.",
+    "search": "جستجو با نام یا ایمیل",
+    "columns": {
+      "name": "نام",
+      "email": "ایمیل",
+      "role": "نقش",
+      "status": "وضعیت",
+      "createdAt": "تاریخ ایجاد"
+    },
+    "empty": {
+      "title": "کاربری پیدا نشد",
+      "description": "عبارت دیگری را جستجو کنید."
+    },
+    "pagination": {
+      "summary": "صفحهٔ {{page}} از {{pages}} · {{total}} کاربر",
+      "previous": "قبلی",
+      "next": "بعدی"
+    }
+  }
+}

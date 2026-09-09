@@ -1,0 +1,44 @@
+{
+  "title": "Admin",
+  "nav": {
+    "dashboard": "Dashboard",
+    "users": "Users"
+  },
+  "layout": {
+    "signedInAs": "Signed in as",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Overview of your application.",
+    "stats": {
+      "totalUsers": "Total users",
+      "activeUsers": "Active users",
+      "disabledUsers": "Disabled users",
+      "newUsersThisWeek": "New this week"
+    },
+    "manageUsers": "Manage users"
+  },
+  "users": {
+    "title": "Users",
+    "subtitle": "Search and review user accounts.",
+    "search": "Search by name or email",
+    "columns": {
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "createdAt": "Created"
+    },
+    "empty": {
+      "title": "No users found",
+      "description": "Try a different search."
+    },
+    "pagination": {
+      "summary": "Page {{page}} of {{pages}} · {{total}} users",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  }
+}

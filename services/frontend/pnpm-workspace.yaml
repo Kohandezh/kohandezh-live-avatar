@@ -1,5 +1,0 @@
-# pnpm settings (pnpm >= 10 reads these here, not from package.json).
-# Build scripts are opt-in; esbuild needs its postinstall for the native binary, msw only prints.
-allowBuilds:
-  esbuild: true
-  msw: true

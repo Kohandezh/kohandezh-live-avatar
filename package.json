@@ -1,0 +1,33 @@
+{
+  "name": "cross-platform-starter",
+  "private": true,
+  "version": "0.4.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @app/frontend dev",
+    "dev:mobile": "pnpm --filter @app/frontend dev:mobile",
+    "dev:web": "pnpm --filter @app/frontend dev:web",
+    "dev:admin": "pnpm --filter @app/frontend dev:admin",
+    "build": "pnpm --filter @app/frontend build",
+    "build:mobile": "pnpm --filter @app/frontend build:mobile",
+    "build:web": "pnpm --filter @app/frontend build:web",
+    "build:admin": "pnpm --filter @app/frontend build:admin",
+    "preview:mobile": "pnpm --filter @app/frontend preview:mobile",
+    "preview:web": "pnpm --filter @app/frontend preview:web",
+    "preview:admin": "pnpm --filter @app/frontend preview:admin",
+    "typecheck": "pnpm --filter @app/frontend typecheck",
+    "lint": "pnpm --filter @app/frontend lint",
+    "test": "pnpm --filter @app/frontend test",
+    "test:e2e": "pnpm --filter @app/frontend test:e2e",
+    "icons": "pnpm --filter @app/frontend icons",
+    "cap:sync": "pnpm --filter @app/frontend cap:sync",
+    "cap:android": "pnpm --filter @app/frontend cap:android",
+    "cap:ios": "pnpm --filter @app/frontend cap:ios",
+    "format": "prettier --write ."
+  },
+  "packageManager": "pnpm@10.28.2"
+}

@@ -2,11 +2,22 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "frontend-dev",
-      "cwd": "services/frontend",
+      "name": "mobile",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
+      "runtimeArgs": ["run", "dev:mobile"],
       "port": 5173
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev:web"],
+      "port": 5174
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev:admin"],
+      "port": 5175
     }
   ]
 }
