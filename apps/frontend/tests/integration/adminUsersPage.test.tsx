@@ -33,6 +33,17 @@ describe('AdminUsersPage', () => {
     expect(await screen.findByText('No users found')).toBeInTheDocument();
   });
 
+  it('loads the next page from the pagination footer', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AdminUsersPage />);
+    await screen.findByText('admin@example.com');
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(await screen.findByText(/Page 2 of 6/)).toBeInTheDocument();
+    expect(screen.queryByText('admin@example.com')).not.toBeInTheDocument();
+  });
+
   it('shows the error state when the session is not an admin', async () => {
     mockSession.set('u-user');
     renderWithProviders(<AdminUsersPage />);
