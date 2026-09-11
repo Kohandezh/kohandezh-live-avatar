@@ -80,7 +80,14 @@ class OtpService:
             {"code_hash": _hash_code(phone, code), "attempts": 0},
             self.settings.otp_ttl_seconds,
         )
-        await self.sender.send(phone, code)
+        try:
+            await self.sender.send(phone, code)
+        except Exception:
+            # The user never got this code. Drop it and free the resend guard, otherwise a
+            # provider hiccup locks them out of retrying for a minute.
+            await self.coordinator.delete_otp(phone)
+            await self.coordinator.release_once(f"otp:resend:{phone}")
+            raise
         return OtpChallenge(
             expires_in_seconds=self.settings.otp_ttl_seconds,
             resend_after_seconds=RESEND_SECONDS,

@@ -69,6 +69,10 @@ class Coordinator:
             return 0
         return await self._remaining_ttl(redis_key, ttl_seconds)
 
+    async def release_once(self, key: str) -> None:
+        """Give a marker back before its TTL ends, so the caller may try again at once."""
+        await self.redis.delete(f"once:{key}")
+
     async def once_ttl(self, key: str) -> int:
         """Seconds left on a marker taken with claim_once. 0 when nobody holds it."""
         ttl = await self.redis.ttl(f"once:{key}")

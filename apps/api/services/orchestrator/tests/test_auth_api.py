@@ -346,3 +346,31 @@ async def test_the_code_is_never_returned_or_logged_outside_development(caplog):
     assert challenge.dev_code is None
     assert "otp_delivery_not_configured" in caplog.text
     assert E164 not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_failed_delivery_frees_the_resend_guard(api):
+    """When the SMS never leaves, the user may ask again at once, and the old code is gone."""
+    from services.orchestrator.src.errors import AppError
+
+    real_send = api.sender.send
+    calls = {"count": 0}
+
+    async def flaky_send(phone: str, code: str) -> None:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise AppError("otp_delivery_failed", "provider down", 502, True)
+        await real_send(phone, code)
+
+    api.sender.send = flaky_send
+
+    failed = await api.client.post("/auth/otp/request", json={"phone": PHONE})
+    assert failed.status_code == 502
+    assert failed.json()["error"]["code"] == "otp_delivery_failed"
+
+    retried = await api.client.post("/auth/otp/request", json={"phone": PHONE})
+    assert retried.status_code == 202
+    assert len(api.sender.codes) == 1
+
+    verified = await api.client.post("/auth/otp/verify", json={"phone": PHONE, "code": api.sender.codes[-1]})
+    assert verified.status_code == 200
