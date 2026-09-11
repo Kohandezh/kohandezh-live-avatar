@@ -275,6 +275,19 @@ describe('AssistantPanel', () => {
     expect(FakeLiveAvatarSession.instances).toHaveLength(0);
   });
 
+  it('tells the user when the provider could not honor the requested language', async () => {
+    renderWithProviders(<AssistantPanel language="fa" />);
+    await startConversation();
+
+    // The mock (like the real provider, verified 2026-09-11) only supports "en" today, so a
+    // Persian request falls back and the panel must say so instead of pretending it is Persian.
+    expect(
+      screen.getByText(
+        'The assistant speaks English for now. Persian is not available from the provider yet.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('blocks the start button while the browser is offline', () => {
     setOnline(false);
     renderWithProviders(<AssistantPanel />);

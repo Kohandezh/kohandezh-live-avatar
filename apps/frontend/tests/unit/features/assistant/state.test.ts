@@ -19,7 +19,8 @@ const sessionInfo: AssistantSessionInfo = {
   providerSessionId: 'la-1',
   sandbox: true,
   avatarId: 'avatar-1',
-  language: 'fa',
+  language: 'en',
+  requestedLanguage: 'fa',
   maxSessionDurationSeconds: 60,
 };
 

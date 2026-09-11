@@ -26,7 +26,10 @@ async def test_a_user_gets_a_sandbox_session(api):
     # Sandbox forces the public avatar and one minute, whatever the configuration says.
     assert body["avatarId"] == "sandbox-avatar"
     assert body["maxSessionDurationSeconds"] == 60
-    assert body["language"] == "fa"
+    # The configured preferred language ("fa") is not in the supported list ("en" by default),
+    # because the provider rejects "fa" at session start. The assistant falls back to "en".
+    assert body["language"] == "en"
+    assert body["requestedLanguage"] == "fa"
     assert body["sessionToken"] == "provider-token-1"
     assert body["providerSessionId"] == "provider-1"
 
@@ -35,7 +38,7 @@ async def test_a_user_gets_a_sandbox_session(api):
     assert call["sandbox"] is True
     assert call["max_session_duration"] == 60
     assert call["context_id"] == "context-id"
-    assert call["language"] == "fa"
+    assert call["language"] == "en"
 
     row = api.database.sessions[list(api.database.sessions)[0]]
     assert row["mode"] == "FULL"
@@ -43,7 +46,10 @@ async def test_a_user_gets_a_sandbox_session(api):
     assert row["user_id"] == api.database.users[0]["id"]
     # The raw token never reaches the database.
     assert row["session_token_hash"] != "provider-token-1"  # noqa: S105 - inert fixture value
-    assert json.loads(row["metadata"])["principal"] == f"user:{api.database.users[0]['id']}"
+    metadata = json.loads(row["metadata"])
+    assert metadata["principal"] == f"user:{api.database.users[0]['id']}"
+    assert metadata["language"] == "en"
+    assert metadata["requested_language"] == "fa"
     assert api.database.operations() == ["assistant_token"]
 
 
@@ -53,7 +59,9 @@ async def test_the_caller_can_ask_for_english(api):
 
     response = await api.client.post("/assistant/session", json={"language": "en"})
 
-    assert response.json()["language"] == "en"
+    body = response.json()
+    assert body["language"] == "en"
+    assert body["requestedLanguage"] == "en"
     assert api.liveavatar.token_calls[0]["language"] == "en"
 
 
@@ -65,6 +73,31 @@ async def test_an_unknown_language_is_refused(api):
 
     assert response.status_code == 422
     assert api.liveavatar.token_calls == []
+
+
+@pytest.mark.asyncio
+async def test_requesting_persian_falls_back_when_the_provider_does_not_support_it(api):
+    await api.login(PHONE)
+
+    response = await api.client.post("/assistant/session", json={"language": "fa"})
+
+    body = response.json()
+    assert body["language"] == "en"
+    assert body["requestedLanguage"] == "fa"
+    assert api.liveavatar.token_calls[0]["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_persian_is_used_once_it_is_in_the_supported_list(api):
+    api.settings.liveavatar_assistant_languages = "en,fa"
+    await api.login(PHONE)
+
+    response = await api.client.post("/assistant/session", json={"language": "fa"})
+
+    body = response.json()
+    assert body["language"] == "fa"
+    assert body["requestedLanguage"] == "fa"
+    assert api.liveavatar.token_calls[0]["language"] == "fa"
 
 
 @pytest.mark.asyncio

@@ -109,7 +109,8 @@ Response `200`:
   "providerSessionId": "string",
   "sandbox": true,
   "avatarId": "uuid",
-  "language": "fa",
+  "language": "en",
+  "requestedLanguage": "fa",
   "maxSessionDurationSeconds": 60
 }
 ```
@@ -117,6 +118,16 @@ Response `200`:
 - `sessionToken` is a credential. Never put it in Redux, `localStorage`, a URL, or a log.
 - While sandbox is on, the backend always uses the public sandbox avatar and clamps the duration
   to 60 seconds. The client cannot turn sandbox off.
+- `language` is the language the session actually started in. `requestedLanguage` is what the
+  caller asked for (or the backend's configured default, when the caller did not send one). They
+  differ when the provider cannot start a session in the requested language: verified against the
+  real provider on 2026-09-11, LiveAvatar FULL mode accepts `avatar_persona.language: "fa"` when
+  the token is minted, but rejects it at session start ("Language not supported"), because none of
+  its STT providers or its ElevenLabs TTS model support Persian yet. `LIVEAVATAR_ASSISTANT_LANGUAGES`
+  (default `en`) lists the languages the backend is allowed to actually start a session in; a
+  requested language outside that list falls back to the backend's configured preferred language,
+  or to the first supported language if that is not supported either. The client should show the
+  fallback to the user rather than silently proceed as if Persian was used.
 - `429 assistant_rate_limited` with `retryAfterSeconds` (per user, or per visitor address for the
   widget). `503 configuration_error` when the provider key or the context id is missing.
   Provider failures keep their codes: `liveavatar_auth`, `liveavatar_quota`, `liveavatar_error`,

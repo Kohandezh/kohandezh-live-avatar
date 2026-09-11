@@ -16,7 +16,12 @@ export const assistantSessionSchema = z.object({
   providerSessionId: z.string().min(1),
   sandbox: z.boolean(),
   avatarId: z.string().min(1),
+  // The language the session actually started in. LiveAvatar does not support every language
+  // (Persian is not supported today), so this can differ from `requestedLanguage`.
   language: assistantLanguageSchema,
+  // What the caller asked for (or the backend's default, when nothing was asked). Compare this
+  // to `language` to know whether the backend had to fall back to a different language.
+  requestedLanguage: assistantLanguageSchema,
   maxSessionDurationSeconds: z.number().int().positive(),
 });
 
@@ -47,6 +52,7 @@ export function toAssistantSessionInfo(
     sandbox: session.sandbox,
     avatarId: session.avatarId,
     language: session.language,
+    requestedLanguage: session.requestedLanguage,
     maxSessionDurationSeconds: session.maxSessionDurationSeconds,
   };
 }

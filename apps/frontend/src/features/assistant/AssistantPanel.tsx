@@ -69,6 +69,14 @@ export function AssistantPanel({ language, className }: AssistantPanelProps) {
         <InlineAlert status="warning">{t('assistant.offline')}</InlineAlert>
       )}
 
+      {session && session.language !== session.requestedLanguage && (
+        <InlineAlert status="info">
+          {t('assistant.languageFallback', {
+            language: t(`assistant.languages.${session.language}`),
+          })}
+        </InlineAlert>
+      )}
+
       {status === 'error' && error && (
         <div>
           <ErrorState

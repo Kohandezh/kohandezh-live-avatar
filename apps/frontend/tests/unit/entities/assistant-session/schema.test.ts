@@ -11,7 +11,8 @@ const response = {
   providerSessionId: 'la-session-1',
   sandbox: true,
   avatarId: 'dd73ea75-1218-4ef3-92ce-606d5f7fbc0a',
-  language: 'fa',
+  language: 'en',
+  requestedLanguage: 'fa',
   maxSessionDurationSeconds: 60,
 };
 
