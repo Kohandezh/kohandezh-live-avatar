@@ -6,12 +6,12 @@ export function AssistantPage() {
   const { t } = useTranslation();
 
   return (
-    <section className="mx-auto flex w-full max-w-2xl flex-col gap-4 py-6">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {t('assistant.title')}
         </h1>
-        <p className="mt-1 text-slate-600">{t('assistant.subtitle')}</p>
+        <p className="mt-1 text-sm text-muted">{t('assistant.subtitle')}</p>
       </div>
 
       <AssistantPanel />

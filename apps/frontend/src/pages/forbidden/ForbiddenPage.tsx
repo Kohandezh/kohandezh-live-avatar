@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useLogout } from '@/features/authentication';
-import { Button } from '@/shared/ui';
+import { Button, EmptyState } from '@/shared/ui';
 
 /** Shown when a signed-in user lacks the role for this app or page. */
 export function ForbiddenPage() {
@@ -10,23 +10,27 @@ export function ForbiddenPage() {
   const logout = useLogout();
 
   return (
-    <section className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-3 py-16 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        {t('forbidden.title')}
-      </h1>
-      <p className="text-slate-600">{t('forbidden.description')}</p>
-      <Button
-        variant="secondary"
-        className="mt-2"
-        isPending={logout.isPending}
-        onPress={() =>
-          logout.mutate(undefined, {
-            onSettled: () => navigate('/login', { replace: true }),
-          })
+    <section className="px-4">
+      {/* EmptyState paints the title; the page still needs a real heading. */}
+      <h1 className="sr-only">{t('forbidden.title')}</h1>
+      <EmptyState
+        className="min-h-[60vh]"
+        title={t('forbidden.title')}
+        description={t('forbidden.description')}
+        action={
+          <Button
+            variant="secondary"
+            isPending={logout.isPending}
+            onPress={() =>
+              logout.mutate(undefined, {
+                onSettled: () => navigate('/login', { replace: true }),
+              })
+            }
+          >
+            {t('forbidden.switchAccount')}
+          </Button>
         }
-      >
-        {t('forbidden.switchAccount')}
-      </Button>
+      />
     </section>
   );
 }
