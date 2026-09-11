@@ -107,7 +107,7 @@ export function AssistantPanel({
             }
           />
           {error.code && (
-            <p dir="ltr" className="text-center text-xs text-slate-400">
+            <p dir="ltr" className="text-center text-xs text-muted">
               {t('assistant.errors.code', { code: error.code })}
             </p>
           )}

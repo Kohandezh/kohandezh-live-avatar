@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Chip } from '@heroui/react';
 import { EmptyState } from '@/shared/ui';
+import { cn } from '@/shared/utils';
 import type { TranscriptTurn } from './types';
 
 /**
@@ -25,7 +25,7 @@ export function Transcript({ turns }: { turns: readonly TranscriptTurn[] }) {
     <section aria-labelledby="assistant-transcript-title">
       <h3
         id="assistant-transcript-title"
-        className="mb-2 text-sm font-medium text-slate-900"
+        className="mb-2 text-sm font-medium text-foreground"
       >
         {t('assistant.transcript.title')}
       </h3>
@@ -41,22 +41,39 @@ export function Transcript({ turns }: { turns: readonly TranscriptTurn[] }) {
           ref={listRef}
           className="flex max-h-64 flex-col gap-3 overflow-y-auto"
         >
-          {turns.map((turn) => (
-            <li key={turn.id} className="flex flex-col items-start gap-1">
-              <Chip
-                color={turn.speaker === 'avatar' ? 'accent' : 'default'}
-                variant="soft"
-                size="sm"
-              >
-                {t(
-                  turn.speaker === 'avatar'
-                    ? 'assistant.transcript.assistant'
-                    : 'assistant.transcript.you',
+          {turns.map((turn) => {
+            // The doctor answers from the start side, the user from the end side, so a glance
+            // at the alignment is enough to tell the two apart.
+            const isAvatar = turn.speaker === 'avatar';
+
+            return (
+              <li
+                key={turn.id}
+                className={cn(
+                  'flex flex-col gap-1',
+                  isAvatar ? 'items-start' : 'items-end',
                 )}
-              </Chip>
-              <p className="text-start text-sm text-slate-700">{turn.text}</p>
-            </li>
-          ))}
+              >
+                <span className="text-xs font-medium text-muted">
+                  {t(
+                    isAvatar
+                      ? 'assistant.transcript.assistant'
+                      : 'assistant.transcript.you',
+                  )}
+                </span>
+                <p
+                  className={cn(
+                    'max-w-[85%] rounded-2xl px-3 py-2 text-start text-sm',
+                    isAvatar
+                      ? 'rounded-ss-sm bg-accent-soft text-accent-soft-foreground'
+                      : 'rounded-se-sm bg-default text-foreground',
+                  )}
+                >
+                  {turn.text}
+                </p>
+              </li>
+            );
+          })}
         </ul>
       )}
 

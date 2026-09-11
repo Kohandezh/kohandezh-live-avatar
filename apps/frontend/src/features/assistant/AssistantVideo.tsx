@@ -38,7 +38,7 @@ export function AssistantVideo({
   const isBusy = status === 'requesting' || status === 'connecting';
 
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-slate-900 sm:aspect-video">
+    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-black sm:aspect-video">
       <video
         ref={videoRef}
         autoPlay
@@ -64,7 +64,7 @@ export function AssistantVideo({
       )}
 
       {isStreaming && isAudioBlocked && (
-        <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 p-3 text-sm text-white">
+        <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-2 bg-black/80 p-3 text-sm text-white">
           <span>{t('assistant.video.audioBlocked')}</span>
           <Button
             size="sm"

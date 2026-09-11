@@ -68,8 +68,9 @@ export function WidgetLauncher({
       aria-haspopup="dialog"
       className={cn(
         'pointer-events-auto fixed bottom-4 z-0 size-14 items-center justify-center',
-        'rounded-full bg-slate-900 text-white shadow-lg transition-colors hover:bg-slate-700',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
+        'rounded-full bg-accent text-accent-foreground shadow-lg',
+        'transition-opacity hover:opacity-90',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         position === 'end' ? 'end-4' : 'start-4',
         // The open panel covers the whole phone screen and carries its own close button.
         // `hidden` and `flex` are both display utilities, so only one of them is applied.
