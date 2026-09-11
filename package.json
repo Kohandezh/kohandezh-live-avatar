@@ -8,7 +8,7 @@
     "pnpm": ">=10"
   },
   "scripts": {
-    "dev": "pnpm --filter @app/frontend dev",
+    "dev": "pnpm install && docker compose up -d && concurrently -c \"blue,green,magenta,yellow\" -n \"web,mobile,admin,widget\" \"pnpm dev:web\" \"pnpm dev:mobile\" \"pnpm dev:admin\" \"pnpm dev:widget\"",
     "dev:mobile": "pnpm --filter @app/frontend dev:mobile",
     "dev:web": "pnpm --filter @app/frontend dev:web",
     "dev:admin": "pnpm --filter @app/frontend dev:admin",
@@ -32,5 +32,8 @@
     "cap:ios": "pnpm --filter @app/frontend cap:ios",
     "format": "prettier --write ."
   },
-  "packageManager": "pnpm@10.28.2"
+  "packageManager": "pnpm@10.28.2",
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
 }
