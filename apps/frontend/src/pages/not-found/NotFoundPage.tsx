@@ -1,21 +1,25 @@
+import { buttonVariants } from '@heroui/styles';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import { EmptyState } from '@/shared/ui';
 
 export function NotFoundPage() {
   const { t } = useTranslation();
 
   return (
-    <section className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        {t('notFound.title')}
-      </h1>
-      <p className="text-slate-600">{t('notFound.description')}</p>
-      <Link
-        to="/"
-        className="mt-2 text-sm font-medium text-slate-900 underline underline-offset-4"
-      >
-        {t('notFound.back')}
-      </Link>
+    <section className="px-4">
+      {/* EmptyState paints the title; the page still needs a real heading. */}
+      <h1 className="sr-only">{t('notFound.title')}</h1>
+      <EmptyState
+        className="min-h-[60vh]"
+        title={t('notFound.title')}
+        description={t('notFound.description')}
+        action={
+          <Link to="/" className={buttonVariants({ variant: 'secondary' })}>
+            {t('notFound.back')}
+          </Link>
+        }
+      />
     </section>
   );
 }

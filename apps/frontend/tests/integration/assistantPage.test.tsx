@@ -46,7 +46,7 @@ describe('AssistantPage', () => {
     renderAssistantRoute();
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Assistant' }),
+      await screen.findByRole('heading', { level: 1, name: 'Conversation with Dr. Kohandezh' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Start the conversation' }),

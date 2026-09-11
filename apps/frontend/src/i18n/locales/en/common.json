@@ -1,24 +1,19 @@
 {
   "app": {
-    "name": "Cross-Platform App",
-    "tagline": "One codebase for mobile, web, and admin.",
+    "name": "Dr. Kohandezh Assistant",
+    "shortName": "Kohandezh",
+    "tagline": "Live conversation with Dr. Kohandezh's digital avatar.",
+    "copyright": "© {{year}} Dr. Kohandezh",
     "offline": "You are offline. Audio generation, avatar streaming and recording need a network connection.",
-    "phaseNotice": "Phase 1 test environment. Generated assets are never approved automatically.",
-    "updateAvailable": "A new version is available.",
-    "reload": "Reload",
-    "offlineReady": "App shell is cached for offline use. Streaming still requires a network connection.",
     "dismiss": "Dismiss"
   },
   "nav": {
-    "home": "Home",
+    "assistant": "Conversation",
     "profile": "Profile",
     "login": "Log in",
     "logout": "Log out",
     "menu": "Menu",
-    "session": "Avatar console",
-    "main": "Main navigation",
-    "avatar": "Avatar",
-    "assistant": "Assistant"
+    "session": "Avatar console"
   },
   "language": {
     "label": "Language",
@@ -39,8 +34,8 @@
     }
   },
   "auth": {
-    "title": "Welcome back",
-    "subtitle": "Log in with your phone number.",
+    "title": "Log in",
+    "subtitle": "Enter your phone number to talk to Dr. Kohandezh.",
     "phone": "Phone number",
     "phoneHint": "We will send you a one-time code.",
     "sendCode": "Send code",
@@ -72,29 +67,31 @@
     "disabled": "Disabled"
   },
   "home": {
-    "title": "Cross-Platform App",
-    "description": "React + Vite + Capacitor starter with a shared codebase for the mobile app, the web PWA, and the admin dashboard.",
-    "goToProfile": "Open your profile",
-    "loginCta": "Log in to see your profile",
-    "assistant": {
-      "title": "Talk to the assistant",
-      "description": "Ask your question out loud. Watch the answer in video, or just listen to it.",
-      "cta": "Open the assistant"
+    "hero": {
+      "title": "Talk to Dr. Kohandezh, any time.",
+      "description": "Ask your question out loud and hear the answer in his own voice, in a live video conversation.",
+      "cta": "Start a conversation",
+      "login": "I already have an account"
     },
-    "intro": "Development UI for the text → ElevenLabs → LiveAvatar LITE → LiveKit → Egress pipeline. Everything provider-related runs on the server; this app only holds a scoped LiveKit subscriber token for the duration of a session.",
-    "open": "Open avatar console",
-    "phaseTitle": "Phase 1 status",
-    "phaseVerdict": "PHASE 1: FAIL — the real provider path has not been verified yet.",
-    "phasePending": "Pending: ElevenLabs real API, LiveAvatar LITE real API, public WSS LiveKit endpoint, real browser playback, real Avatar → Egress MP4.",
-    "creditNotice": "Generate Audio and Send to Avatar can consume ElevenLabs / LiveAvatar credits when real credentials are configured on the server.",
-    "webrtcTitle": "This device",
-    "webrtcSupported": "WebRTC supported",
-    "webrtcUnsupported": "WebRTC is not available in this browser",
-    "insecureContext": "Not a secure context: media playback and WebRTC may be blocked",
-    "platform": "Platform"
+    "steps": {
+      "title": "How it works",
+      "login": {
+        "title": "Log in with your phone",
+        "description": "We send a one-time code by SMS. No password."
+      },
+      "mic": {
+        "title": "Allow the microphone",
+        "description": "Press start and let the browser use your microphone."
+      },
+      "talk": {
+        "title": "Speak and listen",
+        "description": "Ask out loud. The answer comes back in voice and video."
+      }
+    }
   },
   "profile": {
-    "title": "Your profile",
+    "title": "Your account",
+    "settings": "Settings",
     "email": "Email",
     "noEmail": "—",
     "role": "Role",
@@ -103,7 +100,7 @@
   "notFound": {
     "title": "Page not found",
     "description": "The page you asked for does not exist.",
-    "back": "Back to home"
+    "back": "Back to the start"
   },
   "forbidden": {
     "title": "No access",
@@ -115,13 +112,6 @@
     "offlineReady": "The app is ready to work offline.",
     "reload": "Reload",
     "dismiss": "Dismiss"
-  },
-  "settings": {
-    "language": "Language",
-    "theme": "Theme",
-    "themeSystem": "System",
-    "themeLight": "Light",
-    "themeDark": "Dark"
   },
   "health": {
     "title": "Backend health",
@@ -212,8 +202,8 @@
     }
   },
   "assistant": {
-    "title": "Assistant",
-    "subtitle": "Talk to the assistant with your voice. It answers you in real time.",
+    "title": "Conversation with Dr. Kohandezh",
+    "subtitle": "Press start, allow the microphone, and ask your question out loud.",
     "sandbox": "Test mode",
     "agentLanguage": "Speaks {{language}}",
     "start": "Start the conversation",
