@@ -45,7 +45,7 @@
     "phoneHint": "We will send you a one-time code.",
     "sendCode": "Send code",
     "code": "One-time code",
-    "codeSentTo": "We sent a code to {{phone}}.",
+    "codeSentTo": "We sent a code to <phone>{{phone}}</phone>.",
     "verify": "Verify",
     "changeNumber": "Change number",
     "resend": "Resend code",

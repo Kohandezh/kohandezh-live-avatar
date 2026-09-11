@@ -45,7 +45,7 @@
     "phoneHint": "یک کد یک‌بار مصرف برای شما پیامک می‌کنیم.",
     "sendCode": "ارسال کد",
     "code": "کد یک‌بار مصرف",
-    "codeSentTo": "کدی به {{phone}} ارسال شد.",
+    "codeSentTo": "کدی به <phone>{{phone}}</phone> ارسال شد.",
     "verify": "تأیید",
     "changeNumber": "تغییر شماره",
     "resend": "ارسال دوبارهٔ کد",

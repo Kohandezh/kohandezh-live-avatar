@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import type { User } from '@/entities/user';
 import { isApiError } from '@/shared/api';
@@ -155,9 +155,7 @@ export function PhoneLoginForm({
         />
 
         {!isOnline ? (
-          <InlineAlert status="warning">
-            {t('auth.errors.offline')}
-          </InlineAlert>
+          <InlineAlert status="warning">{t('auth.errors.offline')}</InlineAlert>
         ) : requestOtp.isError ? (
           <InlineAlert status="danger">
             {describeAuthError(t, requestOtp.error)}
@@ -188,7 +186,12 @@ export function PhoneLoginForm({
   return (
     <form onSubmit={submitCode} noValidate className="flex flex-col gap-4">
       <p className="text-sm text-slate-600">
-        {t('auth.codeSentTo', { phone })}
+        {/* The number is Latin digits with a leading plus; bdi keeps it in one piece in RTL. */}
+        <Trans
+          i18nKey="auth.codeSentTo"
+          values={{ phone }}
+          components={{ phone: <bdi dir="ltr" /> }}
+        />
       </p>
 
       <Input
