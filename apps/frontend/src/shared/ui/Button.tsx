@@ -1,37 +1,20 @@
-import type { ComponentProps } from 'react';
+import type { ReactNode } from 'react';
 import {
-  buttonClassName,
-  type ButtonSize,
-  type ButtonVariant,
-} from './buttonStyles';
-import { Spinner } from './Spinner';
+  Button as HeroButton,
+  Spinner,
+  type ButtonProps as HeroButtonProps,
+} from '@heroui/react';
 
-export interface ButtonProps extends ComponentProps<'button'> {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  /** Shows a spinner and disables the button. */
-  loading?: boolean;
+export interface ButtonProps extends Omit<HeroButtonProps, 'children'> {
+  children?: ReactNode;
 }
 
-export function Button({
-  variant = 'primary',
-  size = 'md',
-  loading = false,
-  className,
-  children,
-  disabled,
-  type = 'button',
-  ...rest
-}: ButtonProps) {
+/** Project Button: a thin wrapper over HeroUI Button that shows a spinner while pending. */
+export function Button({ children, isPending, isDisabled, ...rest }: ButtonProps) {
   return (
-    <button
-      type={type}
-      disabled={disabled || loading}
-      className={buttonClassName({ variant, size, className })}
-      {...rest}
-    >
-      {loading ? <Spinner size="sm" className="border-t-current" /> : null}
+    <HeroButton isPending={isPending} isDisabled={isDisabled || isPending} {...rest}>
+      {isPending ? <Spinner color="current" size="sm" aria-hidden /> : null}
       {children}
-    </button>
+    </HeroButton>
   );
 }

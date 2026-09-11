@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatNumber } from '@/i18n';
-import { Button, Spinner, StatusChip } from '@/shared/ui';
+import { Chip, Spinner } from '@heroui/react';
+import { Button } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import { AssistantStatusChip } from './AssistantStatusChip';
 import type { AssistantController } from './useAssistantSession';
@@ -37,7 +38,7 @@ export function AssistantVideo({
   const isBusy = status === 'requesting' || status === 'connecting';
 
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-slate-900 sm:aspect-video">
+    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-black sm:aspect-video">
       <video
         ref={videoRef}
         autoPlay
@@ -51,7 +52,7 @@ export function AssistantVideo({
 
       {!isStreaming && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center text-sm text-white/90">
-          {isBusy && <Spinner className="border-t-current" />}
+          {isBusy && <Spinner color="current" />}
           {status === 'idle' && <p>{t('assistant.video.idle')}</p>}
           {isBusy && <p>{t(`assistant.status.${status}`)}</p>}
           {status === 'connected' && <p>{t('assistant.video.waiting')}</p>}
@@ -63,12 +64,12 @@ export function AssistantVideo({
       )}
 
       {isStreaming && isAudioBlocked && (
-        <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 p-3 text-sm text-white">
+        <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-2 bg-black/80 p-3 text-sm text-white">
           <span>{t('assistant.video.audioBlocked')}</span>
           <Button
             size="sm"
             variant="secondary"
-            onClick={controller.enableAudio}
+            onPress={controller.enableAudio}
           >
             {t('assistant.video.enableAudio')}
           </Button>
@@ -78,13 +79,15 @@ export function AssistantVideo({
       <div className="absolute top-2 start-2 flex flex-wrap items-center gap-1">
         <AssistantStatusChip status={status} />
         {remainingSeconds !== null && (
-          <StatusChip
-            tone={remainingSeconds <= WARNING_SECONDS ? 'warning' : 'default'}
+          <Chip
+            color={remainingSeconds <= WARNING_SECONDS ? 'warning' : 'default'}
+            variant="soft"
+            size="sm"
           >
             {t('assistant.remaining', {
               seconds: formatNumber(remainingSeconds, i18n.language),
             })}
-          </StatusChip>
+          </Chip>
         )}
       </div>
     </div>

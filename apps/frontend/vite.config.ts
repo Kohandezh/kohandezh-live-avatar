@@ -97,13 +97,15 @@ export default defineConfig(() => {
         registerType: 'prompt',
         includeAssets: ['icons/favicon.svg'],
         manifest: {
-          name: 'Cross-Platform App',
-          short_name: 'App',
-          description: 'Cross-platform web application.',
+          name: 'Dr. Kohandezh Assistant',
+          short_name: 'Kohandezh',
+          description: "Live conversation with Dr. Kohandezh's digital avatar.",
+          lang: 'fa',
+          dir: 'rtl',
           start_url: '/',
           display: 'standalone',
-          background_color: '#ffffff',
-          theme_color: '#0f172a',
+          background_color: '#f5f5f5',
+          theme_color: '#0485f7',
           icons: [
             {
               src: 'icons/pwa-192x192.png',

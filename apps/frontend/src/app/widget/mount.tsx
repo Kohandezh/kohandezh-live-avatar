@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { enableShadowDOM } from 'react-stately/private/flags/flags';
 import { initI18n } from '@/i18n';
 import { apiClient, configureApiClient } from '@/shared/api';
 import { env } from '@/shared/config/env';
@@ -32,6 +33,14 @@ const HOST_STYLE =
  */
 const HOST_CSS = `:host{all:initial;${HOST_STYLE}}`;
 
+/**
+ * React Aria decides whether a press "left" a button by looking at the element under the
+ * pointer on the document. Inside a shadow tree that element is the shadow host, so every
+ * mouse click on a HeroUI button was cancelled (touch was fine). This flag makes React Aria
+ * look through shadow roots. It must run before the first render.
+ */
+enableShadowDOM();
+
 /** One page gets one widget. Two launchers is always a mistake in the embed snippet. */
 let activeInstance: AssistantWidgetInstance | null = null;
 
@@ -59,6 +68,8 @@ async function prepare(config: WidgetConfig): Promise<void> {
 function createWidgetInstance(config: WidgetConfig): AssistantWidgetInstance {
   const host = document.createElement('div');
   host.setAttribute('data-kohandezh-assistant', '');
+  // HeroUI's light-theme tokens are declared on :host([data-theme="light"]) inside a shadow tree.
+  host.setAttribute('data-theme', 'light');
   host.setAttribute('style', HOST_STYLE);
 
   // Open mode, so the page's own tests and accessibility tools can still read the tree.

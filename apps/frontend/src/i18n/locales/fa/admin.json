@@ -1,5 +1,5 @@
 {
-  "title": "ادمین",
+  "title": "مدیریت",
   "nav": {
     "dashboard": "داشبورد",
     "users": "کاربران"
@@ -7,11 +7,12 @@
   "layout": {
     "signedInAs": "وارد شده به‌عنوان",
     "openMenu": "باز کردن منو",
-    "closeMenu": "بستن منو"
+    "closeMenu": "بستن منو",
+    "navLabel": "بخش‌های مدیریت"
   },
   "dashboard": {
     "title": "داشبورد",
-    "subtitle": "نمای کلی اپلیکیشن شما.",
+    "subtitle": "نمای کلی حساب‌ها و فعالیت.",
     "stats": {
       "totalUsers": "همهٔ کاربران",
       "activeUsers": "کاربران فعال",
@@ -24,6 +25,7 @@
     "title": "کاربران",
     "subtitle": "جستجو و بررسی حساب‌های کاربری.",
     "search": "جستجو با نام، شماره موبایل یا ایمیل",
+    "clearSearch": "پاک کردن جستجو",
     "columns": {
       "name": "نام",
       "phone": "شماره موبایل",
@@ -39,7 +41,8 @@
     "pagination": {
       "summary": "صفحهٔ {{page}} از {{pages}} · {{total}} کاربر",
       "previous": "قبلی",
-      "next": "بعدی"
+      "next": "بعدی",
+      "goToPage": "رفتن به صفحهٔ {{page}}"
     }
   }
 }

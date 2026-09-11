@@ -53,7 +53,7 @@ describe('LoginPage (phone OTP)', () => {
     // A successful verify signs the user in, and LoginPage redirects away.
     await waitFor(() =>
       expect(
-        screen.queryByRole('heading', { name: 'Welcome back' }),
+        screen.queryByRole('heading', { name: 'Log in' }),
       ).not.toBeInTheDocument(),
     );
   });

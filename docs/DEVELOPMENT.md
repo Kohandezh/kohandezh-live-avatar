@@ -91,7 +91,41 @@ extra configuration is needed for that part.
 
 ## Icons
 
-`pnpm icons` writes placeholder PWA icons to `public/icons/`. Replace them with real brand icons before release.
+The app icon is a rounded square in the HeroUI accent blue (`#0485f7`) with a white speech
+bubble holding a "K". The source is `public/icons/favicon.svg` (viewBox `0 0 64 64`). The PNG
+sizes (`pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png`, `apple-touch-icon.png`)
+were rendered from that SVG with macOS `qlmanage -t -s <size> -o <dir> favicon.svg` (the maskable
+and apple-touch variants use a full-bleed background with the bubble scaled down so it survives
+a circular crop). If you change the mark, re-render the SVG the same way, or with
+`rsvg-convert -w <size> -h <size> favicon.svg -o <file>` on Linux/CI.
+
+`pnpm icons` (`scripts/generate-icons.mjs`) is a dependency-free fallback: it draws the same
+rounded square and a simplified circle mark in the brand color without any image library, in
+case no SVG renderer is available. Prefer rendering `favicon.svg` directly when you can; only
+fall back to `pnpm icons` when neither `qlmanage`, `rsvg-convert`, nor `sips` are available.
+
+## HeroUI docs for agents
+
+The UI component library is HeroUI v3 (`docs/DECISIONS/0011-heroui-component-library.md`). An
+agent should read the current component docs before using a component, not rely on training
+data. Three ways to get them:
+
+1. **MCP server.** `.mcp.json` registers `heroui-react` (`npx -y @heroui/react-mcp@latest`,
+   stdio, needs Node 22+). Tools: `list_components`, `get_component_docs`,
+   `get_component_source_code`, `get_component_source_styles`, `get_theme_variables`,
+   `get_docs`. Restart Claude Code after a change to `.mcp.json`; `/mcp` should then show it as
+   Connected.
+2. **Skill.** `.claude/skills/heroui-react/` holds the official HeroUI agent skill (`SKILL.md`
+   plus scripts). Claude Code discovers it on its own; it can also be called with
+   `/heroui-react`. Example: `node .claude/skills/heroui-react/scripts/get_component_docs.mjs Button`.
+3. **LLMs.txt.** `https://heroui.com/react/llms.txt` (index), `https://heroui.com/react/llms-full.txt`
+   (everything), `https://heroui.com/react/llms-components.txt`, `https://heroui.com/react/llms-patterns.txt`.
+
+Optional local copy: `npx heroui-cli@latest agents-md --react --output AGENTS.md` downloads docs
+into `.heroui-docs/` (git-ignored) and injects an index block into `AGENTS.md` between
+`<!-- HEROUI-REACT-AGENTS-MD-START -->` and `<!-- HEROUI-REACT-AGENTS-MD-END -->` markers. Do not
+commit that block: it points at files that are git-ignored, so it would be broken for everyone
+else.
 
 ## Validation
 

@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AxiosAdapter } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -126,7 +126,7 @@ describe('AssistantPanel', () => {
     expect(lastFakeSession().sessionToken).toBe('mock-session-token');
     expect(sdkState.attachCount).toBeGreaterThan(0);
     expect(document.body.innerHTML).not.toContain('mock-session-token');
-    expect(screen.getByText('Test mode')).toBeInTheDocument();
+    expect(screen.getByText('Trial mode')).toBeInTheDocument();
   });
 
   it('shows the video once the provider reports the stream is ready', async () => {
@@ -149,13 +149,34 @@ describe('AssistantPanel', () => {
     const user = await startConversation();
     emitStreamReady();
 
-    await user.click(screen.getByRole('button', { name: 'Voice' }));
+    // Single selection, so the HeroUI toggle group renders radios, not plain buttons.
+    await user.click(screen.getByRole('radio', { name: 'Voice' }));
 
     expect(screen.getByText('Your turn. Say something.')).toBeInTheDocument();
     expect(screen.getAllByText('Live').length).toBeGreaterThan(0);
     // The video element is only hidden, so the audio keeps playing.
     expect(screen.getByLabelText('Assistant video')).toBeInTheDocument();
     expect(FakeLiveAvatarSession.instances).toHaveLength(1);
+    expect(sdkState.startCount).toBe(1);
+  });
+
+  it('offers voice and video as one labelled choice and switches back', async () => {
+    renderWithProviders(<AssistantPanel />);
+    const user = await startConversation();
+    emitStreamReady();
+
+    const group = screen.getByRole('radiogroup', { name: 'View' });
+    const voice = within(group).getByRole('radio', { name: 'Voice' });
+    const video = within(group).getByRole('radio', { name: 'Video' });
+    expect(video).toBeChecked();
+
+    await user.click(voice);
+    expect(voice).toBeChecked();
+    expect(video).not.toBeChecked();
+
+    await user.click(video);
+    expect(video).toBeChecked();
+    // The picture comes back without a reconnect.
     expect(sdkState.startCount).toBe(1);
   });
 
@@ -207,7 +228,7 @@ describe('AssistantPanel', () => {
     // Twice: once in the list and once in the polite live region that announces the answer.
     expect(screen.getAllByText('سلام، چطور می‌توانم کمک کنم؟')).toHaveLength(2);
     expect(screen.getByText('You')).toBeInTheDocument();
-    expect(screen.getByText('Assistant')).toBeInTheDocument();
+    expect(screen.getByText('Dr. Kohandezh')).toBeInTheDocument();
   });
 
   it('ends the conversation when the provider reaches the time limit', async () => {
@@ -226,7 +247,7 @@ describe('AssistantPanel', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'The test session reached its limit of about one minute.',
+        'Trial conversations end after about one minute.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -354,7 +375,7 @@ describe('AssistantPanel', () => {
     // Twice: once in the list and once in the live region that announces the answer.
     expect(screen.getAllByText('سلام، چطور کمک کنم؟')).toHaveLength(2);
     expect(screen.getByText('You')).toBeInTheDocument();
-    expect(screen.getByText('Assistant')).toBeInTheDocument();
+    expect(screen.getByText('Dr. Kohandezh')).toBeInTheDocument();
   });
 
   it('warns when the microphone was refused and recovers on a retry', async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { I18nProvider } from '@heroui/react';
 import { useTranslation } from 'react-i18next';
 import {
   getDirection,
@@ -41,23 +42,25 @@ export function App({ config, isOpen, onOpenChange }: AppProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div dir={getDirection(language)} lang={language}>
-        {isOpen && (
-          <WidgetPanel
-            language={language}
-            mode={config.mode}
+      <I18nProvider locale={language === 'fa' ? 'fa-IR' : 'en-US'}>
+        <div dir={getDirection(language)} lang={language}>
+          {isOpen && (
+            <WidgetPanel
+              language={language}
+              mode={config.mode}
+              position={config.position}
+              onLanguageChange={(next) => void i18n.changeLanguage(next)}
+              onClose={() => onOpenChange(false)}
+            />
+          )}
+          <WidgetLauncher
+            ref={launcherRef}
+            isOpen={isOpen}
             position={config.position}
-            onLanguageChange={(next) => void i18n.changeLanguage(next)}
-            onClose={() => onOpenChange(false)}
+            onToggle={() => onOpenChange(!isOpen)}
           />
-        )}
-        <WidgetLauncher
-          ref={launcherRef}
-          isOpen={isOpen}
-          position={config.position}
-          onToggle={() => onOpenChange(!isOpen)}
-        />
-      </div>
+        </div>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

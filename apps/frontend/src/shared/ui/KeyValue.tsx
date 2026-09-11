@@ -13,10 +13,10 @@ export function KeyValue({
     <dl className={cn('grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs', className)}>
       {items.map((item) => (
         <div key={item.label} className="contents">
-          <dt className="text-slate-500">{item.label}</dt>
+          <dt className="text-muted">{item.label}</dt>
           <dd
             className={cn(
-              'min-w-0 truncate font-mono text-slate-800',
+              'min-w-0 truncate font-mono text-foreground',
               item.ltr !== false && 'ltr',
             )}
           >

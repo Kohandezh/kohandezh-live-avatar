@@ -23,7 +23,7 @@ contract between the two apps. Any backend that implements it works with this fr
 - Streaming answers use Server-Sent Events (`text/event-stream`), not WebSockets, so the same
   code works through a normal reverse proxy.
 
-## Endpoints used by the starter
+## Endpoints used by the frontend
 
 | Method | Path                                  | Access      | Used by                       |
 | ------ | ------------------------------------- | ----------- | ----------------------------- |

@@ -41,7 +41,8 @@ src/
 ├── features/       # user-facing workflows (assistant, authentication, settings)
 ├── shared/         # domain-agnostic infrastructure and UI
 │   ├── api/        # the single axios client, ApiError, pagination types
-│   ├── ui/         # Button, Input, Card, Badge, states, OfflineBanner
+│   ├── ui/         # project compositions on top of HeroUI: Button (with spinner), InlineAlert,
+│   │                 LoadingState, EmptyState, ErrorState, KeyValue, OfflineBanner
 │   ├── hooks/, storage/, platform/, config/, utils/
 ├── data/           # static and mock data (mock API behind VITE_API_MOCK)
 ├── i18n/           # i18next setup + locales (en, fa)
@@ -172,7 +173,54 @@ Loading → Success
 
 Use `LoadingState`, `EmptyState`, `ErrorState` from `shared/ui`. Use existing components before creating duplicates.
 
+Use HeroUI components before writing a new one. See UI Components (HeroUI v3).
+
 All text goes through i18n. Add keys to both `en` and `fa`. Use logical Tailwind classes for RTL.
+
+## UI Components (HeroUI v3)
+
+HeroUI v3 (`@heroui/react`, `@heroui/styles`) is the component library for all four targets
+(ADR 0011). It is built on Tailwind CSS v4 and React Aria Components. Use a HeroUI component
+before writing a new one.
+
+`src/shared/ui` no longer holds hand-made components. It holds project compositions built on
+top of HeroUI parts: `Button` (adds the spinner while `isPending`), `InlineAlert` (a translated
+wrapper around HeroUI `Alert`), `LoadingState`, `EmptyState`, `ErrorState`, `KeyValue`, and
+`OfflineBanner`. Everything else (`Card`, `Chip`, `TextField`, `TextArea`, `Spinner`,
+`CloseButton`, `SearchField`, `Select`, `ToggleButtonGroup`, `Table`, ...) comes straight from
+`@heroui/react`.
+
+v3 rules:
+
+- No provider. Do not add `HeroUIProvider` (that is a v2 pattern).
+- Compound components: `Card.Header`, `Card.Title`, `Card.Content`, `Alert.Content`, not flat
+  props.
+- Use `onPress`, not `onClick`.
+- Use `isDisabled` and `isPending`, not `disabled` and `loading`.
+
+Token rule: use HeroUI's semantic color tokens, not raw Tailwind palette colors. No `slate-*`,
+`indigo-*`, `emerald-*`, `amber-*`, `red-*`, or `bg-white` in app code. Use `bg-background`,
+`text-foreground`, `text-muted`, `bg-surface`, `bg-surface-secondary`, `border-border`,
+`border-separator`, `bg-default`, `bg-accent text-accent-foreground`, `text-success`,
+`text-warning`, `text-danger`, and the soft variants (`bg-danger-soft text-danger-soft-foreground`).
+Tokens follow the theme and keep the four targets consistent; raw palette colors do not.
+
+Read the component docs before using a component. Three ways to get them:
+
+1. The `heroui-react` MCP server (`.mcp.json`): `list_components`, `get_component_docs`,
+   `get_component_source_code`, `get_component_source_styles`, `get_theme_variables`, `get_docs`.
+2. The `/heroui-react` skill (`.claude/skills/heroui-react/`).
+3. `https://heroui.com/react/llms.txt` (index), `llms-full.txt`, `llms-components.txt`, or
+   `llms-patterns.txt`.
+
+RTL: HeroUI reads the locale through React Aria's `I18nProvider` (`@heroui/react`), wrapped
+around the app with the locale from the Redux language state (`fa-IR` or `en-US`). This does not
+replace the existing RTL rules: still set `dir` on `<html>` (`LanguageSync`) and still use
+logical Tailwind classes.
+
+Widget target: the widget renders inside a Shadow DOM (ADR 0010). HeroUI v3.2.5 declares its
+theme tokens on `:root, :host`, so the stylesheet injected as text into the widget's shadow root
+carries the theme too. That is why the widget can use HeroUI at all.
 
 ## Change Strategy
 
@@ -227,6 +275,7 @@ Before finishing a task, check:
 - Did I add translations for both languages?
 - Did I update the mock API and docs for API changes?
 - Did I run the relevant validation commands?
+- Did I use HeroUI components and tokens instead of raw Tailwind colors?
 
 ---
 
@@ -391,7 +440,7 @@ Prefer established patterns. Add an interaction only when it serves the user's t
 
 ### 5. Visual design
 
-Follow the existing design system: Tailwind tokens, `Button` variants in `src/shared/ui/buttonStyles.ts`, `Card`, `Badge`, `Input`, the spacing scale, radii, and icons.
+Follow the existing design system: HeroUI semantic variants and color tokens (`bg-background`, `text-foreground`, `bg-surface`, `border-border`, ...), `Card`, `Chip`, `TextField`, the spacing scale, radii, and icons. `buttonStyles.ts` no longer exists; button variants come from HeroUI's `Button`.
 
 No arbitrary values (`p-[13px]`, `#3b82f6`) when a token exists. No component that looks different from the rest of the product.
 

@@ -1,11 +1,23 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { getFullName } from '@/entities/user';
+import { Avatar } from '@heroui/react';
+import { getFullName, type User } from '@/entities/user';
 import { useLogout, useSession } from '@/features/authentication';
 import { LanguageSwitcher } from '@/features/settings';
 import { Button, OfflineBanner } from '@/shared/ui';
 import { cn } from '@/shared/utils';
+
+/** Two letters for the header avatar. Falls back to the phone when there is no name yet. */
+function getInitials(
+  user: Pick<User, 'firstName' | 'lastName' | 'phone'>,
+): string {
+  const letters = [user.firstName, user.lastName]
+    .map((part) => part.trim().charAt(0))
+    .filter(Boolean)
+    .join('');
+  return letters ? letters.toUpperCase() : user.phone.slice(-2);
+}
 
 /** Admin shell: sidebar on desktop, collapsible menu on small screens. */
 export function AdminLayout() {
@@ -22,31 +34,33 @@ export function AdminLayout() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      'block rounded-lg px-3 py-2 text-sm font-medium',
+      // 44px tall on a phone, compact on the desktop sidebar.
+      'flex min-h-11 items-center rounded-lg px-3 text-sm font-medium md:min-h-9',
       isActive
-        ? 'bg-slate-900 text-white'
-        : 'text-slate-700 hover:bg-slate-100',
+        ? 'bg-accent-soft text-accent-soft-foreground'
+        : 'text-foreground hover:bg-default',
     );
 
   return (
-    <div className="flex min-h-dvh flex-col md:flex-row">
-      <aside
-        className={cn(
-          'border-b border-slate-200 bg-white md:w-60 md:shrink-0 md:border-e md:border-b-0',
-        )}
-      >
-        <div className="flex h-16 items-center justify-between px-4">
-          <span className="font-semibold">{t('title')}</span>
-          <button
-            type="button"
-            className="rounded-lg p-2 text-slate-700 hover:bg-slate-100 md:hidden"
+    <div className="flex min-h-dvh flex-col bg-background md:flex-row">
+      <aside className="border-b border-separator bg-surface md:w-64 md:shrink-0 md:border-e md:border-b-0">
+        <div className="flex h-16 items-center justify-between gap-2 px-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {t('app.name', { ns: 'common' })}
+            </p>
+            <p className="truncate text-xs text-muted">{t('title')}</p>
+          </div>
+          <Button
+            isIconOnly
+            variant="ghost"
+            // 44px keeps the touch target usable on a phone.
+            className="size-11 md:hidden"
+            aria-label={menuOpen ? t('layout.closeMenu') : t('layout.openMenu')}
             aria-expanded={menuOpen}
             aria-controls="admin-nav"
-            onClick={() => setMenuOpen((open) => !open)}
+            onPress={() => setMenuOpen((open) => !open)}
           >
-            <span className="sr-only">
-              {menuOpen ? t('layout.closeMenu') : t('layout.openMenu')}
-            </span>
             <svg
               viewBox="0 0 24 24"
               className="size-6"
@@ -61,12 +75,12 @@ export function AdminLayout() {
                 <path d="M4 7h16M4 12h16M4 17h16" />
               )}
             </svg>
-          </button>
+          </Button>
         </div>
 
         <nav
           id="admin-nav"
-          aria-label={t('layout.openMenu')}
+          aria-label={t('layout.navLabel')}
           className={cn(
             'flex-col gap-1 px-3 pb-4 md:flex',
             menuOpen ? 'flex' : 'hidden',
@@ -87,28 +101,33 @@ export function AdminLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-end gap-3 border-b border-slate-200 bg-white px-4 md:px-6">
+        <header className="flex h-16 items-center gap-3 border-b border-separator bg-surface px-4 md:px-6">
           {user ? (
-            <span className="truncate text-sm text-slate-600">
-              {t('layout.signedInAs')}{' '}
-              <span className="font-medium text-slate-900">
+            <div className="flex min-w-0 items-center gap-2">
+              <Avatar size="sm" color="accent" variant="soft">
+                <Avatar.Fallback>{getInitials(user)}</Avatar.Fallback>
+              </Avatar>
+              <span className="truncate text-sm text-foreground">
+                <span className="sr-only">{t('layout.signedInAs')} </span>
                 {getFullName(user)}
               </span>
-            </span>
+            </div>
           ) : null}
-          <LanguageSwitcher />
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={logout.isPending}
-            onClick={() =>
-              logout.mutate(undefined, {
-                onSettled: () => navigate('/login', { replace: true }),
-              })
-            }
-          >
-            {t('nav.logout', { ns: 'common' })}
-          </Button>
+
+          <div className="ms-auto flex shrink-0 items-center gap-3">
+            <LanguageSwitcher />
+            <Button
+              variant="secondary"
+              isPending={logout.isPending}
+              onPress={() =>
+                logout.mutate(undefined, {
+                  onSettled: () => navigate('/login', { replace: true }),
+                })
+              }
+            >
+              {t('nav.logout', { ns: 'common' })}
+            </Button>
+          </div>
         </header>
 
         <OfflineBanner />

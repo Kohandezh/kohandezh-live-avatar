@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+- Turned the MVP into the product "Dr. Kohandezh Assistant" (Persian: دستیار دکتر کهن‌دژ). Every
+  starter string ("Cross-Platform App", "One codebase for mobile, web, and admin", the Phase 1
+  status text) is gone from the four targets, the HTML titles, the PWA manifest, and the
+  Capacitor config (`com.kohandezh.assistant`). New app icon (accent-blue rounded square with a
+  speech bubble) in `public/icons/`, generated from `favicon.svg`; the workflow is in
+  `docs/DEVELOPMENT.md`. Persian text now renders in Vazirmatn (`@fontsource/vazirmatn`,
+  weights 400/500/700, imported by the mobile, web, and admin entries; the widget keeps the
+  system font because `@font-face` does not work inside its Shadow DOM).
+- Reworked navigation for the mobile app and the web PWA. `/` is a landing screen for visitors
+  (what the product is, one "Start a conversation" action, three "How it works" steps) and sends
+  a signed-in user straight to `/assistant`. The mobile tab bar has two tabs, Conversation and
+  Profile, and is hidden until the user signs in. The web header shows Conversation and Profile
+  only when signed in, and the Phase 1 workbench link (`/avatar`) only to admins; the route
+  itself is unchanged. The profile page became an account page (avatar with initials, details,
+  a settings card with the language select, log out). Not found and forbidden pages use the
+  shared `EmptyState`. See the Navigation section in `ARCHITECTURE.md`.
+- Finished the HeroUI v3 migration in the pages, layouts, and features that still used raw
+  palette classes. Language switching uses HeroUI `Select`; the voice/video switch and the
+  widget language switch use `ToggleButtonGroup`; the widget close control is `CloseButton`; the
+  admin users screen uses `SearchField`, `Table`, and `Pagination`; the admin layout uses
+  `Avatar` and token colors. Transcript turns render as chat bubbles and the avatar's turns are
+  labelled "Dr. Kohandezh". The sandbox chip reads "Trial mode".
+- Removed unused Phase 1 i18n keys (`home.intro`, `home.phase*`, `home.webrtc*`,
+  `app.phaseNotice`, the `settings` group, ...) after checking that no code reads them.
+- Added `*-mock` entries to `.claude/launch.json` that start each target against the mock API
+  regardless of `.env.development.local`, for browser verification without the backend.
+- Fixed the website widget for mouse users. React Aria checks which element is under the
+  pointer when a press ends; inside the widget's Shadow DOM that element is the shadow host, so
+  every mouse click on a HeroUI button (including Start) was cancelled while touch worked. The
+  widget mount now calls `enableShadowDOM()` from `react-stately` before the first render, and
+  `react-stately` is declared as a direct dependency for that import. `border-solid` is set
+  explicitly where the widget draws borders, because Tailwind v4's `@property` border style is
+  not applied inside a shadow root.
+- Tests: new integration tests for the landing (`homePage.test.tsx`), the mobile tab bar
+  (`mobileLayout.test.tsx`), and admin pagination; the e2e specs assert the product strings.
+
+- Adopted HeroUI v3 (`@heroui/react`, `@heroui/styles`) as the component library across mobile,
+  web, admin, and widget, replacing the hand-made Tailwind components in `src/shared/ui`. See
+  `docs/DECISIONS/0011-heroui-component-library.md` for the reasons and the component mapping.
+  Added agent tooling for it: the `heroui-react` MCP server (`.mcp.json`) and the HeroUI agent
+  skill (`.claude/skills/heroui-react/`).
 - Replaced email/password login with phone login (ADR 0002 stays the model, the credential
   changes). A user enters a phone number, gets a one-time code, and verifies it. Web keeps the
   code in the `kd_session` HttpOnly cookie; native gets a bearer token. In development the code

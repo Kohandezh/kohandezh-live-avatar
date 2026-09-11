@@ -1,11 +1,18 @@
+import type { Key } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ToggleButton, ToggleButtonGroup } from '@heroui/react';
 import { Button } from '@/shared/ui';
-import { cn } from '@/shared/utils';
 import type { AssistantMode } from './types';
 import type { AssistantController } from './useAssistantSession';
 
 /** Touch targets must be at least 44 px, which is one step above the default button height. */
 const TOUCH_TARGET = 'min-h-11';
+
+const MODES: readonly AssistantMode[] = ['voice', 'video'];
+
+function isMode(value: Key): value is AssistantMode {
+  return MODES.includes(value as AssistantMode);
+}
 
 function MicIcon({ muted }: { muted: boolean }) {
   return (
@@ -41,6 +48,10 @@ function StopIcon() {
   );
 }
 
+/**
+ * Voice or video. Single selection, so React Aria renders a radio group: the two buttons carry
+ * role="radio" and arrow keys move between them.
+ */
 function ModeToggle({
   mode,
   onChange,
@@ -49,32 +60,27 @@ function ModeToggle({
   onChange: (mode: AssistantMode) => void;
 }) {
   const { t } = useTranslation();
-  const modes: AssistantMode[] = ['voice', 'video'];
+
+  function handleSelectionChange(keys: Set<Key>) {
+    const [next] = [...keys];
+    if (next !== undefined && isMode(next)) onChange(next);
+  }
 
   return (
-    <div
-      role="group"
+    <ToggleButtonGroup
       aria-label={t('assistant.mode.label')}
-      className="inline-flex rounded-lg border border-slate-300 p-0.5"
+      selectionMode="single"
+      disallowEmptySelection
+      selectedKeys={[mode]}
+      onSelectionChange={handleSelectionChange}
     >
-      {modes.map((candidate) => (
-        <button
-          key={candidate}
-          type="button"
-          aria-pressed={mode === candidate}
-          onClick={() => onChange(candidate)}
-          className={cn(
-            'min-h-11 rounded-md px-4 text-sm font-medium transition-colors',
-            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
-            mode === candidate
-              ? 'bg-slate-900 text-white'
-              : 'text-slate-700 hover:bg-slate-100',
-          )}
-        >
+      {MODES.map((candidate, index) => (
+        <ToggleButton key={candidate} id={candidate} className={TOUCH_TARGET}>
+          {index > 0 && <ToggleButtonGroup.Separator />}
           {t(`assistant.mode.${candidate}`)}
-        </button>
+        </ToggleButton>
       ))}
-    </div>
+    </ToggleButtonGroup>
   );
 }
 
@@ -98,8 +104,8 @@ export function AssistantControls({
               variant="secondary"
               className={TOUCH_TARGET}
               aria-pressed={isMicMuted}
-              disabled={!canControl}
-              onClick={() => void controller.toggleMic()}
+              isDisabled={!canControl}
+              onPress={() => void controller.toggleMic()}
             >
               <MicIcon muted={isMicMuted} />
               {t(isMicMuted ? 'assistant.mic.unmute' : 'assistant.mic.mute')}
@@ -107,16 +113,16 @@ export function AssistantControls({
             <Button
               variant="secondary"
               className={TOUCH_TARGET}
-              disabled={!canControl}
-              onClick={controller.interrupt}
+              isDisabled={!canControl}
+              onPress={controller.interrupt}
             >
               {t('assistant.interrupt')}
             </Button>
             <Button
               variant="danger"
               className={TOUCH_TARGET}
-              loading={status === 'ending'}
-              onClick={() => void controller.stop()}
+              isPending={status === 'ending'}
+              onPress={() => void controller.stop()}
             >
               <StopIcon />
               {t('assistant.end')}
@@ -125,9 +131,9 @@ export function AssistantControls({
         ) : (
           <Button
             className={TOUCH_TARGET}
-            loading={status === 'requesting' || status === 'connecting'}
-            disabled={!canStart}
-            onClick={() => void controller.start()}
+            isPending={status === 'requesting' || status === 'connecting'}
+            isDisabled={!canStart}
+            onPress={() => void controller.start()}
           >
             {t(hasFinished ? 'assistant.restart' : 'assistant.start')}
           </Button>

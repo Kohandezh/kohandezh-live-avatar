@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Card, KeyValue, StatusChip } from '@/shared/ui';
+import { Card, Chip } from '@heroui/react';
+import { KeyValue } from '@/shared/ui';
 import { AvatarControls } from './AvatarControls';
 import { AvatarVideo } from './AvatarVideo';
 import { useAvatarSession } from './useAvatarSession';
@@ -20,9 +21,9 @@ export function AvatarSessionPanel({ text, recordingActive }: Props) {
       <div className="mb-4 flex flex-row flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-900">{t('session.title')}</h2>
         {session && (
-          <StatusChip tone={session.sandbox ? 'accent' : 'warning'}>
+          <Chip color={session.sandbox ? 'accent' : 'warning'} variant="soft" size="sm">
             {session.sandbox ? t('session.sandbox') : t('session.live')}
-          </StatusChip>
+          </Chip>
         )}
       </div>
       <div className="flex flex-col gap-4">

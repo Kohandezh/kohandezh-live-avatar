@@ -1,8 +1,12 @@
 /**
- * Generates placeholder app icons without any dependency.
+ * Fallback icon generator: no image library, no SVG renderer, just PNG bytes.
  * Output: public/icons/*.png and public/icons/favicon.svg
  *
- * Replace these files with real brand icons before release.
+ * The real workflow renders public/icons/favicon.svg (a rounded square with a
+ * white speech bubble and a "K") to PNG with a proper SVG renderer, for example
+ * macOS `qlmanage -t -s <size> -o <dir> favicon.svg` or `rsvg-convert`. See
+ * docs/DEVELOPMENT.md. This script only draws a simplified circle mark in the
+ * same brand color, for the rare case where no SVG renderer is available.
  * Run: pnpm icons
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -10,7 +14,7 @@ import path from 'node:path';
 import { deflateSync } from 'node:zlib';
 
 const outDir = path.resolve(import.meta.dirname, '../public/icons');
-const background = [15, 23, 42]; // slate-900
+const background = [4, 133, 247]; // HeroUI accent blue (#0485f7)
 const foreground = [255, 255, 255];
 
 // ---- Minimal PNG encoder (RGBA, no filter) ----
@@ -109,8 +113,10 @@ function drawIcon(size, { maskable }) {
 }
 
 const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0f172a"/>
-  <circle cx="32" cy="32" r="19" fill="#ffffff"/>
+  <rect width="64" height="64" rx="14" fill="#0485f7"/>
+  <rect x="12" y="13" width="40" height="27" rx="9" fill="#ffffff"/>
+  <path d="M20 40 L29 40 L20 49 Z" fill="#ffffff"/>
+  <text x="32" y="28" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="21" fill="#0485f7">K</text>
 </svg>
 `;
 

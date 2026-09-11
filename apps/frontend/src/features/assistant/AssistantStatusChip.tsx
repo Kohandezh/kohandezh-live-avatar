@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { StatusChip, type StatusTone } from '@/shared/ui';
+import { Chip, type ChipProps } from '@heroui/react';
 import type { AssistantStatus } from './types';
+
+type StatusTone = NonNullable<ChipProps['color']>;
 
 const STATUS_TONE: Record<AssistantStatus, StatusTone> = {
   idle: 'default',
@@ -23,8 +25,8 @@ export function AssistantStatusChip({
   const { t } = useTranslation();
 
   return (
-    <StatusChip tone={STATUS_TONE[status]} className={className}>
+    <Chip color={STATUS_TONE[status]} variant="soft" size="sm" className={className}>
       {t(`assistant.status.${status}`)}
-    </StatusChip>
+    </Chip>
   );
 }

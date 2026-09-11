@@ -6,7 +6,8 @@ import { z } from 'zod';
 import type { User } from '@/entities/user';
 import { isApiError } from '@/shared/api';
 import { useOnline } from '@/shared/hooks';
-import { Button, InlineAlert, Input } from '@/shared/ui';
+import { TextField, Label, Input, Description, FieldError } from '@heroui/react';
+import { Button, InlineAlert } from '@/shared/ui';
 import { useRequestOtp, useVerifyOtp } from './hooks';
 import { codeSchema, phoneSchema } from './schemas';
 
@@ -143,16 +144,21 @@ export function PhoneLoginForm({
 
     return (
       <form onSubmit={submitPhone} noValidate className="flex flex-col gap-4">
-        <Input
-          label={t('auth.phone')}
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          dir="ltr"
-          hint={t('auth.phoneHint')}
-          error={phoneError ? t(phoneError) : undefined}
-          {...phoneForm.register('phone')}
-        />
+        <TextField isInvalid={Boolean(phoneError)} validationBehavior="aria" fullWidth>
+          <Label>{t('auth.phone')}</Label>
+          <Input
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            dir="ltr"
+            {...phoneForm.register('phone')}
+          />
+          {phoneError ? (
+            <FieldError>{t(phoneError)}</FieldError>
+          ) : (
+            <Description>{t('auth.phoneHint')}</Description>
+          )}
+        </TextField>
 
         {!isOnline ? (
           <InlineAlert status="warning">{t('auth.errors.offline')}</InlineAlert>
@@ -164,8 +170,8 @@ export function PhoneLoginForm({
 
         <Button
           type="submit"
-          loading={requestOtp.isPending}
-          disabled={!isOnline}
+          isPending={requestOtp.isPending}
+          isDisabled={!isOnline}
           className="mt-2 w-full"
         >
           {t('auth.sendCode')}
@@ -194,14 +200,16 @@ export function PhoneLoginForm({
         />
       </p>
 
-      <Input
-        label={t('auth.code')}
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        dir="ltr"
-        error={codeError ? t(codeError) : undefined}
-        {...codeForm.register('code')}
-      />
+      <TextField isInvalid={Boolean(codeError)} validationBehavior="aria" fullWidth>
+        <Label>{t('auth.code')}</Label>
+        <Input
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          dir="ltr"
+          {...codeForm.register('code')}
+        />
+        {codeError ? <FieldError>{t(codeError)}</FieldError> : null}
+      </TextField>
 
       {devCode ? (
         <InlineAlert status="info">
@@ -217,8 +225,8 @@ export function PhoneLoginForm({
 
       <Button
         type="submit"
-        loading={verifyOtp.isPending}
-        disabled={!isOnline}
+        isPending={verifyOtp.isPending}
+        isDisabled={!isOnline}
         className="w-full"
       >
         {t('auth.verify')}
@@ -237,9 +245,9 @@ export function PhoneLoginForm({
           type="button"
           variant="secondary"
           size="sm"
-          loading={requestOtp.isPending}
-          disabled={!isOnline || secondsLeft > 0}
-          onClick={resend}
+          isPending={requestOtp.isPending}
+          isDisabled={!isOnline || secondsLeft > 0}
+          onPress={resend}
         >
           {secondsLeft > 0
             ? t('auth.resendIn', { seconds: secondsLeft })

@@ -1,8 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { Button, Card, InlineAlert, KeyValue, LoadingState, StatusChip, type StatusTone } from '@/shared/ui';
+import { Card, Chip, type ChipProps } from '@heroui/react';
+import { Button, InlineAlert, KeyValue, LoadingState } from '@/shared/ui';
 import { formatNumber, formatTime } from '@/i18n';
 import { useBackendHealth, type HealthLevel } from './useBackendHealth';
 import { useStatusSocket } from './useStatusSocket';
+
+type StatusTone = NonNullable<ChipProps['color']>;
 
 const TONE: Record<HealthLevel, StatusTone> = {
   checking: 'default',
@@ -28,7 +31,7 @@ export function HealthStatusChip() {
   const { level } = useBackendHealth();
   return (
     <span aria-live="polite">
-      <StatusChip tone={TONE[level]}>{levelLabel(level, t)}</StatusChip>
+      <Chip color={TONE[level]} variant="soft" size="sm">{levelLabel(level, t)}</Chip>
     </span>
   );
 }
@@ -44,12 +47,12 @@ export function HealthStatusCard() {
       <div className="mb-4 flex flex-row flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-900">{t('health.title')}</h2>
         <div className="flex items-center gap-2">
-          <StatusChip tone={TONE[level]}>{levelLabel(level, t)}</StatusChip>
+          <Chip color={TONE[level]} variant="soft" size="sm">{levelLabel(level, t)}</Chip>
           <Button
             size="sm"
             variant="ghost"
-            disabled={!online || isFetching}
-            onClick={() => void refetch()}
+            isDisabled={!online || isFetching}
+            onPress={() => void refetch()}
           >
             {t('health.refresh')}
           </Button>
@@ -80,10 +83,10 @@ export function HealthStatusCard() {
                 <tr key={name} className="border-t border-border">
                   <td className="py-1.5">{t(`health.deps.${name}`, { defaultValue: name })}</td>
                   <td className="py-1.5">
-                    <StatusChip tone={dep.status === 'ok' ? 'success' : 'danger'}>
+                    <Chip color={dep.status === 'ok' ? 'success' : 'danger'} variant="soft" size="sm">
                       {dep.status}
                       {dep.detail ? ` · ${dep.detail}` : ''}
-                    </StatusChip>
+                    </Chip>
                   </td>
                   <td className="py-1.5 ltr">
                     {dep.latency_ms != null
@@ -106,12 +109,12 @@ export function HealthStatusCard() {
                 ? t('health.socketConnected')
                 : t('health.socketDisconnected'),
               value: (
-                <StatusChip tone={socket.connected ? 'success' : 'default'}>
+                <Chip color={socket.connected ? 'success' : 'default'} variant="soft" size="sm">
                   {t('health.activeSessions')}:{' '}
                   {socket.activeSessions == null
                     ? '—'
                     : formatNumber(socket.activeSessions, i18n.language)}
-                </StatusChip>
+                </Chip>
               ),
             },
             {

@@ -1,8 +1,8 @@
-# Dr.Kohandezh Live Avatar
+# Dr. Kohandezh Assistant
 
-A real-time "LiveAvatar Twin" assistant. A user logs in with a phone number and a one-time code,
-then has a live voice or video conversation with the assistant, on the mobile app, the web PWA,
-or a script embedded on the customer's own website. Everything runs in LiveAvatar sandbox mode:
+A live voice and video conversation with the digital avatar of Dr. Kohandezh. A user logs in
+with a phone number and a one-time code, then talks to the avatar, on the mobile app, the web
+PWA, or a script embedded on the customer's own website. Everything runs in LiveAvatar sandbox mode:
 no credits are spent, and every session ends after about 60 seconds.
 
 The repository also still has the Phase 1 workbench: a local, Dockerized proof for a hybrid
@@ -18,7 +18,7 @@ container but do not need LiveKit, Egress, or a public `wss://` endpoint; see `d
 `ARCHITECTURE.md` for that part of the system.
 
 ```text
-React + TypeScript + Vite + Tailwind (PWA, Capacitor-ready)
+React + TypeScript + Vite + Tailwind + HeroUI v3 (PWA, Capacitor-ready)
   | HTTPS/WS + scoped subscriber JWT (same-origin /api)
   v
 Nginx :8088 ---> FastAPI orchestrator
@@ -119,8 +119,8 @@ docs/              API contract and architecture decision records
 
 ## Frontend (apps/frontend)
 
-React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + TanStack Query + Redux Toolkit + React Router
-+ i18next (English and Persian RTL) + `vite-plugin-pwa` + `livekit-client` +
+React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + HeroUI v3 + TanStack Query + Redux Toolkit +
+React Router + i18next (English and Persian RTL) + `vite-plugin-pwa` + `livekit-client` +
 `@heygen/liveavatar-web-sdk`. Capacitor is configured (`capacitor.config.ts`) but no native
 shells are generated yet.
 

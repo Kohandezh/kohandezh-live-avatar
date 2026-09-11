@@ -2,7 +2,8 @@ import { useTranslation } from 'react-i18next';
 import { assetsApi } from '@/shared/api';
 import { useOnline } from '@/shared/hooks';
 import { formatNumber } from '@/i18n';
-import { Button, Card, InlineAlert, KeyValue, StatusChip, type StatusTone } from '@/shared/ui';
+import { Card, Chip, type ChipProps } from '@heroui/react';
+import { Button, InlineAlert, KeyValue } from '@/shared/ui';
 import { useRecording } from './useRecording';
 import type { RecordingStatus } from './recordingSlice';
 
@@ -14,6 +15,8 @@ interface Props {
   /** Recording needs a room we own. "managed" sessions run in LiveAvatar's room. */
   transport: 'managed' | 'byo' | null;
 }
+
+type StatusTone = NonNullable<ChipProps['color']>;
 
 const TONE: Record<RecordingStatus, StatusTone> = {
   idle: 'default',
@@ -37,25 +40,25 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
     <Card>
       <div className="mb-4 flex flex-row flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-900">{t('recording.title')}</h2>
-        <StatusChip tone={TONE[rec.status]}>{t(`recording.status.${rec.status}`)}</StatusChip>
+        <Chip color={TONE[rec.status]} variant="soft" size="sm">{t(`recording.status.${rec.status}`)}</Chip>
       </div>
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2" role="group" aria-label={t('recording.title')}>
           {!rec.isActive ? (
             <Button
               variant="primary"
-              disabled={!canStart}
-              loading={rec.start.isPending}
-              onClick={() => sessionId && rec.start.mutate({ sessionId, text, audioAssetId })}
+              isDisabled={!canStart}
+              isPending={rec.start.isPending}
+              onPress={() => sessionId && rec.start.mutate({ sessionId, text, audioAssetId })}
             >
               {rec.start.isPending ? t('recording.starting') : t('recording.start')}
             </Button>
           ) : (
             <Button
               variant="danger"
-              disabled={!canStop}
-              loading={rec.stop.isPending}
-              onClick={() => rec.stop.mutate()}
+              isDisabled={!canStop}
+              isPending={rec.stop.isPending}
+              onPress={() => rec.stop.mutate()}
             >
               {rec.stop.isPending ? t('recording.finalizing') : t('recording.stop')}
             </Button>
@@ -90,7 +93,7 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
             onRetry={rec.isActive ? () => rec.stop.mutate() : undefined}
             actions={
               !rec.isActive ? (
-                <Button size="sm" variant="ghost" onClick={rec.reset}>
+                <Button size="sm" variant="ghost" onPress={rec.reset}>
                   {t('app.dismiss')}
                 </Button>
               ) : undefined

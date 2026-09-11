@@ -7,11 +7,12 @@
   "layout": {
     "signedInAs": "Signed in as",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "navLabel": "Admin sections"
   },
   "dashboard": {
     "title": "Dashboard",
-    "subtitle": "Overview of your application.",
+    "subtitle": "Accounts and activity at a glance.",
     "stats": {
       "totalUsers": "Total users",
       "activeUsers": "Active users",
@@ -24,6 +25,7 @@
     "title": "Users",
     "subtitle": "Search and review user accounts.",
     "search": "Search by name, phone, or email",
+    "clearSearch": "Clear search",
     "columns": {
       "name": "Name",
       "phone": "Phone",
@@ -39,7 +41,8 @@
     "pagination": {
       "summary": "Page {{page}} of {{pages}} · {{total}} users",
       "previous": "Previous",
-      "next": "Next"
+      "next": "Next",
+      "goToPage": "Go to page {{page}}"
     }
   }
 }
