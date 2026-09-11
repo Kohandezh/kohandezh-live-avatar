@@ -1,7 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Ports must match `devPorts` in vite.config.ts.
-const ports = { mobile: 5173, web: 5174, admin: 5175 } as const;
+const ports = {
+  mobile: 5173,
+  web: 5174,
+  admin: 5175,
+  widget: 5176,
+} as const;
 
 const isCI = Boolean(process.env.CI);
 
@@ -43,6 +48,15 @@ export default defineConfig({
         baseURL: `http://localhost:${ports.admin}`,
       },
     },
+    {
+      // The widget dev server serves src/app/widget/index.html, a stand-in customer page.
+      name: 'widget',
+      testMatch: /widget\..*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://localhost:${ports.widget}`,
+      },
+    },
   ],
   webServer: [
     {
@@ -60,6 +74,12 @@ export default defineConfig({
     {
       command: 'pnpm run dev:admin',
       url: `http://localhost:${ports.admin}`,
+      reuseExistingServer: !isCI,
+      env: mockEnv,
+    },
+    {
+      command: 'pnpm run dev:widget',
+      url: `http://localhost:${ports.widget}`,
       reuseExistingServer: !isCI,
       env: mockEnv,
     },

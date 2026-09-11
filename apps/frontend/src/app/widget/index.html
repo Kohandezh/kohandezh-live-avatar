@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Assistant widget demo</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f8fafc;
+        color: #0f172a;
+        font-family: system-ui, sans-serif;
+        line-height: 1.6;
+      }
+      main {
+        margin: 0 auto;
+        max-width: 44rem;
+        padding: 3rem 1.25rem 6rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, monospace;
+        font-size: 0.875rem;
+      }
+      pre {
+        overflow-x: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        background: #fff;
+        padding: 1rem;
+      }
+      /* A tall block, so the floating launcher can be checked over scrolling content. */
+      .filler {
+        height: 60vh;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Assistant widget demo</h1>
+      <p>
+        This page stands in for a customer website. It is not part of any app
+        target and it is only used to develop and check the widget. The widget
+        itself is the floating button in the corner.
+      </p>
+      <p>
+        On this page the widget talks to the mock API with the embed key
+        <code>mock-embed-key</code>. A real site uses its own key and the
+        address of the backend.
+      </p>
+      <h2>Embed snippet</h2>
+      <pre>
+&lt;script
+  src="https://cdn.example.com/assistant-widget.js"
+  data-api-base="https://api.example.com"
+  data-embed-key="YOUR_EMBED_KEY"
+  data-lang="fa"
+  data-mode="voice"
+  data-position="end"
+  defer
+&gt;&lt;/script&gt;</pre>
+      <p>
+        The script also defines <code>window.KohandezhAssistant</code>, so a
+        page can call <code>init()</code> itself and keep the returned
+        <code>open()</code>, <code>close()</code> and <code>destroy()</code>.
+      </p>
+      <div class="filler"></div>
+      <p>End of the page.</p>
+    </main>
+
+    <!-- Development loads the source. The widget build rewrites this into the bundled file. -->
+    <script
+      type="module"
+      src="/main.tsx"
+      data-api-base=""
+      data-embed-key="mock-embed-key"
+      data-lang="fa"
+      data-mode="voice"
+      data-position="end"
+    ></script>
+  </body>
+</html>
