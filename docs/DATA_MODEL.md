@@ -8,21 +8,48 @@ Each model has a Zod schema in `apps/frontend/src/entities/<name>/types.ts`; the
 
 ## User (`src/entities/user`)
 
-| Field       | Type                       | Notes                            |
-| ----------- | -------------------------- | -------------------------------- |
-| `id`        | string                     |                                  |
-| `firstName` | string                     |                                  |
-| `lastName`  | string                     |                                  |
-| `email`     | string (email)             |                                  |
-| `role`      | `"user"` \| `"admin"`      | Backend decides. UI reads only.  |
-| `status`    | `"active"` \| `"disabled"` |                                  |
-| `createdAt` | string (ISO 8601)          | Formatted with `Intl` in the UI. |
+Login identity is the phone number (E.164, for example `+989121234567`), not email. Email is
+optional profile data and is `null` until the user sets one; there is no profile feature yet, so
+today it is only ever the value the backend returned at account creation.
 
-- Endpoints: `GET /api/me`, `GET /api/admin/users`
+| Field       | Type                       | Notes                                          |
+| ----------- | -------------------------- | ----------------------------------------------- |
+| `id`        | string                     |                                                  |
+| `phone`     | string                     | E.164. The login identity.                      |
+| `firstName` | string                     | Empty string until a profile feature exists.    |
+| `lastName`  | string                     | Empty string until a profile feature exists.    |
+| `email`     | string \| null             | Optional. `getFullName` falls back to `phone`.  |
+| `role`      | `"user"` \| `"admin"`      | Backend decides. UI reads only.                 |
+| `status`    | `"active"` \| `"disabled"` |                                                  |
+| `createdAt` | string (ISO 8601)          | Formatted with `Intl` in the UI.                |
+
+- Endpoints: `GET /api/me`, `GET /api/admin/users`, `POST /api/auth/otp/request`,
+  `POST /api/auth/otp/verify` (see `docs/API.md`)
 - Query keys: `['user', 'me']`, `['user', 'list', params]`
-- Hooks: `useCurrentUser()`, `useUsers(params)`
-- Mutations that touch it: login (`setQueryData` on `me`), logout (clears the cache)
+- Hooks: `useCurrentUser()`, `useUsers(params)`, `useRequestOtp()`, `useVerifyOtp()` (both in
+  `src/features/authentication`)
+- Mutations that touch it: OTP verify (`setQueryData` on `me`), logout (clears the cache)
 - Permissions: `me` needs a session; the list needs the admin role
+
+### User in the backend (`users` table)
+
+Created by `apps/api/services/orchestrator/migrations/002_assistant.sql`. The first successful
+one-time code check creates the row. There is no password column: the phone plus the code is the
+only credential.
+
+| Column                    | Type        | Notes                                                |
+| ------------------------- | ----------- | ---------------------------------------------------- |
+| `id`                      | uuid        | primary key                                           |
+| `phone`                   | text        | unique, E.164 (`+989123456789`)                       |
+| `first_name`, `last_name` | text        | empty strings until a profile feature exists          |
+| `email`                   | text (null) | not collected at login                                |
+| `role`                    | text        | `user` or `admin`. `ADMIN_PHONES` promotes at login.  |
+| `status`                  | text        | `active` or `disabled`. Disabled blocks login and API. |
+| `created_at`, `updated_at`| timestamptz |                                                       |
+
+The API returns an explicit allowlist of these columns as `User`
+(`id`, `phone`, `firstName`, `lastName`, `email`, `role`, `status`, `createdAt`). Nothing else
+leaves the backend.
 
 ## DashboardSummary (`src/entities/dashboard`)
 
@@ -37,6 +64,51 @@ Each model has a Zod schema in `apps/frontend/src/entities/<name>/types.ts`; the
 - Query key: `['dashboard', 'summary']`
 - Hook: `useDashboardSummary()`
 - Permissions: admin role
+
+## AssistantSession (`src/entities/assistant-session`)
+
+One real-time conversation with the LiveAvatar assistant. The backend mints the provider token
+with its own API key; the browser drives the session with the official SDK.
+
+| Field                       | Type              | Notes                                                     |
+| --------------------------- | ----------------- | --------------------------------------------------------- |
+| `id`                        | string (uuid)     | Our session row. Used to close the session.                |
+| `sessionToken`              | string            | Provider credential. See the rule below.                   |
+| `providerSessionId`         | string            | LiveAvatar's own session id, for support and logs.          |
+| `sandbox`                   | boolean           | Server-side decision. The client cannot turn it off.        |
+| `avatarId`                  | string            | Public avatar in sandbox, the custom avatar in production.  |
+| `language`                  | `"fa"` \| `"en"`  | Language the session actually started in.                   |
+| `requestedLanguage`         | `"fa"` \| `"en"`  | Language the caller asked for. See the note below.           |
+| `maxSessionDurationSeconds` | integer           | About 60 in sandbox. Drives the countdown in the UI.        |
+| `agentType`                 | `"elevenlabs"` \| `"full"` | Which SDK session class drives the token.        |
+
+`sessionToken` is handed to the SDK session once, inside the feature hook, and never goes into
+Redux, storage, a URL, or a log. `toAssistantSessionInfo()` strips it before anything else sees
+the session.
+
+`agentType` follows the backend's provider mode (see `docs/API.md`):
+
+- `elevenlabs`: a LiveAvatar Voice Agent wrapping the customer's ElevenLabs agent. The hook uses
+  `ElevenLabsAgentSession`, transcripts arrive as `elevenlabs_agent_event`, and a typed turn goes
+  out with `sendUserMessage()`. This is the only path that speaks Persian today.
+- `full`: FULL mode with a LiveAvatar context. The hook uses `LiveAvatarSession`, transcripts
+  arrive as `user.transcription` / `avatar.transcription`, and a typed turn goes out with
+  `message()`.
+
+`language` and `requestedLanguage` differ for two reasons. In the `elevenlabs` mode `language` is
+always the agent's own language, because LiveAvatar rejects a per-session language override for
+that agent type. In the `full` mode they differ when FULL mode cannot start a session in the
+requested language. Verified against the real provider on 2026-09-11: LiveAvatar FULL mode accepts
+Persian (`"fa"`) when the token is minted, but rejects it at session start, because none of its STT
+providers or its ElevenLabs TTS model support Persian yet. The backend falls back to a supported
+language (`LIVEAVATAR_ASSISTANT_LANGUAGES`, default `en`); `AssistantPanel` shows an inline notice
+when that fallback happened.
+
+- Endpoints: `POST /api/assistant/session`, `POST /api/assistant/session/{id}/close`
+- Functions: `createAssistantSession(body)`, `closeAssistantSession(id)`
+- No query hook: a session is created by a user action and must never be cached or replayed,
+  so the feature hook (`useAssistantSession`) owns it instead of TanStack Query.
+- Permissions: a signed-in user, or the website widget with a valid `X-Embed-Key` and origin
 
 ## Adding a model
 

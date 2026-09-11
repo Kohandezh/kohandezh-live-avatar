@@ -36,3 +36,25 @@ class NotFoundError(AppError):
 class ConflictError(AppError):
     def __init__(self, message: str):
         super().__init__("duplicate_generation", message, 409, True)
+
+
+class ValidationError(AppError):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__("validation_error", message, 422, False, details)
+
+
+class UnauthorizedError(AppError):
+    def __init__(self, message: str = "a valid session is required", code: str = "unauthorized"):
+        super().__init__(code, message, 401, False)
+
+
+class ForbiddenError(AppError):
+    def __init__(self, message: str, code: str = "forbidden"):
+        super().__init__(code, message, 403, False)
+
+
+class RateLimitedError(AppError):
+    """Too many requests. retryAfterSeconds tells the client when to try again."""
+
+    def __init__(self, code: str, message: str, retry_after_seconds: int):
+        super().__init__(code, message, 429, True, {"retryAfterSeconds": retry_after_seconds})

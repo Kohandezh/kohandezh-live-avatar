@@ -42,6 +42,92 @@ async def test_session_creation_is_explicit_lite_byo_livekit():
 
 
 @pytest.mark.asyncio
+async def test_full_mode_sends_the_persona_and_no_livekit_config():
+    """FULL mode runs the conversation at LiveAvatar, so we never hand them a room of ours."""
+    requests = []
+
+    async def handler(request: httpx.Request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": {"session_id": "provider", "session_token": "jwt"}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+
+    await client.create_full_token(
+        avatar_id="avatar",
+        context_id="context",
+        language="fa",
+        sandbox=True,
+        max_session_duration=60,
+        voice_id="voice",
+    )
+
+    body = json.loads(requests[0].content)
+    assert requests[0].headers["x-api-key"] == "key"
+    assert body["mode"] == "FULL"
+    assert body["interactivity_type"] == "CONVERSATIONAL"
+    assert body["is_sandbox"] is True
+    assert body["avatar_persona"] == {"context_id": "context", "language": "fa", "voice_id": "voice"}
+    assert "voice_agent" not in body
+    assert "livekit_config" not in body
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_full_mode_omits_an_empty_voice():
+    async def handler(request: httpx.Request):
+        return httpx.Response(200, json={"data": {"session_id": "provider", "session_token": "jwt"}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+
+    data = await client.create_full_token(
+        avatar_id="avatar",
+        context_id="context",
+        language="fa",
+        sandbox=True,
+        max_session_duration=60,
+    )
+
+    assert data["session_id"] == "provider"
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_a_voice_agent_token_carries_no_mode_and_no_persona():
+    """LiveAvatar refuses "mode" for an elevenlabs_agent voice agent and derives it itself."""
+    requests = []
+
+    async def handler(request: httpx.Request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": {"session_id": "provider", "session_token": "jwt"}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+
+    data = await client.create_voice_agent_token(
+        avatar_id="avatar",
+        voice_agent_id="voice-agent",
+        sandbox=True,
+        max_session_duration=60,
+    )
+
+    assert data["session_token"] == "jwt"  # noqa: S105 - provider fixture response
+    body = json.loads(requests[0].content)
+    assert "mode" not in body
+    assert body["voice_agent"] == {"id": "voice-agent"}
+    assert body["avatar_id"] == "avatar"
+    assert body["is_sandbox"] is True
+    assert body["max_session_duration"] == 60
+    assert body["video_settings"] == {"quality": "high", "encoding": "H264"}
+    # avatar_persona and voice_agent are mutually exclusive, and the agent owns the language.
+    assert "avatar_persona" not in body
+    assert "language" not in body
+    assert "livekit_config" not in body
+    await http.aclose()
+
+
+@pytest.mark.asyncio
 async def test_quota_failure_is_classified_without_retry():
     calls = 0
 

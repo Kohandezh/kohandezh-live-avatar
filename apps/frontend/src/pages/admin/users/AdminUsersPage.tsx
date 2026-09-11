@@ -70,6 +70,9 @@ export function AdminUsersPage() {
                   {t('users.columns.name')}
                 </th>
                 <th scope="col" className="px-4 py-3 text-start font-medium">
+                  {t('users.columns.phone')}
+                </th>
+                <th scope="col" className="px-4 py-3 text-start font-medium">
                   {t('users.columns.email')}
                 </th>
                 <th scope="col" className="px-4 py-3 text-start font-medium">
@@ -90,7 +93,10 @@ export function AdminUsersPage() {
                     {getFullName(user)}
                   </td>
                   <td className="px-4 py-3 text-slate-600" dir="ltr">
-                    {user.email}
+                    {user.phone}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600" dir="ltr">
+                    {user.email ?? '—'}
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone={user.role === 'admin' ? 'info' : 'neutral'}>

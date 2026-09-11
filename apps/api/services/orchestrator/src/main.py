@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import httpx
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from services.elevenlabs.audio import validate_pcm
@@ -18,6 +19,13 @@ from services.elevenlabs.service import ElevenLabsService
 from services.liveavatar.client import LiveAvatarClient
 from services.liveavatar.manager import LiveAvatarManager
 
+from .assistant.router import router as assistant_router
+from .assistant.service import AssistantSessionService
+from .auth.admin import router as admin_router
+from .auth.asanak import AsanakOtpSender, build_otp_sender
+from .auth.otp import OtpService
+from .auth.router import router as auth_router
+from .auth.sessions import SessionService
 from .config import Settings, get_settings
 from .coordination import Coordinator
 from .database import Database
@@ -45,6 +53,8 @@ logger = logging.getLogger(__name__)
 
 
 def build_services(app: FastAPI, config: Settings) -> None:
+    # First, so a missing SMS credential stops the process before anything else is built.
+    otp_sender = build_otp_sender(config)
     config.ensure_media_dirs()
     migrations = Path(__file__).resolve().parents[1] / "migrations"
     database = Database(config.database_url, migrations)
@@ -85,6 +95,9 @@ def build_services(app: FastAPI, config: Settings) -> None:
         connect_timeout=config.liveavatar_connect_timeout_seconds,
         managed_livekit=config.managed_livekit,
     )
+    assistant = AssistantSessionService(client=liveavatar_client, database=database, settings=config)
+    sessions = SessionService(coordinator=coordinator, ttl_seconds=config.session_ttl_seconds)
+    otp = OtpService(coordinator=coordinator, sender=otp_sender, settings=config)
     app.state.settings = config
     app.state.database = database
     app.state.coordinator = coordinator
@@ -92,6 +105,10 @@ def build_services(app: FastAPI, config: Settings) -> None:
     app.state.tts = tts
     app.state.avatar = avatar
     app.state.liveavatar_client = liveavatar_client
+    app.state.assistant = assistant
+    app.state.sessions = sessions
+    app.state.otp = otp
+    app.state.otp_sender = otp_sender
 
 
 @asynccontextmanager
@@ -103,6 +120,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await app.state.avatar.close_all()
+        if isinstance(app.state.otp_sender, AsanakOtpSender):
+            await app.state.otp_sender.close()
         await app.state.liveavatar_client.close()
         await app.state.tts.client.close()
         await app.state.livekit.close()
@@ -114,6 +133,24 @@ app = FastAPI(
     title="Dr.Kohandezh Live Avatar Phase 1",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+
+# Browsers send the session cookie only to an origin we name here, so the list is explicit and
+# never "*". allow_credentials is what makes the cookie and the bearer header work at all.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Client-Platform",
+        "X-Embed-Key",
+        "X-Correlation-ID",
+    ],
+    expose_headers=["X-Correlation-ID"],
 )
 
 
@@ -160,6 +197,11 @@ async def validation_error_handler(_: Request, exc: RequestValidationError):
             "correlation_id": correlation_id_var.get(),
         },
     )
+
+
+app.include_router(auth_router)
+app.include_router(admin_router)
+app.include_router(assistant_router)
 
 
 @app.get("/health/live")

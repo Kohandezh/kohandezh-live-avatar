@@ -20,6 +20,25 @@ function HomeIcon() {
   );
 }
 
+function AssistantIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a8 8 0 1 1-3.2-6.4" />
+      <path d="M9 10v4" />
+      <path d="M12 8v8" />
+      <path d="M15 10v4" />
+    </svg>
+  );
+}
+
 function UserIcon() {
   return (
     <svg
@@ -42,6 +61,7 @@ export function MobileLayout() {
 
   const tabs = [
     { to: '/', label: t('nav.home'), icon: <HomeIcon /> },
+    { to: '/assistant', label: t('nav.assistant'), icon: <AssistantIcon /> },
     { to: '/profile', label: t('nav.profile'), icon: <UserIcon /> },
   ];
 
@@ -64,7 +84,7 @@ export function MobileLayout() {
         aria-label={t('nav.menu')}
         className="safe-bottom sticky bottom-0 border-t border-slate-200 bg-white"
       >
-        <ul className="grid grid-cols-2">
+        <ul className="grid grid-cols-3">
           {tabs.map((tab) => (
             <li key={tab.to}>
               <NavLink

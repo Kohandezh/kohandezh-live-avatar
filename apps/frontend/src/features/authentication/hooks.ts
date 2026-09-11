@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCurrentUser, userKeys } from '@/entities/user';
 import { clearAccessToken, setAccessToken } from '@/shared/storage/tokenStore';
-import { login, logout } from './api';
+import { logout, requestOtp, verifyOtp } from './api';
 
 /** Current session, derived from the `me` query. */
 export function useSession() {
@@ -16,11 +16,19 @@ export function useSession() {
   };
 }
 
-export function useLogin() {
+/** Step 1: send a one-time code to the phone number. */
+export function useRequestOtp() {
+  return useMutation({
+    mutationFn: requestOtp,
+  });
+}
+
+/** Step 2: verify the code and start the session. */
+export function useVerifyOtp() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: login,
+    mutationFn: verifyOtp,
     onSuccess: async ({ user, accessToken }) => {
       if (accessToken) {
         await setAccessToken(accessToken);

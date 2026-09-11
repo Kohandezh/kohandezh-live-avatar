@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { LoginForm, useSession } from '@/features/authentication';
+import { PhoneLoginForm, useSession } from '@/features/authentication';
 import { Card, LoadingState } from '@/shared/ui';
 
 /**
@@ -30,7 +30,7 @@ export function LoginPage({ redirectTo = '/' }: { redirectTo?: string }) {
           {t('auth.title')}
         </h1>
         <p className="mt-1 mb-6 text-sm text-slate-600">{t('auth.subtitle')}</p>
-        <LoginForm onSuccess={() => navigate(from, { replace: true })} />
+        <PhoneLoginForm onSuccess={() => navigate(from, { replace: true })} />
       </Card>
     </section>
   );

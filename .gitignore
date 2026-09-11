@@ -25,3 +25,10 @@ apps/frontend/dist/
 apps/frontend/dev-dist/
 apps/frontend/.env.local
 apps/frontend/.env.*.local
+
+# Agent worktrees created by the desktop app
+.claude/worktrees/
+
+# Playwright output
+apps/frontend/test-results/
+apps/frontend/playwright-report/

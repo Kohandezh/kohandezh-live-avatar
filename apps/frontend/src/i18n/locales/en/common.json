@@ -17,7 +17,8 @@
     "menu": "Menu",
     "session": "Avatar console",
     "main": "Main navigation",
-    "avatar": "Avatar"
+    "avatar": "Avatar",
+    "assistant": "Assistant"
   },
   "language": {
     "label": "Language",
@@ -39,15 +40,26 @@
   },
   "auth": {
     "title": "Welcome back",
-    "subtitle": "Log in to continue.",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Log in",
-    "demoHint": "Demo accounts: admin@example.com or user@example.com. Password: password",
+    "subtitle": "Log in with your phone number.",
+    "phone": "Phone number",
+    "phoneHint": "We will send you a one-time code.",
+    "sendCode": "Send code",
+    "code": "One-time code",
+    "codeSentTo": "We sent a code to <phone>{{phone}}</phone>.",
+    "verify": "Verify",
+    "changeNumber": "Change number",
+    "resend": "Resend code",
+    "resendIn": "Resend code ({{seconds}}s)",
+    "devCodeHint": "Development code: {{code}}",
     "errors": {
-      "invalidEmail": "Enter a valid email address.",
-      "passwordMin": "Password must be at least 6 characters.",
-      "invalidCredentials": "Email or password is wrong.",
+      "invalidPhone": "Enter a valid phone number.",
+      "invalidCode": "Enter the 6-digit code.",
+      "wrongCode": "That code is wrong.",
+      "otpExpired": "This code expired. Request a new one.",
+      "otpLocked": "Too many wrong attempts. Try again in {{seconds}}s.",
+      "otpRateLimited": "Too many requests. Try again in {{seconds}}s.",
+      "accountDisabled": "This account is disabled.",
+      "offline": "You are offline. Connect to the internet to continue.",
       "failed": "Login failed. Please try again."
     }
   },
@@ -64,6 +76,11 @@
     "description": "React + Vite + Capacitor starter with a shared codebase for the mobile app, the web PWA, and the admin dashboard.",
     "goToProfile": "Open your profile",
     "loginCta": "Log in to see your profile",
+    "assistant": {
+      "title": "Talk to the assistant",
+      "description": "Ask your question out loud. Watch the answer in video, or just listen to it.",
+      "cta": "Open the assistant"
+    },
     "intro": "Development UI for the text → ElevenLabs → LiveAvatar LITE → LiveKit → Egress pipeline. Everything provider-related runs on the server; this app only holds a scoped LiveKit subscriber token for the duration of a session.",
     "open": "Open avatar console",
     "phaseTitle": "Phase 1 status",
@@ -79,6 +96,7 @@
   "profile": {
     "title": "Your profile",
     "email": "Email",
+    "noEmail": "—",
     "role": "Role",
     "memberSince": "Member since"
   },
@@ -192,6 +210,96 @@
       "room": "Room",
       "livekit": "LiveKit"
     }
+  },
+  "assistant": {
+    "title": "Assistant",
+    "subtitle": "Talk to the assistant with your voice. It answers you in real time.",
+    "sandbox": "Test mode",
+    "agentLanguage": "Speaks {{language}}",
+    "start": "Start the conversation",
+    "restart": "Start again",
+    "end": "End",
+    "interrupt": "Interrupt",
+    "remaining": "{{seconds}} s left",
+    "offline": "You are offline. The conversation needs a network connection.",
+    "languageFallback": "The assistant speaks {{language}} for now. Persian is not available from the provider yet.",
+    "languages": {
+      "en": "English",
+      "fa": "Persian"
+    },
+    "mic": {
+      "mute": "Mute the microphone",
+      "unmute": "Turn the microphone on"
+    },
+    "mode": {
+      "label": "View",
+      "voice": "Voice",
+      "video": "Video"
+    },
+    "status": {
+      "idle": "Not started",
+      "requesting": "Preparing…",
+      "connecting": "Connecting…",
+      "connected": "Live",
+      "ending": "Ending…",
+      "ended": "Ended",
+      "error": "Error"
+    },
+    "quality": {
+      "unknown": "Checking the connection",
+      "good": "Good connection",
+      "bad": "Weak connection"
+    },
+    "video": {
+      "label": "Assistant video",
+      "idle": "Press start to see and hear the assistant.",
+      "waiting": "Connected. Waiting for the video…",
+      "ended": "The conversation is over.",
+      "audioBlocked": "The browser blocked the sound.",
+      "enableAudio": "Turn the sound on"
+    },
+    "voice": {
+      "idle": "Press start, then speak.",
+      "ready": "Your turn. Say something.",
+      "listening": "Listening to you…",
+      "speaking": "The assistant is speaking…",
+      "muted": "Your microphone is off.",
+      "ending": "Ending the conversation…",
+      "ended": "The conversation is over.",
+      "error": "The conversation could not start."
+    },
+    "transcript": {
+      "title": "Conversation",
+      "emptyTitle": "Nothing said yet",
+      "empty": "What you and the assistant say appears here.",
+      "you": "You",
+      "assistant": "Assistant"
+    },
+    "ended": {
+      "title": "The conversation ended",
+      "user": "You ended the conversation. You can start a new one.",
+      "timeLimit": "The test session reached its limit of about one minute.",
+      "provider": "The assistant service closed the session."
+    },
+    "errors": {
+      "title": "The conversation could not start",
+      "code": "Error code: {{code}}",
+      "offline": "You are offline. Connect to a network and try again.",
+      "unauthorized": "Your session has expired. Log in again.",
+      "forbidden": "This account is not allowed to use the assistant.",
+      "rateLimited": "Too many conversations in a short time. Wait a moment and try again.",
+      "micPermission": "The microphone is blocked. Allow microphone access in your browser settings and try again.",
+      "micUnavailable": "No microphone was found. Connect one and try again.",
+      "provider": "The assistant service is not available right now. Try again in a moment.",
+      "network": "The server could not be reached. Check your connection and try again.",
+      "timeout": "The server took too long to answer. Try again.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
+  "widget": {
+    "title": "Assistant",
+    "open": "Open the assistant",
+    "close": "Close the assistant"
   },
   "recording": {
     "title": "Recording",

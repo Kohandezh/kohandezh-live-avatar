@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from '@/features/authentication';
+import { AssistantPage } from '@/pages/assistant/AssistantPage';
 import { HomePage } from '@/pages/home/HomePage';
 import { LoginPage } from '@/pages/login/LoginPage';
 import { NotFoundPage } from '@/pages/not-found/NotFoundPage';
@@ -12,8 +13,9 @@ export function Router() {
       <Routes>
         <Route element={<MobileLayout />}>
           <Route index element={<HomePage />} />
-          <Route path="login" element={<LoginPage />} />
+          <Route path="login" element={<LoginPage redirectTo="/assistant" />} />
           <Route element={<RequireAuth />}>
+            <Route path="assistant" element={<AssistantPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />

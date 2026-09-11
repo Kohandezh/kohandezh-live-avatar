@@ -1,10 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function login(page: Page, email: string) {
+async function login(page: Page, phone: string) {
   await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('password');
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.getByLabel('Phone number').fill(phone);
+  await page.getByRole('button', { name: 'Send code' }).click();
+  await page.getByLabel('One-time code').fill('123456');
+  await page.getByRole('button', { name: 'Verify' }).click();
 }
 
 test('anonymous visitors are sent to the login page', async ({ page }) => {
@@ -14,7 +15,7 @@ test('anonymous visitors are sent to the login page', async ({ page }) => {
 });
 
 test('an admin sees the dashboard and the users table', async ({ page }) => {
-  await login(page, 'admin@example.com');
+  await login(page, '09121234567');
 
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
   await expect(page.getByText('Total users')).toBeVisible();
@@ -25,7 +26,7 @@ test('an admin sees the dashboard and the users table', async ({ page }) => {
 });
 
 test('a normal user is blocked', async ({ page }) => {
-  await login(page, 'user@example.com');
+  await login(page, '09351234567');
 
   await expect(page).toHaveURL(/\/forbidden$/);
   await expect(page.getByRole('heading', { name: 'No access' })).toBeVisible();

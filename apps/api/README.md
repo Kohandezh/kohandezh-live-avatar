@@ -5,9 +5,12 @@ The backend. Python with FastAPI (ADR 0006).
 ## What is here
 
 ```text
-services/orchestrator/   FastAPI app, schemas, migrations, LiveKit gateway, media probe
-services/elevenlabs/     TTS client, PCM validation, deterministic content-addressed cache
-services/liveavatar/     LiveAvatar LITE session client, event socket, session manager
+services/orchestrator/       FastAPI app, schemas, migrations, LiveKit gateway, media probe
+services/orchestrator/src/auth/       phone login: one-time codes, session tokens, guards
+services/orchestrator/src/auth/asanak.py  sends the login code by SMS (OTP_DELIVERY=asanak)
+services/orchestrator/src/assistant/  assistant session tokens: voice agent (Persian) or FULL persona
+services/elevenlabs/         TTS client, PCM validation, deterministic content-addressed cache
+services/liveavatar/         LiveAvatar session client, event socket, LITE session manager
 ```
 
 Imports are rooted at `apps/api`, so modules are `services.orchestrator.src.main` and friends.
@@ -30,8 +33,9 @@ handlers in `apps/frontend/tests/utils/server.ts`.
   `apps/frontend/src/shared/api/errors.ts` normalizes both, so new endpoints may use either, but
   should stay consistent with the app they belong to. FastAPI's default validation error is
   `{"detail": [...]}` with status `422`, so the exception handler converts it.
-- **Sessions.** Web and admin use an HttpOnly cookie. Native sends `Authorization: Bearer <token>`.
-  Both must resolve to the same identity and the same role check (ADR 0002).
+- **Sessions.** Web and admin use the HttpOnly cookie `kd_session`. Native sends
+  `Authorization: Bearer <token>`. Both carry the same opaque token and resolve to the same
+  identity and role check (ADR 0002). See `docs/SECURITY.md`.
 - **Authorization.** The frontend guards are UX only. Check the role on every `/api/admin/*` request.
 - **Long work.** Answer `202` with a job id and let the client poll. Never hold a request open while
   a model runs.

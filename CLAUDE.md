@@ -6,11 +6,12 @@ You are working on a cross-platform React application in a monorepo (ADR 0008). 
 `apps/frontend/`, the backend is `apps/api/`, and shared docs are at the root. Frontend paths below
 are relative to `apps/frontend/`.
 
-One frontend codebase builds three targets:
+One frontend codebase builds four targets:
 
 - `mobile`: Android/iOS through Capacitor (`src/app/mobile`, output `dist/mobile`)
 - `web`: installable PWA for browsers (`src/app/web`, output `dist/web`)
 - `admin`: admin dashboard for staff (`src/app/admin`, output `dist/admin`)
+- `widget`: embeddable script for customer websites (`src/app/widget`, output `dist/widget`, ADR 0010)
 
 Read `ARCHITECTURE.md` and the relevant files under `docs/` before making architectural changes.
 
@@ -62,6 +63,7 @@ Do not introduce reverse dependencies.
 - Admin pages live in `src/pages/admin/` and are imported only by `src/app/admin/router.tsx`. Never import them from the mobile or web router.
 - Need to know the target at runtime? Use `env.appTarget` from `src/shared/config/env.ts`. Do not read `import.meta.env` in feature code.
 - Build target is not runtime platform. `src/shared/platform` tells whether the code runs inside Capacitor.
+- The widget target has no router and no Redux; it renders `features/assistant` inside a Shadow DOM (ADR 0010).
 
 ### Pages
 
@@ -69,7 +71,7 @@ Pages compose features and entities. Keep business logic out of pages when it ca
 
 ### Features
 
-Features represent user-facing workflows such as authentication, settings, QR scanning, calendar flows, etc.
+Features represent user-facing workflows such as authentication, the assistant, settings, QR scanning, calendar flows, etc.
 
 ### Entities
 
@@ -115,7 +117,8 @@ When you add or change an endpoint, update `docs/API.md` and `src/data/mock/hand
 
 ## Authentication
 
-Web (PWA and admin) uses secure HttpOnly cookies. The token store is in memory only.
+Login is a phone number plus a one-time code (OTP). There is no password. Web (PWA and admin)
+uses secure HttpOnly cookies. The token store is in memory only.
 
 Native uses bearer access tokens:
 
@@ -214,7 +217,7 @@ Before code:
 
 After code:
 
-- Run the affected target in the Browser pane (`.claude/launch.json` defines `mobile`, `web`, and `admin`). Walk the flow. Check phone width. Switch the language to `fa` for RTL.
+- Run the affected target in the Browser pane (`.claude/launch.json` defines `mobile`, `web`, `admin`, and `widget`). Walk the flow. Check phone width. Switch the language to `fa` for RTL.
 - Review against "UI/UX Engineering Standards" 13 and 15 in `AGENTS.md`.
 - Fix what you find before reporting.
 
@@ -234,7 +237,7 @@ pnpm build
 pnpm test --run
 ```
 
-`pnpm build` type-checks and builds all three targets. Run `pnpm test:e2e` when the change affects a user flow (needs `pnpm --filter @app/frontend exec playwright install` once).
+`pnpm build` type-checks and builds all four targets. Run `pnpm test:e2e` when the change affects a user flow (needs `pnpm --filter @app/frontend exec playwright install` once).
 
 ## Do Not
 

@@ -7,5 +7,5 @@ interface ImportMetaEnv {
   /** "true" enables the local mock API (src/data/mock). */
   readonly VITE_API_MOCK?: string;
   /** Injected at build time by vite.config.ts. "test" under Vitest. */
-  readonly VITE_APP_TARGET: 'mobile' | 'web' | 'admin' | 'test';
+  readonly VITE_APP_TARGET: 'mobile' | 'web' | 'admin' | 'widget' | 'test';
 }

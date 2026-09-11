@@ -4,6 +4,7 @@ import { paginatedSchema } from '@/shared/api';
 
 const validUser = {
   id: 'u-1',
+  phone: '+989121234567',
   firstName: 'Sara',
   lastName: 'Ahmadi',
   email: 'sara@example.com',
@@ -17,20 +18,38 @@ describe('userSchema', () => {
     expect(userSchema.parse(validUser)).toEqual(validUser);
   });
 
+  it('accepts a null email', () => {
+    expect(userSchema.safeParse({ ...validUser, email: null }).success).toBe(
+      true,
+    );
+  });
+
+  it('rejects an empty phone', () => {
+    expect(userSchema.safeParse({ ...validUser, phone: '' }).success).toBe(
+      false,
+    );
+  });
+
   it('rejects an unknown role', () => {
     expect(userSchema.safeParse({ ...validUser, role: 'root' }).success).toBe(
       false,
     );
   });
 
-  it('rejects an invalid email', () => {
-    expect(userSchema.safeParse({ ...validUser, email: 'nope' }).success).toBe(
+  it('rejects an invalid email type', () => {
+    expect(userSchema.safeParse({ ...validUser, email: 42 }).success).toBe(
       false,
     );
   });
 
   it('builds a full name', () => {
     expect(getFullName(validUser)).toBe('Sara Ahmadi');
+  });
+
+  it('falls back to the phone when there is no name yet', () => {
+    expect(
+      getFullName({ ...validUser, firstName: '', lastName: '' }),
+    ).toBe('+989121234567');
   });
 });
 

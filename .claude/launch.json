@@ -18,6 +18,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["run", "dev:admin"],
       "port": 5175
+    },
+    {
+      "name": "widget",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev:widget"],
+      "port": 5176
     }
   ]
 }

@@ -94,6 +94,7 @@ export function createMockAdapter({
       url,
       body: parseBody(config.data),
       authorization: headers.get('Authorization')?.toString(),
+      embedKey: headers.get('X-Embed-Key')?.toString(),
     };
 
     try {

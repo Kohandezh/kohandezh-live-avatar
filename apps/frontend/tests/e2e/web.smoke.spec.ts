@@ -14,11 +14,16 @@ test('home page renders', async ({ page }) => {
 test('a user can log in and see the profile', async ({ page }) => {
   await page.goto('/login');
 
-  await page.getByLabel('Email').fill('user@example.com');
-  await page.getByLabel('Password').fill('password');
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.getByLabel('Phone number').fill('09351234567');
+  await page.getByRole('button', { name: 'Send code' }).click();
+  await page.getByLabel('One-time code').fill('123456');
+  await page.getByRole('button', { name: 'Verify' }).click();
 
-  await expect(page).toHaveURL(/\/$/);
+  // Login lands on the assistant, the product's main screen.
+  await expect(page).toHaveURL(/\/assistant$/);
+  await expect(
+    page.getByRole('button', { name: 'Start the conversation' }),
+  ).toBeVisible();
   await page.getByRole('link', { name: 'Profile', exact: true }).click();
   await expect(page.getByText('User Example')).toBeVisible();
 });
