@@ -77,12 +77,20 @@ provider token with its own API key; the browser drives the session with the off
 | `providerSessionId`         | string            | LiveAvatar's own session id, for support and logs.          |
 | `sandbox`                   | boolean           | Server-side decision. The client cannot turn it off.        |
 | `avatarId`                  | string            | Public avatar in sandbox, the custom avatar in production.  |
-| `language`                  | `"fa"` \| `"en"`  | Language of the avatar persona.                             |
+| `language`                  | `"fa"` \| `"en"`  | Language the session actually started in.                   |
+| `requestedLanguage`         | `"fa"` \| `"en"`  | Language the caller asked for. See the note below.           |
 | `maxSessionDurationSeconds` | integer           | About 60 in sandbox. Drives the countdown in the UI.        |
 
 `sessionToken` is handed to `new LiveAvatarSession(...)` once, inside the feature hook, and
 never goes into Redux, storage, a URL, or a log. `toAssistantSessionInfo()` strips it before
 anything else sees the session.
+
+`language` and `requestedLanguage` differ when the provider cannot start a session in the
+requested language. Verified against the real provider on 2026-09-11: LiveAvatar FULL mode
+accepts Persian (`"fa"`) when the token is minted, but rejects it at session start, because none
+of its STT providers or its ElevenLabs TTS model support Persian yet. The backend falls back to
+a supported language (`LIVEAVATAR_ASSISTANT_LANGUAGES`, default `en`); `AssistantPanel` compares
+the two fields and shows an inline notice when a fallback happened.
 
 - Endpoints: `POST /api/assistant/session`, `POST /api/assistant/session/{id}/close`
 - Functions: `createAssistantSession(body)`, `closeAssistantSession(id)`

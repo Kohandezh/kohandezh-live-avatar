@@ -73,6 +73,7 @@ async def create_assistant_session(
         sandbox=session.sandbox,
         avatar_id=session.avatar_id,
         language=session.language,
+        requested_language=session.requested_language,
         max_session_duration_seconds=session.max_session_duration_seconds,
     )
 

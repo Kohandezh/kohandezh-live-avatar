@@ -221,6 +221,11 @@
     "interrupt": "Interrupt",
     "remaining": "{{seconds}} s left",
     "offline": "You are offline. The conversation needs a network connection.",
+    "languageFallback": "The assistant speaks {{language}} for now. Persian is not available from the provider yet.",
+    "languages": {
+      "en": "English",
+      "fa": "Persian"
+    },
     "mic": {
       "mute": "Mute the microphone",
       "unmute": "Turn the microphone on"

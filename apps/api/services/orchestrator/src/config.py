@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     liveavatar_context_id: str = ""
     liveavatar_assistant_voice_id: str = ""
     liveavatar_assistant_language: str = "fa"
+    # Languages the assistant is allowed to actually start a FULL mode session in, comma
+    # separated. Verified against the real provider on 2026-09-11: a token mint
+    # (POST /v1/sessions/token) accepts avatar_persona.language "fa", but the session start
+    # (POST /v1/sessions/start) rejects it with "Language not supported." None of the STT
+    # providers behind FULL mode (deepgram, assembly_ai, gladia, elevenlabs) support Persian, and
+    # neither does the ElevenLabs TTS model FULL mode uses. So "fa" is left out of the default
+    # until LiveAvatar adds a provider that supports it.
+    liveavatar_assistant_languages: str = "en"
     # Production avatar. Sandbox cannot use a custom avatar, so this is ignored while sandbox is on.
     liveavatar_assistant_avatar_id: str = ""
     liveavatar_assistant_max_session_seconds: int = 60
@@ -122,6 +130,15 @@ class Settings(BaseSettings):
     @property
     def embed_allowed_origin_list(self) -> list[str]:
         return _split_list(self.assistant_embed_allowed_origins)
+
+    @property
+    def assistant_language_list(self) -> list[str]:
+        """Languages the assistant may start a FULL mode session in.
+
+        Falls back to "en" when the setting is blank, so the assistant always has a language it
+        can actually use even with a bad or empty override.
+        """
+        return _split_list(self.liveavatar_assistant_languages) or ["en"]
 
     @property
     def session_ttl_seconds(self) -> int:

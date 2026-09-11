@@ -130,6 +130,13 @@ const MOCK_SANDBOX_AVATAR_ID = 'dd73ea75-1218-4ef3-92ce-606d5f7fbc0a';
 const MOCK_ASSISTANT_SESSION_ID = 'mock-assistant-session';
 /** Stands in for `ASSISTANT_EMBED_KEY`, the key the website widget sends. */
 const MOCK_EMBED_KEY = 'mock-embed-key';
+/**
+ * Languages the mock lets a session actually start in. Mirrors the backend default
+ * (`LIVEAVATAR_ASSISTANT_LANGUAGES=en`): the real provider accepts "fa" when the token is
+ * minted but rejects it at session start, so Persian is not offered until a supporting
+ * provider exists.
+ */
+const MOCK_ASSISTANT_LANGUAGES = ['en'] as const;
 
 /**
  * The assistant accepts either a logged-in user or the widget's embed key.
@@ -314,8 +321,15 @@ export const routes: MockRoute[] = [
     handle(request) {
       requireAssistantPrincipal(request);
 
-      const language =
+      // Defaults to "fa": the backend's configured preferred language is Persian, even though
+      // the provider cannot start a session in it today.
+      const requestedLanguage: 'fa' | 'en' =
         readString(request.body, 'language') === 'en' ? 'en' : 'fa';
+      const language = (MOCK_ASSISTANT_LANGUAGES as readonly string[]).includes(
+        requestedLanguage,
+      )
+        ? requestedLanguage
+        : MOCK_ASSISTANT_LANGUAGES[0];
 
       return {
         body: {
@@ -326,6 +340,7 @@ export const routes: MockRoute[] = [
           sandbox: true,
           avatarId: MOCK_SANDBOX_AVATAR_ID,
           language,
+          requestedLanguage,
           maxSessionDurationSeconds: 60,
         },
       };

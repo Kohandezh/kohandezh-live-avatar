@@ -187,5 +187,8 @@ class AssistantSessionResponse(CamelModel):
     provider_session_id: str
     sandbox: bool
     avatar_id: str
+    # The language the session actually started in. May differ from requestedLanguage: the
+    # provider does not support every language, so the backend falls back to one it does.
     language: str
+    requested_language: str
     max_session_duration_seconds: int

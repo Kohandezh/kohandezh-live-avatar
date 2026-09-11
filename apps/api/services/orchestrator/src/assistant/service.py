@@ -29,6 +29,7 @@ class AssistantSession:
     sandbox: bool
     avatar_id: str
     language: str
+    requested_language: str
     max_session_duration_seconds: int
 
 
@@ -59,10 +60,13 @@ class AssistantSessionService:
         if sandbox:
             duration = min(duration, SANDBOX_MAX_SESSION_SECONDS)
 
+        requested_language = language
+        effective_language = self._resolve_language(requested_language)
+
         data = await self.client.create_full_token(
             avatar_id=avatar_id,
             context_id=settings.liveavatar_context_id,
-            language=language,
+            language=effective_language,
             sandbox=sandbox,
             max_session_duration=duration,
             voice_id=settings.liveavatar_assistant_voice_id or None,
@@ -82,7 +86,8 @@ class AssistantSessionService:
                     "session_token_hash": hashlib.sha256(token.encode()).hexdigest(),
                     "metadata": {
                         "principal": principal,
-                        "language": language,
+                        "language": effective_language,
+                        "requested_language": requested_language,
                         "transport": "managed",
                         "max_session_duration": duration,
                     },
@@ -97,7 +102,8 @@ class AssistantSessionService:
                     "metadata": {
                         "avatar_id": avatar_id,
                         "sandbox": sandbox,
-                        "language": language,
+                        "language": effective_language,
+                        "requested_language": requested_language,
                         "principal": principal,
                     },
                 }
@@ -127,7 +133,8 @@ class AssistantSessionService:
             session_token=token,
             sandbox=sandbox,
             avatar_id=avatar_id,
-            language=language,
+            language=effective_language,
+            requested_language=requested_language,
             max_session_duration_seconds=duration,
         )
 
@@ -163,6 +170,21 @@ class AssistantSessionService:
         deadline = time.monotonic() - lifetime
         for session_id in [key for key, (_, at) in self._tokens.items() if at < deadline]:
             del self._tokens[session_id]
+
+    def _resolve_language(self, requested: str) -> str:
+        """Pick a language the provider will actually accept at session start.
+
+        The requested language wins when the provider supports it. Otherwise the configured
+        preferred language wins, if that is itself supported. Otherwise the first supported
+        language is used, so the assistant can always start.
+        """
+        supported = self.settings.assistant_language_list
+        if requested in supported:
+            return requested
+        preferred = self.settings.liveavatar_assistant_language
+        if preferred in supported:
+            return preferred
+        return supported[0]
 
     def _avatar_id(self, sandbox: bool) -> str:
         # Sandbox cannot use a custom avatar, so the client never gets to pick one.

@@ -30,16 +30,19 @@ describe('mock assistant API', () => {
     await expectStatus(createClient().post('/api/assistant/session', {}), 401);
   });
 
-  it('creates a sandbox session for a signed-in user', async () => {
+  it('creates a sandbox session for a signed-in user, falling back from Persian', async () => {
     mockSession.set('u-user');
 
     const response = await createClient().post('/api/assistant/session', {});
     const session = assistantSessionSchema.parse(response.data);
 
+    // The default requested language is "fa", but the mock only supports "en" today, matching
+    // the real provider (verified 2026-09-11: it rejects "fa" at session start).
     expect(session).toMatchObject({
       sessionToken: 'mock-session-token',
       sandbox: true,
-      language: 'fa',
+      language: 'en',
+      requestedLanguage: 'fa',
       maxSessionDurationSeconds: 60,
     });
   });
@@ -52,6 +55,7 @@ describe('mock assistant API', () => {
     );
 
     expect(response.data.language).toBe('en');
+    expect(response.data.requestedLanguage).toBe('en');
   });
 
   it('rejects a wrong embed key', async () => {
