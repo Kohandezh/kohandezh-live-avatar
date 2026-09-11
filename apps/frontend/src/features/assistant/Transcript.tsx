@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EmptyState, StatusChip } from '@/shared/ui';
+import { Chip } from '@heroui/react';
+import { EmptyState } from '@/shared/ui';
 import type { TranscriptTurn } from './types';
 
 /**
@@ -42,15 +43,17 @@ export function Transcript({ turns }: { turns: readonly TranscriptTurn[] }) {
         >
           {turns.map((turn) => (
             <li key={turn.id} className="flex flex-col items-start gap-1">
-              <StatusChip
-                tone={turn.speaker === 'avatar' ? 'accent' : 'default'}
+              <Chip
+                color={turn.speaker === 'avatar' ? 'accent' : 'default'}
+                variant="soft"
+                size="sm"
               >
                 {t(
                   turn.speaker === 'avatar'
                     ? 'assistant.transcript.assistant'
                     : 'assistant.transcript.you',
                 )}
-              </StatusChip>
+              </Chip>
               <p className="text-start text-sm text-slate-700">{turn.text}</p>
             </li>
           ))}

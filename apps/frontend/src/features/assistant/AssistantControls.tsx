@@ -98,8 +98,8 @@ export function AssistantControls({
               variant="secondary"
               className={TOUCH_TARGET}
               aria-pressed={isMicMuted}
-              disabled={!canControl}
-              onClick={() => void controller.toggleMic()}
+              isDisabled={!canControl}
+              onPress={() => void controller.toggleMic()}
             >
               <MicIcon muted={isMicMuted} />
               {t(isMicMuted ? 'assistant.mic.unmute' : 'assistant.mic.mute')}
@@ -107,16 +107,16 @@ export function AssistantControls({
             <Button
               variant="secondary"
               className={TOUCH_TARGET}
-              disabled={!canControl}
-              onClick={controller.interrupt}
+              isDisabled={!canControl}
+              onPress={controller.interrupt}
             >
               {t('assistant.interrupt')}
             </Button>
             <Button
               variant="danger"
               className={TOUCH_TARGET}
-              loading={status === 'ending'}
-              onClick={() => void controller.stop()}
+              isPending={status === 'ending'}
+              onPress={() => void controller.stop()}
             >
               <StopIcon />
               {t('assistant.end')}
@@ -125,9 +125,9 @@ export function AssistantControls({
         ) : (
           <Button
             className={TOUCH_TARGET}
-            loading={status === 'requesting' || status === 'connecting'}
-            disabled={!canStart}
-            onClick={() => void controller.start()}
+            isPending={status === 'requesting' || status === 'connecting'}
+            isDisabled={!canStart}
+            onPress={() => void controller.start()}
           >
             {t(hasFinished ? 'assistant.restart' : 'assistant.start')}
           </Button>

@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { describeError, isApiError } from '@/shared/api';
 import { useOnline } from '@/shared/hooks';
 import { formatNumber } from '@/i18n';
-import { Button, Card, InlineAlert, TextArea } from '@/shared/ui';
+import { Card, TextField, Label, TextArea as HeroTextArea, Description } from '@heroui/react';
+import { Button, InlineAlert } from '@/shared/ui';
 import { AudioPreview } from './AudioPreview';
 import { MAX_TEXT_LENGTH, selectComposerText, setComposerText } from './composerSlice';
 import { useTtsGeneration } from './useTtsGeneration';
@@ -23,38 +24,35 @@ export function TtsComposer() {
         <h2 className="text-base font-semibold text-slate-900">{t('tts.title')}</h2>
       </div>
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="tts-text" className="text-sm font-medium text-slate-900">
-            {t('tts.label')}
-          </label>
-          <TextArea
+        <TextField isDisabled={tts.isPending} fullWidth>
+          <Label>{t('tts.label')}</Label>
+          <HeroTextArea
             id="tts-text"
             name="text"
             rows={5}
             value={text}
             onChange={(event) => dispatch(setComposerText(event.target.value))}
             maxLength={MAX_TEXT_LENGTH}
-            disabled={tts.isPending}
             placeholder={t('tts.placeholder')}
             dir="auto"
             lang="fa"
             aria-describedby="tts-text-hint"
           />
-          <p id="tts-text-hint" className="text-xs text-slate-500">
+          <Description id="tts-text-hint">
             {t('tts.hint')} ·{' '}
             {t('tts.characters', {
               count: text.length,
               count_formatted: formatNumber(text.length, i18n.language),
             })}
-          </p>
-        </div>
+          </Description>
+        </TextField>
 
         <div className="flex flex-wrap gap-2">
           <Button
             variant="primary"
-            disabled={blank || !online || tts.isPending}
-            loading={tts.isPending}
-            onClick={() => tts.generate(text)}
+            isDisabled={blank || !online || tts.isPending}
+            isPending={tts.isPending}
+            onPress={() => tts.generate(text)}
           >
             {tts.isPending ? t('tts.generating') : t('tts.generate')}
           </Button>

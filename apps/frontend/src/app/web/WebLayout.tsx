@@ -51,8 +51,8 @@ export function WebLayout() {
               <Button
                 variant="ghost"
                 size="sm"
-                loading={logout.isPending}
-                onClick={() =>
+                isPending={logout.isPending}
+                onPress={() =>
                   logout.mutate(undefined, { onSettled: () => navigate('/') })
                 }
               >

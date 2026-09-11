@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { PhoneLoginForm, useSession } from '@/features/authentication';
-import { Card, LoadingState } from '@/shared/ui';
+import { Card } from '@heroui/react';
+import { LoadingState } from '@/shared/ui';
 
 /**
  * Shared by every app target. After login it returns the user to the page

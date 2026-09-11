@@ -24,33 +24,33 @@ export function AvatarControls({ controller, text, recordingActive }: Props) {
       <div className="flex flex-wrap gap-2" role="group" aria-label={t('session.title')}>
         <Button
           variant="primary"
-          disabled={!controller.canStart}
-          loading={start.isPending}
-          onClick={() => start.mutate()}
+          isDisabled={!controller.canStart}
+          isPending={start.isPending}
+          onPress={() => start.mutate()}
         >
           {start.isPending ? t('session.starting') : t('session.start')}
         </Button>
         <Button
           variant="secondary"
-          disabled={!controller.canSpeak || blank}
-          loading={speak.isPending}
-          onClick={() => speak.mutate(text)}
+          isDisabled={!controller.canSpeak || blank}
+          isPending={speak.isPending}
+          onPress={() => speak.mutate(text)}
         >
           {speak.isPending ? t('session.speaking') : t('session.speak')}
         </Button>
         <Button
           variant="secondary"
-          disabled={!controller.canInterrupt}
-          loading={interrupt.isPending}
-          onClick={() => interrupt.mutate()}
+          isDisabled={!controller.canInterrupt}
+          isPending={interrupt.isPending}
+          onPress={() => interrupt.mutate()}
         >
           {t('session.interrupt')}
         </Button>
         <Button
           variant="secondary"
-          disabled={!canClose}
-          loading={close.isPending}
-          onClick={() => close.mutate()}
+          isDisabled={!canClose}
+          isPending={close.isPending}
+          onPress={() => close.mutate()}
         >
           {close.isPending ? t('session.closing') : t('session.close')}
         </Button>

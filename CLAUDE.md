@@ -27,6 +27,7 @@ Read `ARCHITECTURE.md` and the relevant files under `docs/` before making archit
 - TypeScript with strict mode
 - Vite (one config, `APP_TARGET` picks the target)
 - Tailwind CSS v4
+- HeroUI v3 (`@heroui/react`, `@heroui/styles`)
 - TanStack Query
 - Redux Toolkit
 - React Router
@@ -156,6 +157,10 @@ Do not import Capacitor plugins directly into domain logic or pages unless there
 - Never enable `VITE_API_MOCK` outside development.
 
 ## UI
+
+Build screens with HeroUI v3 components. `src/shared/ui` only holds project compositions (Button with spinner, InlineAlert, LoadingState, EmptyState, ErrorState, KeyValue, OfflineBanner). Read the component page before using it: MCP server `heroui-react`, skill `/heroui-react`, or https://heroui.com/react/llms.txt.
+
+Use HeroUI color tokens (`bg-background`, `text-foreground`, `text-muted`, `bg-surface`, `border-border`, ...). No raw palette classes such as `slate-*`.
 
 Every asynchronous data-driven UI must handle:
 

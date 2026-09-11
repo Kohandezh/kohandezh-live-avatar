@@ -93,6 +93,29 @@ extra configuration is needed for that part.
 
 `pnpm icons` writes placeholder PWA icons to `public/icons/`. Replace them with real brand icons before release.
 
+## HeroUI docs for agents
+
+The UI component library is HeroUI v3 (`docs/DECISIONS/0011-heroui-component-library.md`). An
+agent should read the current component docs before using a component, not rely on training
+data. Three ways to get them:
+
+1. **MCP server.** `.mcp.json` registers `heroui-react` (`npx -y @heroui/react-mcp@latest`,
+   stdio, needs Node 22+). Tools: `list_components`, `get_component_docs`,
+   `get_component_source_code`, `get_component_source_styles`, `get_theme_variables`,
+   `get_docs`. Restart Claude Code after a change to `.mcp.json`; `/mcp` should then show it as
+   Connected.
+2. **Skill.** `.claude/skills/heroui-react/` holds the official HeroUI agent skill (`SKILL.md`
+   plus scripts). Claude Code discovers it on its own; it can also be called with
+   `/heroui-react`. Example: `node .claude/skills/heroui-react/scripts/get_component_docs.mjs Button`.
+3. **LLMs.txt.** `https://heroui.com/react/llms.txt` (index), `https://heroui.com/react/llms-full.txt`
+   (everything), `https://heroui.com/react/llms-components.txt`, `https://heroui.com/react/llms-patterns.txt`.
+
+Optional local copy: `npx heroui-cli@latest agents-md --react --output AGENTS.md` downloads docs
+into `.heroui-docs/` (git-ignored) and injects an index block into `AGENTS.md` between
+`<!-- HEROUI-REACT-AGENTS-MD-START -->` and `<!-- HEROUI-REACT-AGENTS-MD-END -->` markers. Do not
+commit that block: it points at files that are git-ignored, so it would be broken for everyone
+else.
+
 ## Validation
 
 ```bash

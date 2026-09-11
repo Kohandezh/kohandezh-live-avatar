@@ -32,3 +32,6 @@ apps/frontend/.env.*.local
 # Playwright output
 apps/frontend/test-results/
 apps/frontend/playwright-report/
+
+# HeroUI docs downloaded by `npx heroui-cli agents-md`
+.heroui-docs/

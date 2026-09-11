@@ -2,7 +2,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getFullName } from '@/entities/user';
 import { useLogout, useSession } from '@/features/authentication';
-import { Badge, Button, Card, LoadingState } from '@/shared/ui';
+import { Card, Chip } from '@heroui/react';
+import { Button, LoadingState } from '@/shared/ui';
 import { formatDate } from '@/shared/utils';
 
 /** Protected by RequireAuth in the router, so `user` is normally present. */
@@ -40,9 +41,9 @@ export function ProfilePage() {
           <div>
             <dt className="text-slate-500">{t('profile.role')}</dt>
             <dd className="mt-1">
-              <Badge tone={user.role === 'admin' ? 'info' : 'neutral'}>
+              <Chip color={user.role === 'admin' ? 'accent' : 'default'} variant="soft" size="sm">
                 {t(`roles.${user.role}`)}
-              </Badge>
+              </Chip>
             </dd>
           </div>
           <div>
@@ -56,8 +57,8 @@ export function ProfilePage() {
         <Button
           variant="secondary"
           className="self-start"
-          loading={logout.isPending}
-          onClick={() =>
+          isPending={logout.isPending}
+          onPress={() =>
             logout.mutate(undefined, {
               onSettled: () => navigate('/', { replace: true }),
             })

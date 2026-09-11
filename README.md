@@ -18,7 +18,7 @@ container but do not need LiveKit, Egress, or a public `wss://` endpoint; see `d
 `ARCHITECTURE.md` for that part of the system.
 
 ```text
-React + TypeScript + Vite + Tailwind (PWA, Capacitor-ready)
+React + TypeScript + Vite + Tailwind + HeroUI v3 (PWA, Capacitor-ready)
   | HTTPS/WS + scoped subscriber JWT (same-origin /api)
   v
 Nginx :8088 ---> FastAPI orchestrator
@@ -119,8 +119,8 @@ docs/              API contract and architecture decision records
 
 ## Frontend (apps/frontend)
 
-React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + TanStack Query + Redux Toolkit + React Router
-+ i18next (English and Persian RTL) + `vite-plugin-pwa` + `livekit-client` +
+React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + HeroUI v3 + TanStack Query + Redux Toolkit +
+React Router + i18next (English and Persian RTL) + `vite-plugin-pwa` + `livekit-client` +
 `@heygen/liveavatar-web-sdk`. Capacitor is configured (`capacitor.config.ts`) but no native
 shells are generated yet.
 

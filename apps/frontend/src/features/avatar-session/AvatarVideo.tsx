@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Spinner, StatusChip, type StatusTone } from '@/shared/ui';
+import { Chip, Spinner, type ChipProps } from '@heroui/react';
+import { Button } from '@/shared/ui';
+type StatusTone = NonNullable<ChipProps['color']>;
 import { setMediaTargets } from './livekitRoom';
 import type { AvatarSessionController } from './useAvatarSession';
 import type { SessionStatus } from './types';
@@ -49,7 +51,7 @@ export function AvatarVideo({ controller }: { controller: AvatarSessionControlle
 
       {!(showVideo && media.video) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center text-sm text-white/90">
-          {busy && <Spinner className="border-t-current" />}
+          {busy && <Spinner color="current" />}
           {status === 'idle' && <p>{t('session.video.idle')}</p>}
           {status === 'starting' && <p>{t('session.starting')}</p>}
           {status === 'connecting' && <p>{t('session.connecting')}</p>}
@@ -70,8 +72,8 @@ export function AvatarVideo({ controller }: { controller: AvatarSessionControlle
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={!controller.canStart}
-                onClick={() => controller.start.mutate()}
+                isDisabled={!controller.canStart}
+                onPress={() => controller.start.mutate()}
               >
                 {t('session.video.reconnect')}
               </Button>
@@ -83,14 +85,14 @@ export function AvatarVideo({ controller }: { controller: AvatarSessionControlle
       {showVideo && audioBlocked && (
         <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-black/70 p-3 text-sm text-white">
           <span>{t('session.video.audioBlocked')}</span>
-          <Button size="sm" variant="primary" onClick={() => void controller.enableAudio()}>
+          <Button size="sm" variant="primary" onPress={() => void controller.enableAudio()}>
             {t('session.video.enableAudio')}
           </Button>
         </div>
       )}
 
       <div className="absolute top-2 start-2 flex gap-1">
-        <StatusChip tone={STATUS_TONE[status]}>{t(`session.status.${status}`)}</StatusChip>
+        <Chip color={STATUS_TONE[status]} variant="soft" size="sm">{t(`session.status.${status}`)}</Chip>
       </div>
     </div>
   );

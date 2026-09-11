@@ -2,7 +2,8 @@ import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { assetsApi, describeError } from '@/shared/api';
 import { formatNumber } from '@/i18n';
-import { InlineAlert, KeyValue, LoadingState, StatusChip } from '@/shared/ui';
+import { Chip } from '@heroui/react';
+import { InlineAlert, KeyValue, LoadingState } from '@/shared/ui';
 import { pcm16ToWav } from '@/shared/utils';
 import { useAudioPcm, type AudioAsset } from '@/entities/audio-asset';
 
@@ -24,13 +25,13 @@ export function AudioPreview({ asset }: { asset: AudioAsset }) {
   return (
     <section aria-label={t('tts.preview')} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusChip tone={asset.cacheHit ? 'accent' : 'success'}>
+        <Chip color={asset.cacheHit ? 'accent' : 'success'} variant="soft" size="sm">
           {asset.cacheHit ? t('tts.cacheHit') : t('tts.cacheMiss')}
-        </StatusChip>
-        <StatusChip tone="default">
+        </Chip>
+        <Chip color="default" variant="soft" size="sm">
           {t('tts.duration')}:{' '}
           {t('tts.seconds', { value: formatNumber(asset.durationMs / 1000, i18n.language) })}
-        </StatusChip>
+        </Chip>
       </div>
       {pcm.isPending && <LoadingState label={t('tts.loadingPreview')} />}
       {pcm.isError && (

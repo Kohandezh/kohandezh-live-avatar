@@ -36,11 +36,11 @@ export function PwaUpdatePrompt() {
       </p>
       <div className="mt-3 flex gap-2">
         {needRefresh ? (
-          <Button size="sm" onClick={() => void updateServiceWorker(true)}>
+          <Button size="sm" onPress={() => void updateServiceWorker(true)}>
             {t('pwa.reload')}
           </Button>
         ) : null}
-        <Button size="sm" variant="ghost" onClick={dismiss}>
+        <Button size="sm" variant="ghost" onPress={dismiss}>
           {t('pwa.dismiss')}
         </Button>
       </div>

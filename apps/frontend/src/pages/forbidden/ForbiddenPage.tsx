@@ -18,8 +18,8 @@ export function ForbiddenPage() {
       <Button
         variant="secondary"
         className="mt-2"
-        loading={logout.isPending}
-        onClick={() =>
+        isPending={logout.isPending}
+        onPress={() =>
           logout.mutate(undefined, {
             onSettled: () => navigate('/login', { replace: true }),
           })

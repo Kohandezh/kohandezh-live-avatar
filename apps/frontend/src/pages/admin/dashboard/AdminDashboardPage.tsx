@@ -4,7 +4,8 @@ import {
   useDashboardSummary,
   type DashboardSummary,
 } from '@/entities/dashboard';
-import { Card, ErrorState, LoadingState } from '@/shared/ui';
+import { Card } from '@heroui/react';
+import { ErrorState, LoadingState } from '@/shared/ui';
 
 const statKeys: Array<keyof DashboardSummary> = [
   'totalUsers',

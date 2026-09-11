@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Adopted HeroUI v3 (`@heroui/react`, `@heroui/styles`) as the component library across mobile,
+  web, admin, and widget, replacing the hand-made Tailwind components in `src/shared/ui`. See
+  `docs/DECISIONS/0011-heroui-component-library.md` for the reasons and the component mapping.
+  Added agent tooling for it: the `heroui-react` MCP server (`.mcp.json`) and the HeroUI agent
+  skill (`.claude/skills/heroui-react/`).
 - Replaced email/password login with phone login (ADR 0002 stays the model, the credential
   changes). A user enters a phone number, gets a one-time code, and verifies it. Web keeps the
   code in the `kd_session` HttpOnly cookie; native gets a bearer token. In development the code

@@ -177,7 +177,7 @@ These live under `apps/frontend/src/`.
 - `pages/`: route-level composition. `pages/admin/` holds admin-only screens.
 - `entities/`: domain entities, Zod schemas, and server data access (`user`, `dashboard`, `assistant-session`).
 - `features/`: user-facing workflows (`authentication`, `assistant`, `settings`).
-- `shared/`: reusable domain-agnostic infrastructure (`api`, `ui`, `hooks`, `storage`, `platform`, `config`, `utils`).
+- `shared/`: reusable domain-agnostic infrastructure (`api`, `ui`, `hooks`, `storage`, `platform`, `config`, `utils`). HeroUI v3 is the component library for all four targets (ADR 0011); `shared/ui` composes HeroUI parts into project-specific components instead of building components from scratch. The widget target gets HeroUI through the same injected stylesheet it already uses for the app's own styles (ADR 0010).
 - `data/`: static and mock data.
 - `i18n/`: localization (`en`, `fa`).
 - `styles/`: global styles.

@@ -1,12 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { AssistantLanguage } from '@/entities/assistant-session';
-import {
-  Card,
-  ErrorState,
-  InlineAlert,
-  StatusChip,
-  type StatusTone,
-} from '@/shared/ui';
+import { Card, Chip, type ChipProps } from '@heroui/react';
+import { ErrorState, InlineAlert } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import { AssistantControls } from './AssistantControls';
 import { AssistantVideo } from './AssistantVideo';
@@ -14,6 +9,8 @@ import { AssistantVoiceView } from './AssistantVoiceView';
 import { Transcript } from './Transcript';
 import { useAssistantSession } from './useAssistantSession';
 import type { AssistantConnectionQuality, AssistantMode } from './types';
+
+type StatusTone = NonNullable<ChipProps['color']>;
 
 const QUALITY_TONE: Record<AssistantConnectionQuality, StatusTone> = {
   unknown: 'default',
@@ -64,23 +61,23 @@ export function AssistantPanel({
       {session && (
         <div className="flex flex-wrap items-center justify-end gap-1">
           {session.sandbox && (
-            <StatusChip tone="accent">{t('assistant.sandbox')}</StatusChip>
+            <Chip color="accent" variant="soft" size="sm">{t('assistant.sandbox')}</Chip>
           )}
           {/*
             The ElevenLabs agent always answers in its own language, so there is nothing to
             fall back from. A chip tells the user which language to speak.
           */}
           {session.agentType === 'elevenlabs' && (
-            <StatusChip>
+            <Chip variant="soft" size="sm">
               {t('assistant.agentLanguage', {
                 language: t(`assistant.languages.${session.language}`),
               })}
-            </StatusChip>
+            </Chip>
           )}
           {status === 'connected' && (
-            <StatusChip tone={QUALITY_TONE[connectionQuality]}>
+            <Chip color={QUALITY_TONE[connectionQuality]} variant="soft" size="sm">
               {t(`assistant.quality.${connectionQuality}`)}
-            </StatusChip>
+            </Chip>
           )}
         </div>
       )}

@@ -55,7 +55,7 @@ function UserIcon() {
   );
 }
 
-/** Mobile shell: top bar, content, bottom tab bar with safe-area padding. */
+/** Mobile shell: locked viewport, fixed header, scrollable content, fixed tab bar. */
 export function MobileLayout() {
   const { t } = useTranslation();
 
@@ -66,34 +66,36 @@ export function MobileLayout() {
   ];
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="safe-top sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <div className="flex h-dvh w-screen flex-col overflow-hidden bg-background">
+      <header className="safe-top z-10 shrink-0 select-none border-b border-border bg-background/80 backdrop-blur-md">
         <div className="flex h-14 items-center justify-between px-4">
-          <span className="font-semibold">{t('app.name')}</span>
+          <span className="font-semibold tracking-tight text-foreground">{t('app.name')}</span>
           <LanguageSwitcher />
         </div>
       </header>
 
-      <OfflineBanner />
+      <div className="shrink-0">
+        <OfflineBanner />
+      </div>
 
-      <main className="flex-1 px-4 pb-6">
+      <main className="flex-1 overflow-y-auto overscroll-y-contain pb-6">
         <Outlet />
       </main>
 
       <nav
         aria-label={t('nav.menu')}
-        className="safe-bottom sticky bottom-0 border-t border-slate-200 bg-white"
+        className="safe-bottom shrink-0 select-none border-t border-border bg-surface"
       >
-        <ul className="grid grid-cols-3">
+        <ul className="grid h-14 grid-cols-3">
           {tabs.map((tab) => (
-            <li key={tab.to}>
+            <li key={tab.to} className="h-full">
               <NavLink
                 to={tab.to}
                 end={tab.to === '/'}
                 className={({ isActive }) =>
                   cn(
-                    'flex h-14 flex-col items-center justify-center gap-0.5 text-xs font-medium',
-                    isActive ? 'text-slate-900' : 'text-slate-500',
+                    'flex h-full w-full flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors active:scale-95',
+                    isActive ? 'text-accent' : 'text-muted'
                   )
                 }
               >

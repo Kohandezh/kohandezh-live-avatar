@@ -1,8 +1,11 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, StatusChip, type StatusTone } from '@/shared/ui';
+import { Card, Chip, type ChipProps } from '@heroui/react';
+import { Button } from '@/shared/ui';
 import { formatNumber, formatTime } from '@/i18n';
 import { clearLog, selectLogEvents, type LogLevel } from './eventLogSlice';
+
+type StatusTone = NonNullable<ChipProps['color']>;
 
 const LEVEL_TONE: Record<LogLevel, StatusTone> = {
   info: 'accent',
@@ -30,8 +33,8 @@ export function DiagnosticsPanel() {
           <Button
             size="sm"
             variant="ghost"
-            disabled={events.length === 0}
-            onClick={() => dispatch(clearLog())}
+            isDisabled={events.length === 0}
+            onPress={() => dispatch(clearLog())}
           >
             {t('diagnostics.clear')}
           </Button>
@@ -51,9 +54,9 @@ export function DiagnosticsPanel() {
                   <time dateTime={event.at} className="font-mono text-xs text-slate-500">
                     {formatTime(event.at, 'en')}
                   </time>
-                  <StatusChip tone={LEVEL_TONE[event.level]}>
+                  <Chip color={LEVEL_TONE[event.level]} variant="soft" size="sm">
                     {t(`diagnostics.level.${event.level}`)}
-                  </StatusChip>
+                  </Chip>
                   <span className="font-mono text-xs text-slate-500">{event.source}</span>
                   <span className="break-words">{event.message}</span>
                 </div>

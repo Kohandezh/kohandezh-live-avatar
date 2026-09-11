@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatNumber } from '@/i18n';
-import { Button, Spinner, StatusChip } from '@/shared/ui';
+import { Chip, Spinner } from '@heroui/react';
+import { Button } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import { AssistantStatusChip } from './AssistantStatusChip';
 import type { AssistantController } from './useAssistantSession';
@@ -51,7 +52,7 @@ export function AssistantVideo({
 
       {!isStreaming && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center text-sm text-white/90">
-          {isBusy && <Spinner className="border-t-current" />}
+          {isBusy && <Spinner color="current" />}
           {status === 'idle' && <p>{t('assistant.video.idle')}</p>}
           {isBusy && <p>{t(`assistant.status.${status}`)}</p>}
           {status === 'connected' && <p>{t('assistant.video.waiting')}</p>}
@@ -68,7 +69,7 @@ export function AssistantVideo({
           <Button
             size="sm"
             variant="secondary"
-            onClick={controller.enableAudio}
+            onPress={controller.enableAudio}
           >
             {t('assistant.video.enableAudio')}
           </Button>
@@ -78,13 +79,15 @@ export function AssistantVideo({
       <div className="absolute top-2 start-2 flex flex-wrap items-center gap-1">
         <AssistantStatusChip status={status} />
         {remainingSeconds !== null && (
-          <StatusChip
-            tone={remainingSeconds <= WARNING_SECONDS ? 'warning' : 'default'}
+          <Chip
+            color={remainingSeconds <= WARNING_SECONDS ? 'warning' : 'default'}
+            variant="soft"
+            size="sm"
           >
             {t('assistant.remaining', {
               seconds: formatNumber(remainingSeconds, i18n.language),
             })}
-          </StatusChip>
+          </Chip>
         )}
       </div>
     </div>

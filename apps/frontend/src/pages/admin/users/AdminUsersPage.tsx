@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getFullName, useUsers } from '@/entities/user';
 import { useDebouncedValue } from '@/shared/hooks';
+import { Card, Chip } from '@heroui/react';
 import {
-  Badge,
   Button,
-  Card,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -99,16 +98,18 @@ export function AdminUsersPage() {
                     {user.email ?? '—'}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge tone={user.role === 'admin' ? 'info' : 'neutral'}>
+                    <Chip color={user.role === 'admin' ? 'accent' : 'default'} variant="soft" size="sm">
                       {t(`roles.${user.role}`, { ns: 'common' })}
-                    </Badge>
+                    </Chip>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge
-                      tone={user.status === 'active' ? 'success' : 'warning'}
+                    <Chip
+                      color={user.status === 'active' ? 'success' : 'warning'}
+                      variant="soft"
+                      size="sm"
                     >
                       {t(`status.${user.status}`, { ns: 'common' })}
-                    </Badge>
+                    </Chip>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {formatDate(user.createdAt, i18n.language)}
@@ -130,16 +131,16 @@ export function AdminUsersPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                isDisabled={page <= 1}
+                onPress={() => setPage((current) => Math.max(1, current - 1))}
               >
                 {t('users.pagination.previous')}
               </Button>
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={page >= pages}
-                onClick={() =>
+                isDisabled={page >= pages}
+                onPress={() =>
                   setPage((current) => Math.min(pages, current + 1))
                 }
               >

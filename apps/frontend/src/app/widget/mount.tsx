@@ -59,6 +59,8 @@ async function prepare(config: WidgetConfig): Promise<void> {
 function createWidgetInstance(config: WidgetConfig): AssistantWidgetInstance {
   const host = document.createElement('div');
   host.setAttribute('data-kohandezh-assistant', '');
+  // HeroUI's light-theme tokens are declared on :host([data-theme="light"]) inside a shadow tree.
+  host.setAttribute('data-theme', 'light');
   host.setAttribute('style', HOST_STYLE);
 
   // Open mode, so the page's own tests and accessibility tools can still read the tree.

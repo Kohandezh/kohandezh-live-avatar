@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { Alert } from '@heroui/react';
 import { useOnlineStatus } from '../hooks';
 
 /** Thin bar shown while the device has no network. */
@@ -9,11 +10,12 @@ export function OfflineBanner() {
   if (online) return null;
 
   return (
-    <div
-      role="status"
-      className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-900"
-    >
-      {t('states.offline')}
-    </div>
+    <Alert status="warning" role="status" className="rounded-none">
+      <Alert.Content>
+        <Alert.Description className="text-center text-sm">
+          {t('states.offline')}
+        </Alert.Description>
+      </Alert.Content>
+    </Alert>
   );
 }

@@ -33,6 +33,8 @@
   },
   "dependencies": {
     "@capacitor/core": "^7.0.0",
+    "@heroui/react": "^3.2.5",
+    "@heroui/styles": "^3.2.5",
     "@heygen/liveavatar-web-sdk": "0.0.18",
     "@hookform/resolvers": "^5.0.0",
     "@reduxjs/toolkit": "^2.0.0",

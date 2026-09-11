@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { formatNumber } from '@/i18n';
-import { Card, LoadingState, StatusChip } from '@/shared/ui';
+import { Card, Chip } from '@heroui/react';
+import { LoadingState } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import { AssistantStatusChip } from './AssistantStatusChip';
 import type { AssistantController } from './useAssistantSession';
@@ -87,13 +88,15 @@ export function AssistantVoiceView({
       <div className="flex flex-wrap items-center justify-center gap-1">
         <AssistantStatusChip status={status} />
         {remainingSeconds !== null && (
-          <StatusChip
-            tone={remainingSeconds <= WARNING_SECONDS ? 'warning' : 'default'}
+          <Chip
+            color={remainingSeconds <= WARNING_SECONDS ? 'warning' : 'default'}
+            variant="soft"
+            size="sm"
           >
             {t('assistant.remaining', {
               seconds: formatNumber(remainingSeconds, i18n.language),
             })}
-          </StatusChip>
+          </Chip>
         )}
       </div>
     </Card>

@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Spinner } from '@heroui/react';
 import { cn } from '../utils';
 import { Button } from './Button';
-import { Spinner } from './Spinner';
 
 /**
  * Every async screen must show loading, empty, and error states.
@@ -20,9 +20,8 @@ export function LoadingState({
 
   return (
     <div
-      role="status"
       className={cn(
-        'flex flex-col items-center justify-center gap-3 py-12 text-slate-500',
+        'flex flex-col items-center justify-center gap-3 py-12 text-muted',
         className,
       )}
     >
@@ -52,10 +51,10 @@ export function EmptyState({
         className,
       )}
     >
-      <p className="text-base font-medium text-slate-900">
+      <p className="text-base font-medium text-foreground">
         {title ?? t('states.empty.title')}
       </p>
-      <p className="max-w-sm text-sm text-slate-500">
+      <p className="max-w-sm text-sm text-muted">
         {description ?? t('states.empty.description')}
       </p>
       {action ? <div className="mt-2">{action}</div> : null}
@@ -84,10 +83,10 @@ export function ErrorState({
         className,
       )}
     >
-      <p className="text-base font-medium text-slate-900">
+      <p className="text-base font-medium text-foreground">
         {title ?? t('states.error.title')}
       </p>
-      <p className="max-w-sm text-sm text-slate-500">
+      <p className="max-w-sm text-sm text-muted">
         {description ?? t('states.error.description')}
       </p>
       {onRetry ? (
@@ -95,7 +94,7 @@ export function ErrorState({
           variant="secondary"
           size="sm"
           className="mt-2"
-          onClick={onRetry}
+          onPress={onRetry}
         >
           {t('states.retry')}
         </Button>
