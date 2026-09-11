@@ -144,6 +144,23 @@ empty, so a missing secret fails the deploy instead of the first login.
 when `APP_ENV=development` and delivers nothing anywhere else, which means nobody can log in.
 See `docs/SECURITY.md` for how the credentials are handled.
 
+## Sandbox to production
+
+Everything in this repository ships defaulted to LiveAvatar sandbox mode. Before a deploy that
+real users rely on, go through this checklist:
+
+- `LIVEAVATAR_SANDBOX=false`, and `LIVEAVATAR_ASSISTANT_AVATAR_ID` set to the real (non-sandbox)
+  avatar id. Sandbox sessions are free and short; production ones are neither.
+- Real embed origins in `ASSISTANT_EMBED_ALLOWED_ORIGINS` instead of `*` (which only works while
+  `APP_ENV=development` anyway).
+- `OTP_DELIVERY=asanak` with `ASANAK_USERNAME` and `ASANAK_PASSWORD` set. The backend refuses to
+  start otherwise once delivery is switched to Asanak.
+- `APP_ENV=production`. This removes `devCode` from the OTP response and stops the console
+  sender from writing codes to the log.
+- HTTPS everywhere: the web app, the admin dashboard, the widget host, and the API. Browsers only
+  grant the microphone in a secure context.
+- `CORS_ALLOWED_ORIGINS` set to the real web, admin, and widget origins, nothing else.
+
 ## Native
 
 Run Capacitor from `apps/frontend`, where `capacitor.config.ts` lives:

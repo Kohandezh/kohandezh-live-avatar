@@ -2,7 +2,7 @@
 
 ## Mission
 
-Maintain a simple, production-ready cross-platform application. One shared frontend codebase builds three targets: the mobile app (Capacitor), the web PWA, and the admin dashboard.
+Maintain a simple, production-ready cross-platform application. One shared frontend codebase builds four targets: the mobile app (Capacitor), the web PWA, the admin dashboard, and the website widget.
 
 ## Read First
 
@@ -34,10 +34,11 @@ src/
 │   ├── providers.tsx, store.ts, queryClient.ts, bootstrap.ts, mount.tsx
 │   ├── mobile/     # index.html, main.tsx, App.tsx, router.tsx, MobileLayout.tsx
 │   ├── web/        # ... WebLayout.tsx, PwaUpdatePrompt.tsx
-│   └── admin/      # ... AdminLayout.tsx
+│   ├── admin/      # ... AdminLayout.tsx
+│   └── widget/     # no router: one script + a demo index.html (ADR 0010)
 ├── pages/          # route-level composition (pages/admin/ is admin-only)
-├── entities/       # domain models (Zod), server data access, query hooks
-├── features/       # user-facing workflows (authentication, settings)
+├── entities/       # domain models (Zod), server data access, query hooks (assistant-session, user, ...)
+├── features/       # user-facing workflows (assistant, authentication, settings)
 ├── shared/         # domain-agnostic infrastructure and UI
 │   ├── api/        # the single axios client, ApiError, pagination types
 │   ├── ui/         # Button, Input, Card, Badge, states, OfflineBanner
@@ -51,7 +52,7 @@ tests/
 ├── utils/          # renderWithProviders
 ├── unit/           # pure logic, schemas, reducers, mock API
 ├── integration/    # pages and guards against the mock API
-└── e2e/            # Playwright: web.*, mobile.*, admin.* specs
+└── e2e/            # Playwright: web.*, mobile.*, admin.*, widget.* specs
 
 ```
 
@@ -63,11 +64,12 @@ pnpm links only declared dependencies. If an import cannot be resolved, add the 
 
 ## Target Rules
 
-- `APP_TARGET=mobile|web|admin` selects the Vite root (`src/app/<target>`) and output (`dist/<target>`).
+- `APP_TARGET=mobile|web|admin|widget` selects the Vite root (`src/app/<target>`) and output (`dist/<target>`).
 - Add a route to the right router only. Admin screens go to `src/pages/admin/` and `src/app/admin/router.tsx`.
 - Shared user screens (`pages/home`, `pages/profile`, ...) are used by both the mobile and web routers.
 - Only the web target has a service worker (`vite-plugin-pwa`).
 - Read the target with `env.appTarget` (`src/shared/config/env.ts`) when needed.
+- The widget target has no router and no Redux; it renders `features/assistant` inside a Shadow DOM (ADR 0010).
 
 ## Dependency Rules
 
@@ -245,7 +247,7 @@ Why this section exists: an agent tends to do the literal task in the simplest w
 
 Every non-trivial task goes through these phases in order. A trivial task (a typo, a one-line fix) can jump to Implement and Verify.
 
-1. **Understand.** Restate the goal in one sentence. List what is in scope and what is not. Name the user of the feature and the targets it touches (`mobile`, `web`, `admin`).
+1. **Understand.** Restate the goal in one sentence. List what is in scope and what is not. Name the user of the feature and the targets it touches (`mobile`, `web`, `admin`, `widget`).
 2. **Explore.** Find how the codebase already solves similar problems. Search for existing components, hooks, entities, utils, i18n keys, and tests. Read the doc under `docs/` that covers the area. Never build a second version of something that exists.
 3. **Design.** Decide where the code lives (layer and folder), the data flow (query, mutation, client state), the states (loading, empty, error, success, offline, unauthorized), and the contract changes (API, schema, i18n). When the work touches an architecture boundary, write the plan down before coding. A few lines are enough.
 4. **Implement.** Follow the existing patterns. Make the smallest change that fully solves the requirement.
@@ -266,7 +268,7 @@ Over-engineering:
 Under-engineering:
 
 - Not "only the happy path". Errors, empty data, offline, unauthorized, and slow network are part of the feature.
-- Not "works on my target". Check `mobile`, `web`, and `admin` where the change applies.
+- Not "works on my target". Check `mobile`, `web`, `admin`, and `widget` where the change applies.
 - Not "it compiles, so it is done". See Definition of Done.
 - Not "tests later". Tests are part of the change.
 
@@ -352,11 +354,11 @@ A task is done only when all of these are true:
 
 UI/UX is part of the engineering work, not a layer added after the code works. A feature that works but is confusing, inconsistent, or broken on one target is not done.
 
-These rules apply to any product built from this starter, in all three targets.
+These rules apply to any product built from this starter, in all four targets.
 
 ### 1. Understand before designing
 
-- Open the existing screens of the target. Note the layout (bottom tab bar on `mobile`, top navigation on `web`, sidebar on `admin`), the components, the spacing, and the tone.
+- Open the existing screens of the target. Note the layout (bottom tab bar on `mobile`, top navigation on `web`, sidebar on `admin`, a single floating panel on `widget`), the components, the spacing, and the tone.
 - Find similar features already implemented. Extend their pattern. Do not invent a new interaction when one exists.
 - Know the user: an end user on a phone, a visitor in a browser, or a staff member in the admin. Their goals and devices differ.
 

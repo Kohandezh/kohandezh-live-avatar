@@ -1,6 +1,6 @@
 # ARCHITECTURE
 
-Version: 0.4
+Version: 0.5
 
 ## Overview
 
@@ -125,6 +125,19 @@ Token access must be abstracted behind `getAccessToken`, `setAccessToken`, and `
 
 Session state is the `me` query (`GET /api/me`) in TanStack Query. `RequireAuth` and `RequireRole` (`src/features/authentication/guards.tsx`) protect routes. They improve UX only. The backend must check the role on every request.
 
+## Real-time Assistant
+
+`POST /api/assistant/session` mints a LiveAvatar session token with the backend's own provider
+API key and records the session; nothing of ours has to be publicly reachable. The browser then
+drives the conversation itself with LiveAvatar's SDK, which joins a LiveKit room the provider
+hosts. Two provider modes, chosen by backend configuration: a stored LiveAvatar Voice Agent
+wrapping the customer's ElevenLabs agent (Persian), and LiveAvatar FULL mode with a Context
+persona (English; FULL mode does not support Persian yet). The response's `agentType` tells the
+frontend which SDK session class to use. Every session runs in LiveAvatar sandbox mode: no
+credits are spent, the session ends after about 60 seconds, and only the public sandbox avatar is
+used; the backend enforces this and the client cannot turn it off. See `docs/API.md` and
+`docs/DECISIONS/0010-website-widget.md`.
+
 ## API Layer
 
 All backend communication goes through `src/shared/api`.
@@ -162,8 +175,8 @@ These live under `apps/frontend/src/`.
 
 - `app/`: shared bootstrap (`providers.tsx`, `store.ts`, `queryClient.ts`, `bootstrap.ts`, `mount.tsx`) plus one entry folder per target.
 - `pages/`: route-level composition. `pages/admin/` holds admin-only screens.
-- `entities/`: domain entities, Zod schemas, and server data access (`user`, `dashboard`).
-- `features/`: user-facing workflows (`authentication`, `settings`).
+- `entities/`: domain entities, Zod schemas, and server data access (`user`, `dashboard`, `assistant-session`).
+- `features/`: user-facing workflows (`authentication`, `assistant`, `settings`).
 - `shared/`: reusable domain-agnostic infrastructure (`api`, `ui`, `hooks`, `storage`, `platform`, `config`, `utils`).
 - `data/`: static and mock data.
 - `i18n/`: localization (`en`, `fa`).
