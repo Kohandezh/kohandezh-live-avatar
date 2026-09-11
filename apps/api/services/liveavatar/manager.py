@@ -22,6 +22,7 @@ class ManagedSession:
     provider_token: str
     room_name: str
     browser_token: str
+    livekit_url: str
     avatar_id: str
     sandbox: bool
     connection: LiveAvatarConnection
@@ -39,6 +40,7 @@ class LiveAvatarManager:
         default_avatar_id: str,
         public_livekit_ready: bool,
         connect_timeout: float,
+        managed_livekit: bool,
     ):
         self.client = client
         self.livekit = livekit
@@ -47,6 +49,7 @@ class LiveAvatarManager:
         self.default_avatar_id = default_avatar_id
         self.public_livekit_ready = public_livekit_ready
         self.connect_timeout = connect_timeout
+        self.managed_livekit = managed_livekit
         self.sessions: dict[UUID, ManagedSession] = {}
         self._lock = asyncio.Lock()
 
@@ -57,22 +60,34 @@ class LiveAvatarManager:
         sandbox: bool,
         max_session_duration: int,
     ) -> ManagedSession:
-        if not self.public_livekit_ready:
-            raise ConfigurationError(
-                "PUBLIC_LIVEKIT_URL must be a trusted public wss:// endpoint before "
-                "LiveAvatar cloud can join BYO LiveKit",
-                {"required": "wss:// URL plus reachable advertised WebRTC TCP/UDP ports"},
-            )
         selected_avatar = avatar_id or self.default_avatar_id
-        room = await self.livekit.create_avatar_room()
-        token_data = await self.client.create_token(
-            avatar_id=selected_avatar,
-            sandbox=sandbox,
-            max_session_duration=max_session_duration,
-            livekit_url=self.livekit.public_url,
-            livekit_room=room.room_name,
-            livekit_client_token=room.avatar_token,
-        )
+        room = None
+        if self.managed_livekit:
+            # LiveAvatar provisions the room, so nothing of ours needs to be publicly reachable.
+            token_data = await self.client.create_token(
+                avatar_id=selected_avatar,
+                sandbox=sandbox,
+                max_session_duration=max_session_duration,
+            )
+        else:
+            if not self.public_livekit_ready:
+                raise ConfigurationError(
+                    "PUBLIC_LIVEKIT_URL must be a trusted public wss:// endpoint before "
+                    "LiveAvatar cloud can join BYO LiveKit",
+                    {
+                        "required": "wss:// URL plus reachable advertised WebRTC TCP/UDP ports",
+                        "alternative": "set LIVEAVATAR_TRANSPORT=managed to let LiveAvatar host the room",
+                    },
+                )
+            room = await self.livekit.create_avatar_room()
+            token_data = await self.client.create_token(
+                avatar_id=selected_avatar,
+                sandbox=sandbox,
+                max_session_duration=max_session_duration,
+                livekit_url=self.livekit.public_url,
+                livekit_room=room.room_name,
+                livekit_client_token=room.avatar_token,
+            )
         provider_token: str | None = None
         provider_session_id: str | None = None
         connection: LiveAvatarConnection | None = None
@@ -84,23 +99,37 @@ class LiveAvatarManager:
             start_data = await self.client.start_session(provider_token)
             ws_url = self._required_provider_value(start_data, "ws_url")
             provider_session_id = start_data.get("session_id") or provider_session_id
+            if self.managed_livekit:
+                livekit_url = self._required_provider_value(start_data, "livekit_url")
+                browser_token = self._required_provider_value(start_data, "livekit_client_token")
+                # LiveAvatar does not return a room name. Their session id names the room for our records.
+                room_name = f"liveavatar-{provider_session_id}"
+            else:
+                assert room is not None
+                livekit_url = self.livekit.public_url
+                browser_token = room.browser_token
+                room_name = room.room_name
             connection = LiveAvatarConnection(ws_url, self.connect_timeout)
             await connection.connect()
             row = await self.database.create_session(
                 {
                     "provider_session_id": provider_session_id,
                     "avatar_id": selected_avatar,
-                    "room_name": room.room_name,
+                    "room_name": room_name,
                     "sandbox": sandbox,
-                    "metadata": {"max_session_duration": max_session_duration},
+                    "metadata": {
+                        "max_session_duration": max_session_duration,
+                        "transport": "managed" if self.managed_livekit else "byo",
+                    },
                 }
             )
             managed = ManagedSession(
                 id=row["id"],
                 provider_session_id=row["provider_session_id"],
                 provider_token=provider_token,
-                room_name=room.room_name,
-                browser_token=room.browser_token,
+                room_name=room_name,
+                browser_token=browser_token,
+                livekit_url=livekit_url,
                 avatar_id=selected_avatar,
                 sandbox=sandbox,
                 connection=connection,
@@ -115,7 +144,11 @@ class LiveAvatarManager:
                     "operation": "session_start",
                     "provider_resource_id": managed.provider_session_id,
                     "cache_hit": False,
-                    "metadata": {"avatar_id": selected_avatar, "sandbox": sandbox},
+                    "metadata": {
+                        "avatar_id": selected_avatar,
+                        "sandbox": sandbox,
+                        "transport": "managed" if self.managed_livekit else "byo",
+                    },
                 }
             )
         except Exception:

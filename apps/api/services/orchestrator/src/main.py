@@ -83,6 +83,7 @@ def build_services(app: FastAPI, config: Settings) -> None:
         default_avatar_id=config.liveavatar_avatar_id,
         public_livekit_ready=config.real_livekit_ready,
         connect_timeout=config.liveavatar_connect_timeout_seconds,
+        managed_livekit=config.managed_livekit,
     )
     app.state.settings = config
     app.state.database = database
@@ -227,9 +228,10 @@ async def create_avatar_session(payload: AvatarSessionRequest, request: Request)
         id=managed.id,
         provider_session_id=managed.provider_session_id,
         room_name=managed.room_name,
-        livekit_url=config.public_livekit_url,
+        livekit_url=managed.livekit_url,
         livekit_client_token=managed.browser_token,
         sandbox=managed.sandbox,
+        transport=config.liveavatar_transport,
     )
 
 
@@ -314,6 +316,15 @@ async def avatar_close(payload: AvatarActionRequest, request: Request):
 
 @app.post("/assets/generate-video")
 async def generate_video(payload: GenerateVideoRequest, request: Request):
+    if request.app.state.settings.managed_livekit:
+        raise AppError(
+            "recording_unavailable",
+            "Recording needs a room in our own LiveKit. LIVEAVATAR_TRANSPORT=managed puts the "
+            "session in LiveAvatar's room, which our Egress worker cannot join. Use "
+            "LIVEAVATAR_TRANSPORT=byo with a public LiveKit endpoint to record.",
+            409,
+            False,
+        )
     managed = request.app.state.avatar.get(payload.session_id)
     video_path = request.app.state.settings.video_cache_dir / f"{payload.asset_id}.mp4"
     async with request.app.state.coordinator.lock(f"video:{payload.asset_id}", ttl_seconds=60):

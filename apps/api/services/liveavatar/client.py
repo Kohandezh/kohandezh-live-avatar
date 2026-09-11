@@ -34,10 +34,16 @@ class LiveAvatarClient:
         avatar_id: str,
         sandbox: bool,
         max_session_duration: int,
-        livekit_url: str,
-        livekit_room: str,
-        livekit_client_token: str,
+        livekit_url: str | None = None,
+        livekit_room: str | None = None,
+        livekit_client_token: str | None = None,
     ) -> dict:
+        """Create a LITE session token.
+
+        livekit_config is optional. Omitting it asks LiveAvatar to provision the room, and
+        start_session then returns the URL and browser token to use. Passing it is the BYO path,
+        where LiveAvatar joins a room we own.
+        """
         self._require_key()
         payload = {
             "mode": "LITE",
@@ -45,12 +51,18 @@ class LiveAvatarClient:
             "is_sandbox": sandbox,
             "max_session_duration": max_session_duration,
             "video_settings": {"quality": "high", "encoding": "H264"},
-            "livekit_config": {
+        }
+        byo = (livekit_url, livekit_room, livekit_client_token)
+        if any(byo):
+            if not all(byo):
+                raise ConfigurationError(
+                    "BYO LiveKit needs livekit_url, livekit_room and livekit_client_token together"
+                )
+            payload["livekit_config"] = {
                 "livekit_url": livekit_url,
                 "livekit_room": livekit_room,
                 "livekit_client_token": livekit_client_token,
-            },
-        }
+            }
         response = await self._request(
             "POST",
             "/v1/sessions/token",

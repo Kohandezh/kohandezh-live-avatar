@@ -58,6 +58,8 @@ export interface AvatarSessionDto {
   /** Scoped subscribe-only LiveKit token. Consumed by the LiveKit SDK, never stored or logged. */
   livekit_client_token: string;
   sandbox: boolean;
+  /** "managed" means LiveAvatar owns the room, so recording is unavailable. */
+  transport: 'managed' | 'byo';
 }
 
 export interface AvatarSpeakResultDto {

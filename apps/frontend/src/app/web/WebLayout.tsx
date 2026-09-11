@@ -33,6 +33,9 @@ export function WebLayout() {
             <NavLink to="/" end className={navLinkClass}>
               {t('nav.home')}
             </NavLink>
+            <NavLink to="/avatar" className={navLinkClass}>
+              {t('nav.avatar')}
+            </NavLink>
             <NavLink to="/profile" className={navLinkClass}>
               {t('nav.profile')}
             </NavLink>

@@ -11,6 +11,8 @@ interface Props {
   sessionId: string | null;
   text: string;
   audioAssetId: string | null;
+  /** Recording needs a room we own. "managed" sessions run in LiveAvatar's room. */
+  transport: 'managed' | 'byo' | null;
 }
 
 const TONE: Record<RecordingStatus, StatusTone> = {
@@ -22,11 +24,13 @@ const TONE: Record<RecordingStatus, StatusTone> = {
   error: 'danger',
 };
 
-export function RecordingControls({ sessionId, text, audioAssetId }: Props) {
+export function RecordingControls({ sessionId, text, audioAssetId, transport }: Props) {
   const { t, i18n } = useTranslation();
   const online = useOnline();
   const rec = useRecording();
-  const canStart = online && sessionId !== null && !rec.isActive && rec.status !== 'starting';
+  const unsupported = transport === 'managed';
+  const canStart =
+    online && sessionId !== null && !unsupported && !rec.isActive && rec.status !== 'starting';
   const canStop = online && rec.isActive && rec.status !== 'finalizing';
 
   return (
@@ -58,8 +62,16 @@ export function RecordingControls({ sessionId, text, audioAssetId }: Props) {
           )}
         </div>
 
-        {sessionId === null && !rec.isActive && rec.status !== 'done' && (
-          <p className="text-sm text-slate-500">{t('recording.needsSession')}</p>
+        {unsupported ? (
+          <InlineAlert status="info" title={t('recording.unsupported.title')}>
+            {t('recording.unsupported.body')}
+          </InlineAlert>
+        ) : (
+          sessionId === null &&
+          !rec.isActive &&
+          rec.status !== 'done' && (
+            <p className="text-sm text-slate-500">{t('recording.needsSession')}</p>
+          )
         )}
         {rec.status === 'recording' && rec.active && (
           <InlineAlert status="danger" title={t('recording.recording')}>
@@ -132,7 +144,7 @@ export function RecordingControls({ sessionId, text, audioAssetId }: Props) {
             </div>
           </InlineAlert>
         )}
-        {rec.status === 'idle' && sessionId !== null && (
+        {rec.status === 'idle' && sessionId !== null && !unsupported && (
           <p className="text-sm text-slate-500">{t('recording.idle')}</p>
         )}
       </div>

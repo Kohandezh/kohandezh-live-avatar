@@ -91,3 +91,6 @@ export interface WithAvatarSession {
 export const selectAvatarSession = (state: WithAvatarSession) => state.avatarSession;
 export const selectActiveSessionId = (state: WithAvatarSession) =>
   state.avatarSession.status === 'connected' ? (state.avatarSession.session?.id ?? null) : null;
+/** Who owns the LiveKit room of the active session. Null when there is no session. */
+export const selectSessionTransport = (state: WithAvatarSession) =>
+  state.avatarSession.session?.transport ?? null;

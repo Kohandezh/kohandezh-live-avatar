@@ -16,7 +16,8 @@
     "logout": "Log out",
     "menu": "Menu",
     "session": "Avatar console",
-    "main": "Main navigation"
+    "main": "Main navigation",
+    "avatar": "Avatar"
   },
   "language": {
     "label": "Language",
@@ -214,6 +215,10 @@
       "finalizing": "Finalizing",
       "done": "Done",
       "error": "Error"
+    },
+    "unsupported": {
+      "title": "Recording is off in managed mode",
+      "body": "This session runs in LiveAvatar's own LiveKit room, so our Egress worker cannot join it to record. Set LIVEAVATAR_TRANSPORT=byo with a public LiveKit endpoint to record."
     }
   },
   "diagnostics": {

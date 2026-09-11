@@ -1,3 +1,4 @@
+import asyncio
 import json
 import struct
 
@@ -5,7 +6,7 @@ import pytest
 
 from services.elevenlabs.audio import REQUIRED_PCM
 from services.liveavatar.connection import FIRST_CHUNK_BYTES, LiveAvatarConnection
-from services.liveavatar.events import LiveAvatarEventType
+from services.liveavatar.events import IncomingEvent, LiveAvatarEventType
 from services.orchestrator.src.errors import AudioFormatError
 
 
@@ -90,3 +91,71 @@ async def test_listening_state_events_have_ids():
         {"type": "agent.start_listening", "event_id": start_id},
         {"type": "agent.stop_listening", "event_id": stop_id},
     ]
+
+
+class ReplaySocket:
+    """A socket that replays raw provider frames into the reader, then ends the stream."""
+
+    def __init__(self, frames):
+        self.frames = frames
+
+    def __aiter__(self):
+        async def gen():
+            for frame in self.frames:
+                yield frame
+
+        return gen()
+
+    async def send(self, message):
+        return None
+
+    async def close(self):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_speak_ended_is_matched_on_source_event_id():
+    """LiveAvatar stamps replies with a fresh event_id and echoes ours in source_event_id.
+
+    Correlating on event_id leaves the waiter unresolved, so /avatar/speak hangs until its
+    120s timeout even though the avatar already finished speaking.
+    """
+    connection = LiveAvatarConnection("wss://unused")
+    our_event_id = "speak-98abeea9-7466-4000-9000-000000000000"
+    key = (LiveAvatarEventType.AGENT_SPEAK_ENDED, our_event_id)
+    completion = asyncio.get_running_loop().create_future()
+    connection._event_waiters[key] = completion
+    connection.socket = ReplaySocket(
+        [
+            json.dumps(
+                {
+                    "type": "agent.speak_ended",
+                    "event_id": "9ebf2eda-c029-45d4-956b-c93272be3ba3",
+                    "source_event_id": our_event_id,
+                }
+            )
+        ]
+    )
+
+    await connection._read_events()
+
+    assert completion.done(), "agent.speak_ended did not resolve the waiter for our event id"
+
+
+@pytest.mark.asyncio
+async def test_progress_events_are_parsed_rather_than_logged_as_unknown():
+    """The buffer/state events LiveAvatar streams are known types we deliberately ignore."""
+    connection = LiveAvatarConnection("wss://unused")
+    connection.socket = ReplaySocket(
+        [
+            json.dumps({"type": "agent.audio_buffer_appended", "event_id": "a", "source_event_id": "s"}),
+            json.dumps({"type": "agent.audio_buffer_committed", "event_id": "b", "source_event_id": "s"}),
+            json.dumps({"type": "agent.state_updated", "event_id": "c", "source_event_id": None}),
+        ]
+    )
+
+    for frame in connection.socket.frames:
+        IncomingEvent.model_validate_json(frame)
+
+    await connection._read_events()
+    assert connection._event_waiters == {}

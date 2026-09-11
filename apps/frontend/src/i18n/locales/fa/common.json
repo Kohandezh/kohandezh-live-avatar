@@ -16,7 +16,8 @@
     "logout": "خروج",
     "menu": "منو",
     "session": "کنسول آواتار",
-    "main": "ناوبری اصلی"
+    "main": "ناوبری اصلی",
+    "avatar": "آواتار"
   },
   "language": {
     "label": "زبان",
@@ -214,6 +215,10 @@
       "finalizing": "در حال نهایی‌سازی",
       "done": "انجام شد",
       "error": "خطا"
+    },
+    "unsupported": {
+      "title": "ضبط در حالت managed غیرفعال است",
+      "body": "این نشست در روم LiveKit خود LiveAvatar اجرا می‌شود، بنابراین سرویس Egress ما نمی‌تواند برای ضبط به آن بپیوندد. برای ضبط، LIVEAVATAR_TRANSPORT=byo را با یک اندپوینت عمومی LiveKit تنظیم کنید."
     }
   },
   "diagnostics": {

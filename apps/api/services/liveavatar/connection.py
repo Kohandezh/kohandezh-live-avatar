@@ -72,15 +72,20 @@ class LiveAvatarConnection:
                     continue
                 logger.info(
                     "liveavatar_event",
-                    extra={"event_type": event.type.value, "event_id": event.event_id, "state": event.state},
+                    extra={
+                        "event_type": event.type.value,
+                        "event_id": event.event_id,
+                        "source_event_id": event.source_event_id,
+                        "state": event.state,
+                    },
                 )
                 if event.type == LiveAvatarEventType.SESSION_STATE_UPDATED:
                     if event.state == "connected":
                         self.connected.set()
                     elif event.state == "closed":
                         self.closed.set()
-                if event.event_id:
-                    waiter = self._event_waiters.pop((event.type, event.event_id), None)
+                if event.correlation_id:
+                    waiter = self._event_waiters.pop((event.type, event.correlation_id), None)
                     if waiter and not waiter.done():
                         waiter.set_result(event)
         except websockets.ConnectionClosed:
