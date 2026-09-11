@@ -1,8 +1,21 @@
-# Dr.Kohandezh Live Avatar — Phase 1
+# Dr.Kohandezh Live Avatar
 
-Local, Dockerized infrastructure proof for a hybrid cached/live Persian avatar. Phase 1 intentionally excludes WordPress, CRM, RAG, business conversation flows, authentication, production UX, and bulk asset generation.
+A real-time "LiveAvatar Twin" assistant. A user logs in with a phone number and a one-time code,
+then has a live voice or video conversation with the assistant, on the mobile app, the web PWA,
+or a script embedded on the customer's own website. Everything runs in LiveAvatar sandbox mode:
+no credits are spent, and every session ends after about 60 seconds.
+
+The repository also still has the Phase 1 workbench: a local, Dockerized proof for a hybrid
+cached/live Persian avatar, kept working at `/avatar` on the web target. See the Phase 1 section
+below. WordPress, CRM, RAG, and payments are permanently out of scope for this repository.
 
 ## Architecture
+
+This diagram and the "Services", "Provider contracts", and "One real smoke test" sections below
+describe the Phase 1 workbench only (the LiveAvatar LITE stack at `/avatar` on the web target).
+The assistant, the phone login, and the website widget run through the same `orchestrator`
+container but do not need LiveKit, Egress, or a public `wss://` endpoint; see `docs/API.md` and
+`ARCHITECTURE.md` for that part of the system.
 
 ```text
 React + TypeScript + Vite + Tailwind (PWA, Capacitor-ready)
@@ -55,12 +68,30 @@ Requirements: Docker Desktop/Engine with Compose v2+, at least 4 CPUs and 4 GB a
 cp .env.example .env
 ```
 
-Set strong local values for `POSTGRES_PASSWORD` and `LIVEKIT_API_SECRET`, then configure:
+Set strong local values for `POSTGRES_PASSWORD` and `LIVEKIT_API_SECRET`, then configure the
+Phase 1 workbench:
 
 - `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` for a Persian-capable voice.
 - `ELEVENLABS_MODEL_ID`; the default `eleven_v3_conversational` uses Text-to-Dialogue. Other supported models use the standard TTS endpoint.
 - `LIVEAVATAR_API_KEY` and `LIVEAVATAR_AVATAR_ID`. The example avatar is the documented LITE sandbox avatar.
 - `PUBLIC_LIVEKIT_URL` and public WebRTC networking before any real LiveAvatar session.
+
+The assistant, login, and widget need their own groups of variables. `.env.example` documents
+every one of them with a comment; the defaults already work for local development with the mock
+API (`VITE_API_MOCK=true`) or against a locally running backend. The groups are:
+
+- **Assistant**: `LIVEAVATAR_CONTEXT_ID` (the FULL mode persona), `LIVEAVATAR_ASSISTANT_VOICE_ID`,
+  `LIVEAVATAR_ASSISTANT_LANGUAGE`, `LIVEAVATAR_ASSISTANT_LANGUAGES`,
+  `LIVEAVATAR_ASSISTANT_AVATAR_ID`, `LIVEAVATAR_ASSISTANT_MAX_SESSION_SECONDS`.
+- **Voice agent** (Persian): `LIVEAVATAR_VOICE_AGENT_ID`, `LIVEAVATAR_VOICE_AGENT_LANGUAGE`. When
+  set, the assistant uses LiveAvatar's stored Voice Agent (wrapping the customer's ElevenLabs
+  agent) instead of FULL mode, because FULL mode does not support Persian yet.
+- **Embed key** (website widget): `ASSISTANT_EMBED_KEY`, `ASSISTANT_EMBED_ALLOWED_ORIGINS`,
+  `ASSISTANT_RATE_LIMIT_PER_HOUR`.
+- **OTP / Asanak** (phone login): `OTP_DELIVERY`, `OTP_CODE_LENGTH`, `OTP_TTL_SECONDS`,
+  `ADMIN_PHONES`, `SESSION_TTL_DAYS`, and, when `OTP_DELIVERY=asanak`, `ASANAK_USERNAME`,
+  `ASANAK_PASSWORD`, `ASANAK_SOURCE`, `ASANAK_TEMPLATE_ID`, `ASANAK_TEMPLATE_CODE_PARAMETER`.
+- **CORS**: `CORS_ALLOWED_ORIGINS`, the browser origins allowed to call the API with credentials.
 
 Start and stop:
 
@@ -78,8 +109,8 @@ The repository follows the cross-platform starter (`ARCHITECTURE.md`): one pnpm 
 two applications, plus the infrastructure the avatar stack needs.
 
 ```text
-apps/frontend/     React + TypeScript, one codebase, three build targets (mobile, web, admin)
-apps/api/          Python / FastAPI: orchestrator, ElevenLabs and LiveAvatar clients
+apps/frontend/     React + TypeScript, one codebase, four build targets (mobile, web, admin, widget)
+apps/api/          Python / FastAPI: orchestrator, auth, assistant, ElevenLabs and LiveAvatar clients
 infra/             LiveKit, Egress, Nginx and datastore configuration
 media/             bind-mounted audio, video and metadata written at runtime
 scripts/           health checks and the gated real-provider smoke test
@@ -89,20 +120,30 @@ docs/              API contract and architecture decision records
 ## Frontend (apps/frontend)
 
 React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + TanStack Query + Redux Toolkit + React Router
-+ i18next (English and Persian RTL) + `vite-plugin-pwa` + `livekit-client`. Capacitor is
-configured (`capacitor.config.ts`) but no native shells are generated in Phase 1.
++ i18next (English and Persian RTL) + `vite-plugin-pwa` + `livekit-client` +
+`@heygen/liveavatar-web-sdk`. Capacitor is configured (`capacitor.config.ts`) but no native
+shells are generated yet.
 
-One codebase builds three targets. The avatar workbench lives on the web target at `/avatar`.
+One codebase builds four targets: `mobile` (`http://localhost:5173`), `web`
+(`http://localhost:5174`), `admin` (`http://localhost:5175`), and `widget`
+(`http://localhost:5176`, the demo page for the website widget). The assistant lives at
+`/assistant` on the mobile and web targets, and it is the screen a user lands on after login. The
+Phase 1 workbench, kept working, lives on the web target at `/avatar` as a development tool; it
+is not part of the product a user sees.
 
 ```text
 apps/frontend/src
-├── app/        one entry per target (mobile, web, admin), providers, router, store
-├── pages/      home, avatar-session (the workbench), login, profile, admin, not-found
-├── features/   avatar-session, text-to-speech, recording, diagnostics, authentication, settings
-├── entities/   session, audio-asset, video-asset, user, dashboard (DTO -> domain mapping)
+├── app/        one entry per target (mobile, web, admin, widget), providers, router, store
+├── pages/      home, assistant, avatar-session (the workbench), login, profile, admin, not-found
+├── features/   assistant, avatar-session, text-to-speech, recording, diagnostics, authentication, settings
+├── entities/   assistant-session, session, audio-asset, video-asset, user, dashboard (DTO -> domain mapping)
 ├── i18n/       en and fa resources
 └── shared/     api (the only HTTP client), config, platform, storage, hooks, ui, utils
 ```
+
+The widget script and its demo page live under `src/app/widget/`; see ADR 0010
+(`docs/DECISIONS/0010-website-widget.md`) and `docs/DEPLOYMENT.md` for what a customer adds to
+their page.
 
 Rules enforced by ESLint: `UI component -> feature hook -> shared/api client -> FastAPI`. Every
 request goes through the single axios instance in `shared/api/client.ts`; `shared/` never imports
@@ -119,11 +160,13 @@ pnpm install
 pnpm dev            # web target, http://localhost:5174
 pnpm dev:mobile     # http://localhost:5173
 pnpm dev:admin      # http://localhost:5175
+pnpm dev:widget     # http://localhost:5176, widget demo page
 pnpm typecheck
 pnpm lint
 pnpm test --run     # vitest
 pnpm test:e2e       # playwright
-pnpm build          # all three targets into apps/frontend/dist/<target>
+pnpm build          # all four targets into apps/frontend/dist/<target>
+pnpm build:widget   # widget only, dist/widget/assistant-widget.js
 pnpm icons          # regenerate PNG icons from public/icons/*.svg
 ```
 

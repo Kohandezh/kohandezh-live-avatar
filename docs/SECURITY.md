@@ -20,6 +20,9 @@
     A client-side check is a hint, not a control.
 15. Backend secrets (model API keys, database passwords) come from the runtime environment.
     Never bake them into a container image or a build artifact.
+16. The LiveAvatar session token returned by `POST /api/assistant/session` is a per-session
+    credential for one conversation, not a login credential. The browser SDK holds it in memory
+    only; it is never put in Redux, `localStorage`, a URL, or a log, on any target.
 
 ## Sessions
 
