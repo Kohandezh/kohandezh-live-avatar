@@ -25,6 +25,11 @@ type LiveAvatarSdk = typeof import('@heygen/liveavatar-web-sdk');
 export interface UseAssistantSessionOptions {
   /** Language for the avatar persona. The backend falls back to its own default. */
   language?: AssistantLanguage;
+  /**
+   * Which view the conversation opens in. Only the first render reads it; after that the
+   * user owns the mode. The website widget uses it to honour its `mode` option.
+   */
+  initialMode?: AssistantMode;
 }
 
 /**
@@ -39,8 +44,12 @@ export interface UseAssistantSessionOptions {
  * needed once the user actually starts a conversation.
  */
 export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
-  const { language } = options;
-  const [state, dispatch] = useReducer(assistantReducer, initialAssistantState);
+  const { language, initialMode } = options;
+  const [state, dispatch] = useReducer(
+    assistantReducer,
+    initialAssistantState,
+    (base) => (initialMode ? { ...base, mode: initialMode } : base),
+  );
   const online = useOnline();
 
   const sessionRef = useRef<LiveAvatarSession | null>(null);

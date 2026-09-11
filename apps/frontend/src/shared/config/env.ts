@@ -2,10 +2,10 @@
  * Typed access to build-time configuration.
  * Read environment values here, not with import.meta.env in feature code.
  */
-export type AppTarget = 'mobile' | 'web' | 'admin' | 'test';
+export type AppTarget = 'mobile' | 'web' | 'admin' | 'widget' | 'test';
 
 export const env = {
-  /** Which app was built: mobile (Capacitor), web (PWA), or admin. */
+  /** Which app was built: mobile (Capacitor), web (PWA), admin, or the website widget. */
   appTarget: import.meta.env.VITE_APP_TARGET as AppTarget,
   appEnv: import.meta.env.VITE_APP_ENV ?? 'development',
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',

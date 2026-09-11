@@ -13,7 +13,7 @@ import { AssistantVideo } from './AssistantVideo';
 import { AssistantVoiceView } from './AssistantVoiceView';
 import { Transcript } from './Transcript';
 import { useAssistantSession } from './useAssistantSession';
-import type { AssistantConnectionQuality } from './types';
+import type { AssistantConnectionQuality, AssistantMode } from './types';
 
 const QUALITY_TONE: Record<AssistantConnectionQuality, StatusTone> = {
   unknown: 'default',
@@ -24,6 +24,8 @@ const QUALITY_TONE: Record<AssistantConnectionQuality, StatusTone> = {
 export interface AssistantPanelProps {
   /** Language for the avatar. Defaults to the language the interface is showing. */
   language?: AssistantLanguage;
+  /** Which view the conversation opens in. Defaults to video. */
+  initialMode?: AssistantMode;
   className?: string;
 }
 
@@ -31,12 +33,19 @@ export interface AssistantPanelProps {
  * The whole assistant experience in one component: it owns the single session and is shared
  * by the mobile app, the web PWA, and the website widget.
  */
-export function AssistantPanel({ language, className }: AssistantPanelProps) {
+export function AssistantPanel({
+  language,
+  initialMode,
+  className,
+}: AssistantPanelProps) {
   const { t, i18n } = useTranslation();
   const uiLanguage: AssistantLanguage = i18n.language.startsWith('fa')
     ? 'fa'
     : 'en';
-  const controller = useAssistantSession({ language: language ?? uiLanguage });
+  const controller = useAssistantSession({
+    language: language ?? uiLanguage,
+    initialMode,
+  });
 
   const {
     status,

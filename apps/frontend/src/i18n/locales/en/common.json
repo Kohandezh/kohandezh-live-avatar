@@ -290,6 +290,11 @@
       "unknown": "Something went wrong. Try again."
     }
   },
+  "widget": {
+    "title": "Assistant",
+    "open": "Open the assistant",
+    "close": "Close the assistant"
+  },
   "recording": {
     "title": "Recording",
     "start": "Start recording",

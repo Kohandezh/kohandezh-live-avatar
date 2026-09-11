@@ -9,23 +9,23 @@ One repository holds two applications (ADR 0008):
 ```text
 apps/frontend/                          apps/api/
   one React/TypeScript codebase           Python / FastAPI
-  three build targets                     (ADR 0006)
+  four build targets                      (ADR 0006)
 ```
 
-Inside `apps/frontend`, one shared codebase builds three apps (called "targets"):
+Inside `apps/frontend`, one shared codebase builds four apps (called "targets"):
 
 ```text
                          Shared Codebase
               pages · features · entities · shared · i18n
                               │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-   src/app/mobile       src/app/web         src/app/admin
-          │                   │                   │
-      Capacitor          Browser PWA        Admin dashboard
-     Android · iOS      (service worker)     (staff only)
-          │                   │                   │
-          └───────────────────┴───────────────────┘
+      ┌───────────────┬───────┴───────┬────────────────┐
+      │               │               │                │
+src/app/mobile   src/app/web    src/app/admin   src/app/widget
+      │               │               │                │
+  Capacitor      Browser PWA    Admin dashboard   Script on the
+ Android · iOS  (service worker)  (staff only)   customer's site
+      │               │               │                │
+      └───────────────┴───────────────┴────────────────┘
                               │
                               ▼ HTTP only
                      apps/api  (Python / FastAPI)
@@ -48,21 +48,24 @@ Core principles:
 
 ## App Targets
 
-A target is selected at build time with the `APP_TARGET` environment variable (`mobile`, `web`, or `admin`). See `vite.config.ts` and ADR 0004.
+A target is selected at build time with the `APP_TARGET` environment variable (`mobile`, `web`, `admin`, or `widget`). See `vite.config.ts`, ADR 0004, and ADR 0010 for the widget.
 
-| Target   | Entry folder      | Output         | Extra                                    |
-| -------- | ----------------- | -------------- | ---------------------------------------- |
-| `mobile` | `src/app/mobile/` | `dist/mobile/` | Capacitor `webDir`. No service worker.   |
-| `web`    | `src/app/web/`    | `dist/web/`    | `vite-plugin-pwa`: manifest + Workbox.   |
-| `admin`  | `src/app/admin/`  | `dist/admin/`  | Login + admin role guard on every route. |
+| Target   | Entry folder      | Output         | Extra                                              |
+| -------- | ----------------- | -------------- | -------------------------------------------------- |
+| `mobile` | `src/app/mobile/` | `dist/mobile/` | Capacitor `webDir`. No service worker.             |
+| `web`    | `src/app/web/`    | `dist/web/`    | `vite-plugin-pwa`: manifest + Workbox.             |
+| `admin`  | `src/app/admin/`  | `dist/admin/`  | Login + admin role guard on every route.           |
+| `widget` | `src/app/widget/` | `dist/widget/` | One IIFE script, Shadow DOM, embed key (ADR 0010). |
 
 Each entry folder contains only `index.html`, `main.tsx`, `App.tsx`, a router, and a layout.
-Everything else is shared. Rules:
+The widget is the exception: it has one screen, so it has no router, and its `index.html` is a
+demo page rather than the app shell. Everything else is shared. Rules:
 
 - Admin code is never bundled into the mobile or web app. Admin pages live under `src/pages/admin/` and are only imported by `src/app/admin/router.tsx`.
 - Mobile and web share the same user pages. They differ in layout (bottom tab bar vs. top navigation) and in the PWA service worker.
 - Code that needs to know the target reads `env.appTarget` from `src/shared/config/env.ts`. Do not read `import.meta.env` in feature code.
 - The build target is not the runtime platform. `src/shared/platform` answers "am I inside Capacitor?" at runtime.
+- The widget renders the shared `features/assistant` panel. It has no Redux store and no service worker, and it authenticates with a public embed key instead of a user session (ADR 0010).
 
 ## System Boundaries
 
@@ -94,10 +97,10 @@ built from this starter can replace `apps/api` with any backend that implements 
 
 Two deployment shapes are supported, and the frontend must work in both:
 
-| Shape       | Layout                                                       | CORS                          |
-| ----------- | ------------------------------------------------------------ | ----------------------------- |
-| Cloud       | Frontend and API on different origins                          | Explicit origins, credentials |
-| On-premise  | One web server serves `dist/` and proxies `/api` on one origin | Not needed (same origin)      |
+| Shape      | Layout                                                         | CORS                          |
+| ---------- | -------------------------------------------------------------- | ----------------------------- |
+| Cloud      | Frontend and API on different origins                          | Explicit origins, credentials |
+| On-premise | One web server serves `dist/` and proxies `/api` on one origin | Not needed (same origin)      |
 
 Long operations (audio transcription, document indexing) do not run inside a request. The API
 accepts the work, answers `202` with a job id, and the frontend polls the job. See `docs/API.md`.
