@@ -124,6 +124,14 @@ class Settings(BaseSettings):
     metadata_dir: Path = Path("/media/metadata")
     egress_output_dir: str = "/out"
 
+    @field_validator("asanak_template_id", mode="before")
+    @classmethod
+    def blank_template_id_means_unset(cls, value: object) -> object:
+        # .env.example ships the line empty. An empty string is "not set", not a parse error.
+        if isinstance(value, str) and not value.strip():
+            return 0
+        return value
+
     @field_validator("elevenlabs_output_format")
     @classmethod
     def pcm_24k_only(cls, value: str) -> str:
