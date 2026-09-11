@@ -1,10 +1,30 @@
 import { z } from 'zod';
 import { userSchema } from '@/entities/user';
 import { apiClient } from '@/shared/api';
-import type { LoginInput } from './schemas';
 
 /**
- * POST /api/auth/login
+ * POST /api/auth/otp/request
+ * The backend normalizes the phone to E.164 and sends (or logs, in
+ * development) a one-time code. `devCode` is present only outside production.
+ */
+export const otpRequestResponseSchema = z.object({
+  phone: z.string(),
+  expiresInSeconds: z.number(),
+  resendAfterSeconds: z.number(),
+  devCode: z.string().optional(),
+});
+
+export type OtpRequestResponse = z.infer<typeof otpRequestResponseSchema>;
+
+export async function requestOtp(input: {
+  phone: string;
+}): Promise<OtpRequestResponse> {
+  const { data } = await apiClient.post('/api/auth/otp/request', input);
+  return otpRequestResponseSchema.parse(data);
+}
+
+/**
+ * POST /api/auth/otp/verify
  * Web: the backend sets an HttpOnly session cookie and may omit accessToken.
  * Native: the backend returns accessToken, which we keep in secure storage.
  */
@@ -15,8 +35,11 @@ export const loginResponseSchema = z.object({
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 
-export async function login(input: LoginInput): Promise<LoginResponse> {
-  const { data } = await apiClient.post('/api/auth/login', input);
+export async function verifyOtp(input: {
+  phone: string;
+  code: string;
+}): Promise<LoginResponse> {
+  const { data } = await apiClient.post('/api/auth/otp/verify', input);
   return loginResponseSchema.parse(data);
 }
 

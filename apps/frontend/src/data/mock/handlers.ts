@@ -1,6 +1,6 @@
 import type { User } from '@/entities/user';
 import { mockSession } from './session';
-import { MOCK_PASSWORD, mockUsers } from './users';
+import { MOCK_OTP_CODE, mockUsers } from './users';
 
 export interface MockRequest {
   method: string;
@@ -33,9 +33,73 @@ export interface MockRoute {
 
 const TOKEN_PREFIX = 'mock-token-';
 
+/**
+ * OTP verification can create a user that is not in the seed data (an unknown
+ * phone number). Kept separate from `mockUsers` because that list is a fixed,
+ * readonly fixture used by the pagination and search tests.
+ */
+const createdUsers: User[] = [];
+
 function findUserById(id: string | null | undefined): User | undefined {
-  return id ? mockUsers.find((user) => user.id === id) : undefined;
+  if (!id) return undefined;
+  return (
+    mockUsers.find((user) => user.id === id) ??
+    createdUsers.find((user) => user.id === id)
+  );
 }
+
+function findUserByPhone(phone: string): User | undefined {
+  return (
+    mockUsers.find((user) => user.phone === phone) ??
+    createdUsers.find((user) => user.phone === phone)
+  );
+}
+
+const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
+const ARABIC_INDIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+
+function toAsciiDigits(value: string): string {
+  return value.replace(/[۰-۹٠-٩]/g, (char) => {
+    const persianIndex = PERSIAN_DIGITS.indexOf(char);
+    if (persianIndex !== -1) return String(persianIndex);
+    const arabicIndex = ARABIC_INDIC_DIGITS.indexOf(char);
+    return arabicIndex !== -1 ? String(arabicIndex) : char;
+  });
+}
+
+/**
+ * Mirrors `features/authentication/schemas.ts#normalizePhone`. Duplicated
+ * (not imported) because `data/mock` must not depend on `features` — see
+ * ARCHITECTURE.md dependency direction.
+ */
+function normalizePhone(input: string): string {
+  const compact = toAsciiDigits(input).trim().replace(/[\s-]/g, '');
+
+  if (compact.startsWith('+')) {
+    return `+${compact.slice(1).replace(/\D/g, '')}`;
+  }
+  if (compact.startsWith('0098')) {
+    return `+${compact.slice(2).replace(/\D/g, '')}`;
+  }
+  if (compact.startsWith('09')) {
+    return `+98${compact.slice(1).replace(/\D/g, '')}`;
+  }
+  return compact.replace(/\D/g, '');
+}
+
+function isValidPhone(value: string): boolean {
+  return /^\+\d{8,15}$/.test(value);
+}
+
+interface PendingOtp {
+  expiresAt: number;
+}
+
+const OTP_TTL_MS = 120_000;
+const OTP_RESEND_AFTER_SECONDS = 60;
+
+/** Pending codes, keyed by normalized phone. Cleared on verify (success or expiry). */
+const pendingOtps = new Map<string, PendingOtp>();
 
 function currentUser(request: MockRequest): User | undefined {
   const bearer = request.authorization?.replace(/^Bearer\s+/i, '');
@@ -83,18 +147,64 @@ function toInt(
 export const routes: MockRoute[] = [
   {
     method: 'post',
-    path: /^\/api\/auth\/login$/,
+    path: /^\/api\/auth\/otp\/request$/,
     handle({ body }) {
-      const email = readString(body, 'email').trim().toLowerCase();
-      const password = readString(body, 'password');
-      const user = mockUsers.find((candidate) => candidate.email === email);
+      const phone = normalizePhone(readString(body, 'phone'));
 
-      if (!user || password !== MOCK_PASSWORD) {
+      if (!isValidPhone(phone)) {
         throw new MockHttpError(
-          401,
-          'invalid_credentials',
-          'Email or password is wrong.',
+          422,
+          'validation_error',
+          'Enter a valid phone number.',
         );
+      }
+
+      pendingOtps.set(phone, { expiresAt: Date.now() + OTP_TTL_MS });
+
+      return {
+        status: 202,
+        body: {
+          phone,
+          expiresInSeconds: OTP_TTL_MS / 1000,
+          resendAfterSeconds: OTP_RESEND_AFTER_SECONDS,
+          devCode: MOCK_OTP_CODE,
+        },
+      };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/auth\/otp\/verify$/,
+    handle({ body }) {
+      const phone = normalizePhone(readString(body, 'phone'));
+      const code = readString(body, 'code').trim();
+      const pending = pendingOtps.get(phone);
+
+      if (!pending || pending.expiresAt < Date.now()) {
+        pendingOtps.delete(phone);
+        throw new MockHttpError(410, 'otp_expired', 'The code has expired.');
+      }
+
+      if (code !== MOCK_OTP_CODE) {
+        throw new MockHttpError(401, 'invalid_code', 'The code is wrong.');
+      }
+
+      pendingOtps.delete(phone);
+
+      // First successful verification of an unknown phone creates the account.
+      let user = findUserByPhone(phone);
+      if (!user) {
+        user = {
+          id: `u-otp-${createdUsers.length + 1}`,
+          phone,
+          firstName: '',
+          lastName: '',
+          email: null,
+          role: 'user',
+          status: 'active',
+          createdAt: new Date().toISOString(),
+        };
+        createdUsers.push(user);
       }
 
       if (user.status === 'disabled') {
@@ -136,9 +246,11 @@ export const routes: MockRoute[] = [
       const page = toInt(params.get('page'), 1);
       const pageSize = toInt(params.get('pageSize'), 10, 100);
 
+      // `email` is nullable now that phone is the identity; guard against
+      // stringifying `null` into a literal "null" match.
       const filtered = q
         ? mockUsers.filter((user) =>
-            `${user.firstName} ${user.lastName} ${user.email}`
+            `${user.firstName} ${user.lastName} ${user.phone} ${user.email ?? ''}`
               .toLowerCase()
               .includes(q),
           )

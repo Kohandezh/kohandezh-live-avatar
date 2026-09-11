@@ -1,8 +1,13 @@
 import type { AxiosInstance } from 'axios';
+import { isNative } from '../platform';
 import { getAccessToken } from '../storage/tokenStore';
 import { toApiError } from './errors';
 
-/** Adds `Authorization: Bearer <token>` when a token exists (native). */
+/**
+ * Adds `Authorization: Bearer <token>` when a token exists (native), and
+ * `X-Client-Platform` so the backend knows whether to set a cookie or return
+ * a bearer token from /api/auth/otp/verify.
+ */
 export function attachAuthInterceptor(client: AxiosInstance): void {
   client.interceptors.request.use(async (config) => {
     const token = await getAccessToken();
@@ -10,6 +15,8 @@ export function attachAuthInterceptor(client: AxiosInstance): void {
     if (token) {
       config.headers.set('Authorization', `Bearer ${token}`);
     }
+
+    config.headers.set('X-Client-Platform', isNative() ? 'native' : 'web');
 
     return config;
   });

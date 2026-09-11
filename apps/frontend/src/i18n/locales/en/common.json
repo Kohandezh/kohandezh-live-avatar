@@ -39,15 +39,26 @@
   },
   "auth": {
     "title": "Welcome back",
-    "subtitle": "Log in to continue.",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Log in",
-    "demoHint": "Demo accounts: admin@example.com or user@example.com. Password: password",
+    "subtitle": "Log in with your phone number.",
+    "phone": "Phone number",
+    "phoneHint": "We will send you a one-time code.",
+    "sendCode": "Send code",
+    "code": "One-time code",
+    "codeSentTo": "We sent a code to {{phone}}.",
+    "verify": "Verify",
+    "changeNumber": "Change number",
+    "resend": "Resend code",
+    "resendIn": "Resend code ({{seconds}}s)",
+    "devCodeHint": "Development code: {{code}}",
     "errors": {
-      "invalidEmail": "Enter a valid email address.",
-      "passwordMin": "Password must be at least 6 characters.",
-      "invalidCredentials": "Email or password is wrong.",
+      "invalidPhone": "Enter a valid phone number.",
+      "invalidCode": "Enter the 6-digit code.",
+      "wrongCode": "That code is wrong.",
+      "otpExpired": "This code expired. Request a new one.",
+      "otpLocked": "Too many wrong attempts. Try again in {{seconds}}s.",
+      "otpRateLimited": "Too many requests. Try again in {{seconds}}s.",
+      "accountDisabled": "This account is disabled.",
+      "offline": "You are offline. Connect to the internet to continue.",
       "failed": "Login failed. Please try again."
     }
   },
@@ -79,6 +90,7 @@
   "profile": {
     "title": "Your profile",
     "email": "Email",
+    "noEmail": "—",
     "role": "Role",
     "memberSince": "Member since"
   },

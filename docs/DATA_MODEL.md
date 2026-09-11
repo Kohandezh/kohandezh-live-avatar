@@ -8,20 +8,27 @@ Each model has a Zod schema in `apps/frontend/src/entities/<name>/types.ts`; the
 
 ## User (`src/entities/user`)
 
-| Field       | Type                       | Notes                            |
-| ----------- | -------------------------- | -------------------------------- |
-| `id`        | string                     |                                  |
-| `firstName` | string                     |                                  |
-| `lastName`  | string                     |                                  |
-| `email`     | string (email)             |                                  |
-| `role`      | `"user"` \| `"admin"`      | Backend decides. UI reads only.  |
-| `status`    | `"active"` \| `"disabled"` |                                  |
-| `createdAt` | string (ISO 8601)          | Formatted with `Intl` in the UI. |
+Login identity is the phone number (E.164, for example `+989121234567`), not email. Email is
+optional profile data and is `null` until the user sets one; there is no profile feature yet, so
+today it is only ever the value the backend returned at account creation.
 
-- Endpoints: `GET /api/me`, `GET /api/admin/users`
+| Field       | Type                       | Notes                                          |
+| ----------- | -------------------------- | ----------------------------------------------- |
+| `id`        | string                     |                                                  |
+| `phone`     | string                     | E.164. The login identity.                      |
+| `firstName` | string                     | Empty string until a profile feature exists.    |
+| `lastName`  | string                     | Empty string until a profile feature exists.    |
+| `email`     | string \| null             | Optional. `getFullName` falls back to `phone`.  |
+| `role`      | `"user"` \| `"admin"`      | Backend decides. UI reads only.                 |
+| `status`    | `"active"` \| `"disabled"` |                                                  |
+| `createdAt` | string (ISO 8601)          | Formatted with `Intl` in the UI.                |
+
+- Endpoints: `GET /api/me`, `GET /api/admin/users`, `POST /api/auth/otp/request`,
+  `POST /api/auth/otp/verify` (see `docs/API.md`)
 - Query keys: `['user', 'me']`, `['user', 'list', params]`
-- Hooks: `useCurrentUser()`, `useUsers(params)`
-- Mutations that touch it: login (`setQueryData` on `me`), logout (clears the cache)
+- Hooks: `useCurrentUser()`, `useUsers(params)`, `useRequestOtp()`, `useVerifyOtp()` (both in
+  `src/features/authentication`)
+- Mutations that touch it: OTP verify (`setQueryData` on `me`), logout (clears the cache)
 - Permissions: `me` needs a session; the list needs the admin role
 
 ### User in the backend (`users` table)
