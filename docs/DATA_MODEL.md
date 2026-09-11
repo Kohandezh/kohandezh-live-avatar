@@ -24,6 +24,26 @@ Each model has a Zod schema in `apps/frontend/src/entities/<name>/types.ts`; the
 - Mutations that touch it: login (`setQueryData` on `me`), logout (clears the cache)
 - Permissions: `me` needs a session; the list needs the admin role
 
+### User in the backend (`users` table)
+
+Created by `apps/api/services/orchestrator/migrations/002_assistant.sql`. The first successful
+one-time code check creates the row. There is no password column: the phone plus the code is the
+only credential.
+
+| Column                    | Type        | Notes                                                |
+| ------------------------- | ----------- | ---------------------------------------------------- |
+| `id`                      | uuid        | primary key                                           |
+| `phone`                   | text        | unique, E.164 (`+989123456789`)                       |
+| `first_name`, `last_name` | text        | empty strings until a profile feature exists          |
+| `email`                   | text (null) | not collected at login                                |
+| `role`                    | text        | `user` or `admin`. `ADMIN_PHONES` promotes at login.  |
+| `status`                  | text        | `active` or `disabled`. Disabled blocks login and API. |
+| `created_at`, `updated_at`| timestamptz |                                                       |
+
+The API returns an explicit allowlist of these columns as `User`
+(`id`, `phone`, `firstName`, `lastName`, `email`, `role`, `status`, `createdAt`). Nothing else
+leaves the backend.
+
 ## DashboardSummary (`src/entities/dashboard`)
 
 | Field              | Type    |

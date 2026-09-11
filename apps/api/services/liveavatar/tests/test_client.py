@@ -42,6 +42,58 @@ async def test_session_creation_is_explicit_lite_byo_livekit():
 
 
 @pytest.mark.asyncio
+async def test_full_mode_sends_the_persona_and_no_livekit_config():
+    """FULL mode runs the conversation at LiveAvatar, so we never hand them a room of ours."""
+    requests = []
+
+    async def handler(request: httpx.Request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": {"session_id": "provider", "session_token": "jwt"}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+
+    await client.create_full_token(
+        avatar_id="avatar",
+        context_id="context",
+        language="fa",
+        sandbox=True,
+        max_session_duration=60,
+        voice_id="voice",
+    )
+
+    body = json.loads(requests[0].content)
+    assert requests[0].headers["x-api-key"] == "key"
+    assert body["mode"] == "FULL"
+    assert body["interactivity_type"] == "CONVERSATIONAL"
+    assert body["is_sandbox"] is True
+    assert body["avatar_persona"] == {"context_id": "context", "language": "fa", "voice_id": "voice"}
+    assert "voice_agent" not in body
+    assert "livekit_config" not in body
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_full_mode_omits_an_empty_voice():
+    async def handler(request: httpx.Request):
+        return httpx.Response(200, json={"data": {"session_id": "provider", "session_token": "jwt"}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+
+    data = await client.create_full_token(
+        avatar_id="avatar",
+        context_id="context",
+        language="fa",
+        sandbox=True,
+        max_session_duration=60,
+    )
+
+    assert data["session_id"] == "provider"
+    await http.aclose()
+
+
+@pytest.mark.asyncio
 async def test_quota_failure_is_classified_without_retry():
     calls = 0
 
