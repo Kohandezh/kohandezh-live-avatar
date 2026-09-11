@@ -49,6 +49,29 @@ less way to get cookies wrong.
 
 Never route `/api/*` to the SPA fallback in either shape.
 
+## SMS delivery
+
+Login is a one-time code, so a deploy that people outside the team use needs a real SMS sender.
+Set `OTP_DELIVERY=asanak` and these variables:
+
+| Variable | Value |
+| --- | --- |
+| `ASANAK_USERNAME` | web service user from the Asanak panel |
+| `ASANAK_PASSWORD` | web service password (Asanak expires it, so rotate it) |
+| `ASANAK_SOURCE` | `9821700021`, the sender line the template belongs to |
+| `ASANAK_TEMPLATE_ID` | `1654`, the approved OTP template |
+| `ASANAK_TEMPLATE_CODE_PARAMETER` | `code`, the template variable holding the code |
+
+`ASANAK_BASE_URL` and `ASANAK_TIMEOUT_SECONDS` have working defaults; set them only to point at
+another endpoint or to change the 10 second timeout.
+
+The backend refuses to start when `OTP_DELIVERY=asanak` and the username or the password is
+empty, so a missing secret fails the deploy instead of the first login.
+
+`OTP_DELIVERY=console` is the default and is for development only. It writes the code to the log
+when `APP_ENV=development` and delivers nothing anywhere else, which means nobody can log in.
+See `docs/SECURITY.md` for how the credentials are handled.
+
 ## Native
 
 Run Capacitor from `apps/frontend`, where `capacitor.config.ts` lives:

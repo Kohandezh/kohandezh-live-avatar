@@ -53,6 +53,11 @@ Response `202`:
   neither returned nor logged.
 - `429 otp_rate_limited` with `details: { "retryAfterSeconds": n }`. The limits are one code per
   minute and five codes per hour for one phone, and twenty codes per hour for one IP address.
+- `502 otp_delivery_failed` when the SMS provider does not accept the message
+  (`OTP_DELIVERY=asanak`). `retryable` is `true` for a provider timeout or a provider 5xx, and
+  `false` for anything the provider rejected, such as a bad destination or an expired password.
+  The message never carries the code or the provider credentials; the provider status code is in
+  the backend log, not in the response.
 
 ### POST /api/auth/otp/verify
 
