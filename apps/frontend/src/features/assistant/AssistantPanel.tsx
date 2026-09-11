@@ -52,10 +52,21 @@ export function AssistantPanel({ language, className }: AssistantPanelProps) {
   return (
     <Card className={cn('flex flex-col gap-4', className)}>
       {/* The page (or the widget host) owns the heading, so the card only carries state. */}
-      {(session?.sandbox || status === 'connected') && (
+      {session && (
         <div className="flex flex-wrap items-center justify-end gap-1">
-          {session?.sandbox && (
+          {session.sandbox && (
             <StatusChip tone="accent">{t('assistant.sandbox')}</StatusChip>
+          )}
+          {/*
+            The ElevenLabs agent always answers in its own language, so there is nothing to
+            fall back from. A chip tells the user which language to speak.
+          */}
+          {session.agentType === 'elevenlabs' && (
+            <StatusChip>
+              {t('assistant.agentLanguage', {
+                language: t(`assistant.languages.${session.language}`),
+              })}
+            </StatusChip>
           )}
           {status === 'connected' && (
             <StatusChip tone={QUALITY_TONE[connectionQuality]}>
@@ -69,13 +80,15 @@ export function AssistantPanel({ language, className }: AssistantPanelProps) {
         <InlineAlert status="warning">{t('assistant.offline')}</InlineAlert>
       )}
 
-      {session && session.language !== session.requestedLanguage && (
-        <InlineAlert status="info">
-          {t('assistant.languageFallback', {
-            language: t(`assistant.languages.${session.language}`),
-          })}
-        </InlineAlert>
-      )}
+      {/* Only FULL mode can fall back: it is the path that cannot start a Persian session. */}
+      {session?.agentType === 'full' &&
+        session.language !== session.requestedLanguage && (
+          <InlineAlert status="info">
+            {t('assistant.languageFallback', {
+              language: t(`assistant.languages.${session.language}`),
+            })}
+          </InlineAlert>
+        )}
 
       {status === 'error' && error && (
         <div>

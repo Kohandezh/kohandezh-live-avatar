@@ -67,8 +67,8 @@ leaves the backend.
 
 ## AssistantSession (`src/entities/assistant-session`)
 
-One real-time conversation with the LiveAvatar assistant (FULL mode). The backend mints the
-provider token with its own API key; the browser drives the session with the official SDK.
+One real-time conversation with the LiveAvatar assistant. The backend mints the provider token
+with its own API key; the browser drives the session with the official SDK.
 
 | Field                       | Type              | Notes                                                     |
 | --------------------------- | ----------------- | --------------------------------------------------------- |
@@ -80,17 +80,29 @@ provider token with its own API key; the browser drives the session with the off
 | `language`                  | `"fa"` \| `"en"`  | Language the session actually started in.                   |
 | `requestedLanguage`         | `"fa"` \| `"en"`  | Language the caller asked for. See the note below.           |
 | `maxSessionDurationSeconds` | integer           | About 60 in sandbox. Drives the countdown in the UI.        |
+| `agentType`                 | `"elevenlabs"` \| `"full"` | Which SDK session class drives the token.        |
 
-`sessionToken` is handed to `new LiveAvatarSession(...)` once, inside the feature hook, and
-never goes into Redux, storage, a URL, or a log. `toAssistantSessionInfo()` strips it before
-anything else sees the session.
+`sessionToken` is handed to the SDK session once, inside the feature hook, and never goes into
+Redux, storage, a URL, or a log. `toAssistantSessionInfo()` strips it before anything else sees
+the session.
 
-`language` and `requestedLanguage` differ when the provider cannot start a session in the
-requested language. Verified against the real provider on 2026-09-11: LiveAvatar FULL mode
-accepts Persian (`"fa"`) when the token is minted, but rejects it at session start, because none
-of its STT providers or its ElevenLabs TTS model support Persian yet. The backend falls back to
-a supported language (`LIVEAVATAR_ASSISTANT_LANGUAGES`, default `en`); `AssistantPanel` compares
-the two fields and shows an inline notice when a fallback happened.
+`agentType` follows the backend's provider mode (see `docs/API.md`):
+
+- `elevenlabs`: a LiveAvatar Voice Agent wrapping the customer's ElevenLabs agent. The hook uses
+  `ElevenLabsAgentSession`, transcripts arrive as `elevenlabs_agent_event`, and a typed turn goes
+  out with `sendUserMessage()`. This is the only path that speaks Persian today.
+- `full`: FULL mode with a LiveAvatar context. The hook uses `LiveAvatarSession`, transcripts
+  arrive as `user.transcription` / `avatar.transcription`, and a typed turn goes out with
+  `message()`.
+
+`language` and `requestedLanguage` differ for two reasons. In the `elevenlabs` mode `language` is
+always the agent's own language, because LiveAvatar rejects a per-session language override for
+that agent type. In the `full` mode they differ when FULL mode cannot start a session in the
+requested language. Verified against the real provider on 2026-09-11: LiveAvatar FULL mode accepts
+Persian (`"fa"`) when the token is minted, but rejects it at session start, because none of its STT
+providers or its ElevenLabs TTS model support Persian yet. The backend falls back to a supported
+language (`LIVEAVATAR_ASSISTANT_LANGUAGES`, default `en`); `AssistantPanel` shows an inline notice
+when that fallback happened.
 
 - Endpoints: `POST /api/assistant/session`, `POST /api/assistant/session/{id}/close`
 - Functions: `createAssistantSession(body)`, `closeAssistantSession(id)`

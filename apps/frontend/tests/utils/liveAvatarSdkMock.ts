@@ -36,7 +36,22 @@ export const AgentEventsEnum = {
   AVATAR_TRANSCRIPTION_CHUNK: 'avatar.transcription.chunk',
   AVATAR_SPEAK_STARTED: 'avatar.speak_started',
   AVATAR_SPEAK_ENDED: 'avatar.speak_ended',
+  ELEVENLABS_AGENT_EVENT: 'elevenlabs_agent_event',
   SESSION_STOPPED: 'session.stopped',
+} as const;
+
+export const AgentType = {
+  FULL: 'FULL',
+  OPENAI_REALTIME: 'OPENAI_REALTIME',
+  ELEVENLABS_AGENT: 'ELEVENLABS_AGENT',
+  GEMINI_REALTIME: 'GEMINI_REALTIME',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+
+export const VoiceChatState = {
+  INACTIVE: 'INACTIVE',
+  STARTING: 'STARTING',
+  ACTIVE: 'ACTIVE',
 } as const;
 
 export const VoiceChatEvent = {
@@ -87,7 +102,17 @@ class FakeEmitter {
 }
 
 class FakeVoiceChat extends FakeEmitter {
-  isMuted = false;
+  /** Like the real SDK: no microphone track means muted. */
+  isMuted = true;
+  state: string = VoiceChatState.INACTIVE;
+
+  /** The real `start()` is what asks the browser for the microphone. */
+  async start(config: { defaultMuted?: boolean } = {}): Promise<void> {
+    if (sdkState.micError) throw sdkState.micError;
+    this.state = VoiceChatState.ACTIVE;
+    this.isMuted = config.defaultMuted === true;
+    this.emit(this.isMuted ? VoiceChatEvent.MUTED : VoiceChatEvent.UNMUTED);
+  }
 
   async mute(): Promise<void> {
     if (sdkState.muteError) throw sdkState.muteError;
@@ -102,12 +127,21 @@ class FakeVoiceChat extends FakeEmitter {
   }
 }
 
+let elevenLabsEventCounter = 0;
+
 /** What the tests set up before a run and assert afterwards. */
 export const sdkState = {
   /** Thrown by `start()` when set. */
   startError: null as Error | null,
+  /** Holds `start()` open, so a test can watch what happens before it resolves. */
+  startGate: null as Promise<void> | null,
   /** Thrown by `mute()` and `unmute()` when set, like a denied microphone. */
   muteError: null as Error | null,
+  /** Thrown by `voiceChat.start()` when set. The real SDK swallows it during `start()`. */
+  micError: null as Error | null,
+  /** What `parseAgentTypeFromToken` answers. Decides which session class the hook builds. */
+  agentType: AgentType.FULL as (typeof AgentType)[keyof typeof AgentType],
+  sentUserMessages: [] as string[],
   startCount: 0,
   stopCount: 0,
   attachCount: 0,
@@ -133,6 +167,27 @@ export class FakeLiveAvatarSession extends FakeEmitter {
   async start(): Promise<void> {
     sdkState.startCount += 1;
     if (sdkState.startError) throw sdkState.startError;
+    if (sdkState.startGate) await sdkState.startGate;
+    // The real SDK starts the voice chat inside `start()` and only warns when it fails.
+    try {
+      await this.voiceChat.start({ defaultMuted: false });
+    } catch {
+      // Same as the SDK: the conversation still runs, the avatar just cannot hear.
+    }
+  }
+
+  /** Emits one ElevenLabs agent event, in the shape the SDK forwards it. */
+  emitElevenLabsEvent(
+    elevenLabsEventType: string,
+    data: Record<string, unknown>,
+    eventId = `el-${(elevenLabsEventCounter += 1)}`,
+  ): void {
+    this.emit(AgentEventsEnum.ELEVENLABS_AGENT_EVENT, {
+      event_id: eventId,
+      event_type: AgentEventsEnum.ELEVENLABS_AGENT_EVENT,
+      elevenlabs_event_type: elevenLabsEventType,
+      data,
+    });
   }
 
   async stop(): Promise<void> {
@@ -156,6 +211,22 @@ export class FakeLiveAvatarSession extends FakeEmitter {
   }
 }
 
+/** The Persian path: same lifecycle, a different way to send a typed turn. */
+export class FakeElevenLabsAgentSession extends FakeLiveAvatarSession {
+  message(): string {
+    throw new Error('message() is not supported on ElevenLabsAgentSession');
+  }
+
+  sendUserMessage(text: string): string {
+    sdkState.sentUserMessages.push(text);
+    return `mock-user-message-${sdkState.sentUserMessages.length}`;
+  }
+}
+
+export function parseAgentTypeFromToken(): string {
+  return sdkState.agentType;
+}
+
 export function lastFakeSession(): FakeLiveAvatarSession {
   const session = FakeLiveAvatarSession.instances.at(-1);
   if (!session) throw new Error('No LiveAvatarSession was created.');
@@ -164,8 +235,13 @@ export function lastFakeSession(): FakeLiveAvatarSession {
 
 export function resetLiveAvatarSdkMock(): void {
   FakeLiveAvatarSession.instances = [];
+  elevenLabsEventCounter = 0;
   sdkState.startError = null;
+  sdkState.startGate = null;
   sdkState.muteError = null;
+  sdkState.micError = null;
+  sdkState.agentType = AgentType.FULL;
+  sdkState.sentUserMessages = [];
   sdkState.startCount = 0;
   sdkState.stopCount = 0;
   sdkState.attachCount = 0;
@@ -176,10 +252,14 @@ export function resetLiveAvatarSdkMock(): void {
 export function createLiveAvatarSdkMockModule() {
   return {
     LiveAvatarSession: FakeLiveAvatarSession,
+    ElevenLabsAgentSession: FakeElevenLabsAgentSession,
+    parseAgentTypeFromToken,
+    AgentType,
     SessionEvent,
     SessionState,
     AgentEventsEnum,
     VoiceChatEvent,
+    VoiceChatState,
     ConnectionQuality,
   };
 }

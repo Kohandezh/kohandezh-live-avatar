@@ -9,11 +9,18 @@ vi.mock('@heygen/liveavatar-web-sdk', async () => {
   return mock.createLiveAvatarSdkMockModule();
 });
 
-import { installMockApi, mockSession } from '@/data/mock';
-import { AssistantPanel } from '@/features/assistant';
+import {
+  MOCK_ASSISTANT_AGENT_TYPE,
+  installMockApi,
+  mockAssistant,
+  mockSession,
+} from '@/data/mock';
+import { AssistantPanel, useAssistantSession } from '@/features/assistant';
 import { apiClient } from '@/shared/api';
 import {
   AgentEventsEnum,
+  AgentType,
+  FakeElevenLabsAgentSession,
   FakeLiveAvatarSession,
   SessionEvent,
   lastFakeSession,
@@ -55,10 +62,17 @@ function emitStreamReady() {
   act(() => lastFakeSession().emit(SessionEvent.SESSION_STREAM_READY));
 }
 
+/** Makes both the token and the backend answer describe the Persian ElevenLabs agent. */
+function configureElevenLabsAgent() {
+  sdkState.agentType = AgentType.ELEVENLABS_AGENT;
+  mockAssistant.agentType = 'elevenlabs';
+}
+
 describe('AssistantPanel', () => {
   beforeEach(() => {
     resetLiveAvatarSdkMock();
     installRecordingMockApi();
+    mockAssistant.agentType = MOCK_ASSISTANT_AGENT_TYPE;
     mockSession.set('u-user');
     setOnline(true);
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
@@ -276,6 +290,8 @@ describe('AssistantPanel', () => {
   });
 
   it('tells the user when the provider could not honor the requested language', async () => {
+    // Only the FULL mode path can fall back; the voice agent always answers in its own language.
+    mockAssistant.agentType = 'full';
     renderWithProviders(<AssistantPanel language="fa" />);
     await startConversation();
 
@@ -300,5 +316,156 @@ describe('AssistantPanel', () => {
     expect(
       screen.getByRole('button', { name: 'Start the conversation' }),
     ).toBeDisabled();
+  });
+  it('drives the Persian agent with the ElevenLabs session class', async () => {
+    configureElevenLabsAgent();
+    renderWithProviders(<AssistantPanel />);
+    await startConversation();
+
+    expect(lastFakeSession()).toBeInstanceOf(FakeElevenLabsAgentSession);
+    // The agent owns the language, so the panel says which one instead of a fallback notice.
+    expect(screen.getByText('Speaks Persian')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Persian is not available from the provider yet/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the conversation from the ElevenLabs event stream', async () => {
+    configureElevenLabsAgent();
+    renderWithProviders(<AssistantPanel />);
+    await startConversation();
+
+    act(() => {
+      const session = lastFakeSession();
+      session.emitElevenLabsEvent('user_transcript', {
+        user_transcription_event: { user_transcript: 'سلام' },
+      });
+      session.emitElevenLabsEvent('agent_response', {
+        agent_response_event: { agent_response: 'سلام، چطور کمک کنم؟' },
+      });
+      // The same answer arriving again on the generic stream must not be listed twice.
+      session.emit(AgentEventsEnum.AVATAR_TRANSCRIPTION, {
+        event_id: 'a-duplicate',
+        text: 'سلام، چطور کمک کنم؟',
+      });
+    });
+
+    expect(await screen.findByText('سلام')).toBeInTheDocument();
+    // Twice: once in the list and once in the live region that announces the answer.
+    expect(screen.getAllByText('سلام، چطور کمک کنم؟')).toHaveLength(2);
+    expect(screen.getByText('You')).toBeInTheDocument();
+    expect(screen.getByText('Assistant')).toBeInTheDocument();
+  });
+
+  it('warns when the microphone was refused and recovers on a retry', async () => {
+    sdkState.micError = new DOMException('denied', 'NotAllowedError');
+    renderWithProviders(<AssistantPanel />);
+    const user = await startConversation();
+
+    // The avatar still plays, so this is a warning, not a failed start.
+    expect(
+      screen.getByText(
+        'The microphone is blocked. Allow microphone access in your browser settings and try again.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('The conversation could not start'),
+    ).not.toBeInTheDocument();
+
+    sdkState.micError = null;
+    await user.click(
+      screen.getByRole('button', { name: /Turn the microphone on/ }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: /Mute the microphone/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'The microphone is blocked. Allow microphone access in your browser settings and try again.',
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reaches the connected state from the stream, before start() resolves', async () => {
+    // The real FULL session resolves `start()` only after both LiveAvatar participants joined,
+    // which left the UI on "Connecting…" while the avatar was already talking.
+    let releaseStart = () => {};
+    sdkState.startGate = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    renderWithProviders(<AssistantPanel />);
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Start the conversation' }));
+    await waitFor(() => expect(FakeLiveAvatarSession.instances).toHaveLength(1));
+    emitStreamReady();
+
+    expect(await screen.findAllByText('Live')).not.toHaveLength(0);
+    expect(sdkState.attachCount).toBeGreaterThan(0);
+
+    await act(async () => {
+      releaseStart();
+      await sdkState.startGate;
+    });
+  });
+});
+
+/** `sendText` has no control in the panel yet, so the hook is driven through a probe. */
+describe('useAssistantSession text turns', () => {
+  function TextTurnProbe() {
+    const controller = useAssistantSession();
+    return (
+      <div>
+        <button type="button" onClick={() => void controller.start()}>
+          start
+        </button>
+        <button type="button" onClick={() => controller.sendText('سلام')}>
+          send
+        </button>
+        <span>{controller.status}</span>
+        <ul>
+          {controller.transcript.map((turn) => (
+            <li key={turn.id}>{turn.text}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  beforeEach(() => {
+    resetLiveAvatarSdkMock();
+    installRecordingMockApi();
+    mockAssistant.agentType = MOCK_ASSISTANT_AGENT_TYPE;
+    mockSession.set('u-user');
+    setOnline(true);
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  });
+
+  it('sends a typed turn as a user message to the ElevenLabs agent', async () => {
+    configureElevenLabsAgent();
+    const user = userEvent.setup();
+    renderWithProviders(<TextTurnProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'start' }));
+    await screen.findByText('connected');
+    await user.click(screen.getByRole('button', { name: 'send' }));
+
+    // `message()` throws on that session class, so this proves the right call was made.
+    expect(sdkState.sentUserMessages).toEqual(['سلام']);
+    expect(await screen.findByText('سلام')).toBeInTheDocument();
+  });
+
+  it('sends a typed turn as a command in FULL mode', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TextTurnProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'start' }));
+    await screen.findByText('connected');
+    await user.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(sdkState.sentUserMessages).toEqual([]);
+    expect(await screen.findByText('سلام')).toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ from services.orchestrator.src.assistant.service import AssistantSessionService
 from services.orchestrator.src.errors import ConfigurationError, ProviderError
 from services.orchestrator.src.main import app
 
-from .conftest import EMBED_KEY, EMBED_ORIGIN, build_settings
+from .conftest import EMBED_KEY, EMBED_ORIGIN, VOICE_AGENT_ID, build_settings
 
 PHONE = "09123456789"
 EMBED_HEADERS = {"X-Embed-Key": EMBED_KEY, "Origin": EMBED_ORIGIN}
@@ -32,6 +32,9 @@ async def test_a_user_gets_a_sandbox_session(api):
     assert body["requestedLanguage"] == "fa"
     assert body["sessionToken"] == "provider-token-1"
     assert body["providerSessionId"] == "provider-1"
+    # No voice agent is configured, so the assistant uses the FULL mode persona path.
+    assert body["agentType"] == "full"
+    assert api.liveavatar.voice_agent_calls == []
 
     call = api.liveavatar.token_calls[0]
     assert call["avatar_id"] == "sandbox-avatar"
@@ -50,6 +53,7 @@ async def test_a_user_gets_a_sandbox_session(api):
     assert metadata["principal"] == f"user:{api.database.users[0]['id']}"
     assert metadata["language"] == "en"
     assert metadata["requested_language"] == "fa"
+    assert metadata["provider_mode"] == "persona"
     assert api.database.operations() == ["assistant_token"]
 
 
@@ -250,8 +254,9 @@ async def test_missing_provider_configuration_answers_503(api):
     assert response.status_code == 503
     body = response.json()
     assert body["error"]["code"] == "configuration_error"
-    assert body["error"]["details"]["missing"] == ["LIVEAVATAR_CONTEXT_ID"]
+    assert body["error"]["details"]["missing"] == ["LIVEAVATAR_VOICE_AGENT_ID or LIVEAVATAR_CONTEXT_ID"]
     assert api.liveavatar.token_calls == []
+    assert api.liveavatar.voice_agent_calls == []
 
 
 @pytest.mark.asyncio
@@ -318,4 +323,79 @@ async def test_both_missing_settings_are_named(api):
     with pytest.raises(ConfigurationError) as error:
         await service.create(principal="user:1", user_id=None, language="fa")
 
-    assert error.value.details["missing"] == ["LIVEAVATAR_API_KEY", "LIVEAVATAR_CONTEXT_ID"]
+    assert error.value.details["missing"] == [
+        "LIVEAVATAR_API_KEY",
+        "LIVEAVATAR_VOICE_AGENT_ID or LIVEAVATAR_CONTEXT_ID",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_voice_agent_replaces_the_persona_path(api):
+    """The Persian path: a stored LiveAvatar Voice Agent wrapping the ElevenLabs agent."""
+    api.settings.liveavatar_voice_agent_id = VOICE_AGENT_ID
+    await api.login(PHONE)
+
+    response = await api.client.post("/assistant/session", json={})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["agentType"] == "elevenlabs"
+    # The agent speaks Persian, so the assistant finally reports "fa".
+    assert body["language"] == "fa"
+    assert body["requestedLanguage"] == "fa"
+    assert body["sandbox"] is True
+    assert body["maxSessionDurationSeconds"] == 60
+
+    # A persona would conflict with the voice agent, so the FULL mode call must not happen.
+    assert api.liveavatar.token_calls == []
+    call = api.liveavatar.voice_agent_calls[0]
+    assert call == {
+        "avatar_id": "sandbox-avatar",
+        "voice_agent_id": VOICE_AGENT_ID,
+        "sandbox": True,
+        "max_session_duration": 60,
+    }
+
+    row = api.database.sessions[list(api.database.sessions)[0]]
+    metadata = json.loads(row["metadata"])
+    assert metadata["provider_mode"] == "voice_agent"
+    assert metadata["language"] == "fa"
+    assert api.database.usage[0]["metadata"]["provider_mode"] == "voice_agent"
+
+
+@pytest.mark.asyncio
+async def test_the_voice_agent_ignores_the_requested_language(api):
+    """LiveAvatar rejects a per-session language for this agent type, so we never send one."""
+    api.settings.liveavatar_voice_agent_id = VOICE_AGENT_ID
+    await api.login(PHONE)
+
+    response = await api.client.post("/assistant/session", json={"language": "en"})
+
+    body = response.json()
+    assert body["language"] == "fa"
+    assert body["requestedLanguage"] == "en"
+    assert "language" not in api.liveavatar.voice_agent_calls[0]
+
+
+@pytest.mark.asyncio
+async def test_a_voice_agent_works_without_a_context_id(api):
+    api.settings.liveavatar_voice_agent_id = VOICE_AGENT_ID
+    api.settings.liveavatar_context_id = ""
+    await api.login(PHONE)
+
+    response = await api.client.post("/assistant/session", json={})
+
+    assert response.status_code == 200
+    assert response.json()["agentType"] == "elevenlabs"
+
+
+@pytest.mark.asyncio
+async def test_a_voice_agent_session_closes_like_any_other(api):
+    api.settings.liveavatar_voice_agent_id = VOICE_AGENT_ID
+    await api.login(PHONE)
+    session_id = (await api.client.post("/assistant/session", json={})).json()["id"]
+
+    response = await api.client.post(f"/assistant/session/{session_id}/close")
+
+    assert response.status_code == 200
+    assert api.liveavatar.stop_calls == [("provider-token-1", "provider-1")]
