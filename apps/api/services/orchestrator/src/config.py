@@ -90,8 +90,10 @@ class Settings(BaseSettings):
     asanak_password: SecretStr = SecretStr("")
     # The sender line the template is registered on. Asanak takes the line from the template, so
     # it is not sent in the request; it is configuration the operator records and sees in logs.
-    asanak_source: str = "9821700021"
-    asanak_template_id: int = 1654
+    # The line and the template id belong to the customer's Asanak account, so they are not
+    # defaults in code: set them in .env.
+    asanak_source: str = ""
+    asanak_template_id: int = 0
     # The template variable that holds the code. Asanak's documentation does not name it, so it
     # is configurable: change it if the template in the panel uses another variable name.
     asanak_template_code_parameter: str = "code"

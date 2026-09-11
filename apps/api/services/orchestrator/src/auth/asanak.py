@@ -203,6 +203,8 @@ def build_otp_sender(config: Settings) -> OtpSender:
         return ConsoleOtpSender(log_codes=config.is_development)
     if not config.asanak_username or not config.asanak_password.get_secret_value():
         raise ConfigurationError("OTP_DELIVERY=asanak needs ASANAK_USERNAME and ASANAK_PASSWORD to be set")
+    if config.asanak_template_id <= 0:
+        raise ConfigurationError("OTP_DELIVERY=asanak needs ASANAK_TEMPLATE_ID, the approved OTP template")
     return AsanakOtpSender(
         client=AsanakClient(
             username=config.asanak_username,

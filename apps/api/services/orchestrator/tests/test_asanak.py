@@ -42,7 +42,7 @@ def build_sender(handler) -> tuple[AsanakOtpSender, list[httpx.Request]]:
         base_url=BASE_URL,
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(record)),
     )
-    sender = AsanakOtpSender(client=client, template_id=1654, code_parameter="code", source="9821700021")
+    sender = AsanakOtpSender(client=client, template_id=4242, code_parameter="code", source="9821000000")
     return sender, requests
 
 
@@ -81,7 +81,7 @@ async def test_the_request_carries_the_template_the_destination_and_the_code():
     body = json.loads(request.content)
     assert body["username"] == USERNAME
     assert body["password"] == PASSWORD
-    assert body["template_id"] == 1654
+    assert body["template_id"] == 4242
     assert body["destination"] == "09123456789"
     assert body["parameters"] == {"code": CODE}
 
@@ -206,7 +206,7 @@ async def test_missing_credentials_fail_the_call_even_if_startup_was_skipped():
     client = AsanakClient(username="", password="", base_url=BASE_URL)
 
     with pytest.raises(ConfigurationError):
-        await client.send_template(template_id=1654, destination="09123456789", parameters={"code": CODE})
+        await client.send_template(template_id=4242, destination="09123456789", parameters={"code": CODE})
 
     await client.close()
 
@@ -255,13 +255,29 @@ async def test_asanak_with_credentials_builds_the_sms_sender():
         otp_delivery="asanak",
         asanak_username=USERNAME,
         asanak_password=SecretStr(PASSWORD),
+        asanak_template_id=4242,
+        asanak_source="9821000000",
     )
 
     sender = build_otp_sender(settings)
 
     assert isinstance(sender, AsanakOtpSender)
-    assert sender.template_id == 1654
+    assert sender.template_id == 4242
     assert sender.code_parameter == "code"
-    assert sender.source == "9821700021"
+    assert sender.source == "9821000000"
     assert sender.client.base_url == BASE_URL
     await sender.close()
+
+
+def test_asanak_without_a_template_stops_the_process_at_startup():
+    """The template id belongs to the customer's account, so there is no default to fall back on."""
+    settings = build_settings(
+        otp_delivery="asanak",
+        asanak_username=USERNAME,
+        asanak_password=SecretStr(PASSWORD),
+    )
+
+    with pytest.raises(ConfigurationError) as raised:
+        build_otp_sender(settings)
+
+    assert "ASANAK_TEMPLATE_ID" in raised.value.message

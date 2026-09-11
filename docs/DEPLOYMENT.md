@@ -130,8 +130,8 @@ Set `OTP_DELIVERY=asanak` and these variables:
 | --- | --- |
 | `ASANAK_USERNAME` | web service user from the Asanak panel |
 | `ASANAK_PASSWORD` | web service password (Asanak expires it, so rotate it) |
-| `ASANAK_SOURCE` | `9821700021`, the sender line the template belongs to |
-| `ASANAK_TEMPLATE_ID` | `1654`, the approved OTP template |
+| `ASANAK_SOURCE` | the sender line the template belongs to, from the Asanak panel |
+| `ASANAK_TEMPLATE_ID` | the id of the approved OTP template, from the Asanak panel |
 | `ASANAK_TEMPLATE_CODE_PARAMETER` | `code`, the template variable holding the code |
 
 `ASANAK_BASE_URL` and `ASANAK_TIMEOUT_SECONDS` have working defaults; set them only to point at

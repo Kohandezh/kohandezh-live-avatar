@@ -7,7 +7,7 @@
   code in the `kd_session` HttpOnly cookie; native gets a bearer token. In development the code
   is `console`-delivered and also returned as `devCode` so the flow can be tested without SMS.
   In staging and production, `OTP_DELIVERY=asanak` sends the code by real SMS through Asanak,
-  from sender `9821700021` using the approved template `1654`. Phones listed in `ADMIN_PHONES`
+  from the customer's sender line using the approved OTP template (both set in `.env`). Phones listed in `ADMIN_PHONES`
   get the admin role. New backend routes `POST /api/auth/otp/request`, `POST /api/auth/otp/verify`,
   `POST /api/auth/logout`, and a `users` table (migration `002_assistant.sql`).
 - Added the real-time assistant: one shared `features/assistant` feature and
