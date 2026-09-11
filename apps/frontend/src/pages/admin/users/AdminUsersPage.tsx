@@ -101,7 +101,7 @@ export function AdminUsersPage() {
                 <Table.Body items={users.data.items}>
                   {(user) => (
                     <Table.Row>
-                      <Table.Cell className="text-start font-medium">
+                      <Table.Cell className="text-start font-medium whitespace-nowrap">
                         {getFullName(user)}
                       </Table.Cell>
                       <Table.Cell className="text-start text-muted">
@@ -130,7 +130,7 @@ export function AdminUsersPage() {
                           {t(`status.${user.status}`, { ns: 'common' })}
                         </Chip>
                       </Table.Cell>
-                      <Table.Cell className="text-start text-muted">
+                      <Table.Cell className="text-start text-muted whitespace-nowrap">
                         {formatDate(user.createdAt, i18n.language)}
                       </Table.Cell>
                     </Table.Row>

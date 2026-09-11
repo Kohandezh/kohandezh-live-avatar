@@ -204,7 +204,7 @@
   "assistant": {
     "title": "Conversation with Dr. Kohandezh",
     "subtitle": "Press start, allow the microphone, and ask your question out loud.",
-    "sandbox": "Test mode",
+    "sandbox": "Trial mode",
     "agentLanguage": "Speaks {{language}}",
     "start": "Start the conversation",
     "restart": "Start again",
@@ -242,7 +242,7 @@
     },
     "video": {
       "label": "Assistant video",
-      "idle": "Press start to see and hear the assistant.",
+      "idle": "Press start to see and hear Dr. Kohandezh.",
       "waiting": "Connected. Waiting for the video…",
       "ended": "The conversation is over.",
       "audioBlocked": "The browser blocked the sound.",
@@ -252,7 +252,7 @@
       "idle": "Press start, then speak.",
       "ready": "Your turn. Say something.",
       "listening": "Listening to you…",
-      "speaking": "The assistant is speaking…",
+      "speaking": "Dr. Kohandezh is speaking…",
       "muted": "Your microphone is off.",
       "ending": "Ending the conversation…",
       "ended": "The conversation is over.",
@@ -261,14 +261,14 @@
     "transcript": {
       "title": "Conversation",
       "emptyTitle": "Nothing said yet",
-      "empty": "What you and the assistant say appears here.",
+      "empty": "What you and Dr. Kohandezh say appears here.",
       "you": "You",
-      "assistant": "Assistant"
+      "assistant": "Dr. Kohandezh"
     },
     "ended": {
       "title": "The conversation ended",
       "user": "You ended the conversation. You can start a new one.",
-      "timeLimit": "The test session reached its limit of about one minute.",
+      "timeLimit": "Trial conversations end after about one minute.",
       "provider": "The assistant service closed the session."
     },
     "errors": {
@@ -287,9 +287,9 @@
     }
   },
   "widget": {
-    "title": "Assistant",
-    "open": "Open the assistant",
-    "close": "Close the assistant"
+    "title": "Dr. Kohandezh Assistant",
+    "open": "Talk to Dr. Kohandezh",
+    "close": "Close"
   },
   "recording": {
     "title": "Recording",

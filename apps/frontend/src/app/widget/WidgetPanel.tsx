@@ -6,6 +6,15 @@ import { cn } from '@/shared/utils';
 import type { WidgetPosition } from './config';
 import { useFocusTrap, useIsPhone } from './hooks';
 
+/*
+ * Why plain buttons here and HeroUI everywhere else:
+ *
+ * React Aria's press handling needs its Shadow DOM support turned on (`enableShadowDOM()` from
+ * react-stately, off by default). Without it a mouse press inside the widget's shadow root is
+ * cancelled, because the document-level `pointerup` sees the shadow host instead of the button.
+ * Touch is unaffected. Until that flag is set in the widget entry, a HeroUI button in this
+ * header would do nothing for a visitor on a desktop browser.
+ */
 function LanguageSwitch({
   language,
   onChange,
@@ -19,7 +28,7 @@ function LanguageSwitch({
     <div
       role="group"
       aria-label={t('language.label')}
-      className="flex overflow-hidden rounded-lg border border-slate-300"
+      className="flex overflow-hidden rounded-lg border border-solid border-border"
     >
       {supportedLanguages.map((candidate) => (
         <button
@@ -30,10 +39,11 @@ function LanguageSwitch({
           onClick={() => onChange(candidate)}
           className={cn(
             'min-h-11 px-3 text-sm transition-colors sm:min-h-9',
-            'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900',
+            'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+            // Soft, not solid: the start button is the one primary action on this screen.
             candidate === language
-              ? 'bg-slate-900 text-white'
-              : 'bg-white text-slate-700 hover:bg-slate-100',
+              ? 'bg-accent-soft text-accent-soft-foreground'
+              : 'bg-surface text-foreground hover:bg-default',
           )}
         >
           {t(`language.${candidate}`)}
@@ -90,26 +100,31 @@ export function WidgetPanel({
       tabIndex={-1}
       onKeyDown={handleKeyDown}
       className={cn(
-        'pointer-events-auto fixed inset-0 z-10 flex flex-col overflow-hidden bg-slate-50 text-slate-900',
-        'font-sans text-sm focus:outline-none',
+        'pointer-events-auto fixed inset-0 z-10 flex flex-col overflow-hidden',
+        'bg-background text-foreground font-sans text-sm focus:outline-none',
         'sm:inset-auto sm:bottom-24 sm:max-h-[calc(100dvh-9rem)] sm:w-100 sm:rounded-2xl',
-        'sm:border sm:border-slate-200 sm:shadow-2xl',
+        'sm:border sm:border-solid sm:border-border sm:shadow-lg',
         position === 'end' ? 'sm:end-4' : 'sm:start-4',
       )}
     >
-      <header className="safe-top flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
-        <h2 className="me-auto truncate text-base font-semibold">
+      {/*
+        The header row is tight: the title shares it with the language switch and the close
+        button. It stays at the panel's own text size so the full name fits next to them.
+      */}
+      <header className="safe-top flex items-center gap-2 border-b border-solid border-separator bg-surface px-3 py-3 sm:px-4">
+        <h2 className="me-auto truncate text-sm font-semibold">
           {t('widget.title')}
         </h2>
         <LanguageSwitch language={language} onChange={onLanguageChange} />
+        {/* A plain button for the same reason as the language switch above. */}
         <button
           type="button"
           onClick={onClose}
           aria-label={t('widget.close')}
           className={cn(
-            'flex size-11 shrink-0 items-center justify-center rounded-lg text-slate-600',
-            'transition-colors hover:bg-slate-100 hover:text-slate-900',
-            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
+            'flex size-11 shrink-0 items-center justify-center rounded-lg text-muted',
+            'transition-colors hover:bg-default hover:text-foreground sm:size-9',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
           )}
         >
           <svg

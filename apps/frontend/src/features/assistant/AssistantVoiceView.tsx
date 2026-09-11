@@ -62,26 +62,29 @@ export function AssistantVoiceView({
     return t('assistant.voice.ready');
   };
 
+  // The ring colour is the fastest read of who holds the turn, so every state gets its own token.
   const ringClass = () => {
-    if (status !== 'connected') return 'border-slate-200 text-slate-400';
-    if (isAvatarSpeaking) return 'border-indigo-300 text-indigo-600';
-    if (isMicMuted) return 'border-amber-300 text-amber-600';
-    if (isUserSpeaking) return 'border-emerald-300 text-emerald-600';
-    return 'border-slate-300 text-slate-600';
+    if (status !== 'connected') return 'border-border text-muted';
+    if (isAvatarSpeaking) return 'border-accent text-accent';
+    if (isMicMuted) return 'border-warning text-warning';
+    if (isUserSpeaking) return 'border-success text-success';
+    return 'border-border text-foreground';
   };
 
   return (
     <Card className="flex flex-col items-center gap-3 py-10 shadow-none">
       <div
         className={cn(
-          'flex size-24 items-center justify-center rounded-full border-4',
+          // `border-solid` is explicit on purpose: inside the widget's Shadow DOM Tailwind's
+          // `--tw-border-style` is not registered, so a bare `border-4` draws nothing.
+          'flex size-24 items-center justify-center rounded-full border-4 border-solid',
           ringClass(),
         )}
       >
         <WaveIcon active={isAvatarSpeaking || isUserSpeaking} />
       </div>
 
-      <p className="text-center text-sm font-medium text-slate-700">
+      <p className="text-center text-sm font-medium text-foreground">
         {message()}
       </p>
 

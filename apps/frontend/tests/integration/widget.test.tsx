@@ -54,7 +54,7 @@ describe('website widget', () => {
 
     expect(host.shadowRoot).not.toBeNull();
     expect(
-      ui.getByRole('button', { name: 'Open the assistant' }),
+      ui.getByRole('button', { name: 'Talk to Dr. Kohandezh' }),
     ).toBeInTheDocument();
     // Nothing of the widget leaks into the customer's own document.
     expect(document.body.textContent).toBe('');
@@ -63,9 +63,9 @@ describe('website widget', () => {
   it('opens the assistant panel from the launcher', async () => {
     const { ui } = await mountWidget();
 
-    fireEvent.click(ui.getByRole('button', { name: 'Open the assistant' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Talk to Dr. Kohandezh' }));
 
-    const dialog = await ui.findByRole('dialog', { name: 'Assistant' });
+    const dialog = await ui.findByRole('dialog', { name: 'Dr. Kohandezh Assistant' });
     expect(
       within(dialog).getByRole('button', { name: 'Start the conversation' }),
     ).toBeInTheDocument();
@@ -76,18 +76,18 @@ describe('website widget', () => {
     const shadowRoot = host.shadowRoot;
     if (!shadowRoot) throw new Error('Missing shadow root.');
 
-    fireEvent.click(ui.getByRole('button', { name: 'Open the assistant' }));
-    const dialog = await ui.findByRole('dialog', { name: 'Assistant' });
+    fireEvent.click(ui.getByRole('button', { name: 'Talk to Dr. Kohandezh' }));
+    const dialog = await ui.findByRole('dialog', { name: 'Dr. Kohandezh Assistant' });
     await waitFor(() => expect(shadowRoot.activeElement).toBe(dialog));
 
     // The header button, not the launcher, which also closes the panel on a wide screen.
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Close the assistant' }),
+      within(dialog).getByRole('button', { name: 'Close' }),
     );
 
     await waitFor(() =>
       expect(shadowRoot.activeElement).toBe(
-        ui.getByRole('button', { name: 'Open the assistant' }),
+        ui.getByRole('button', { name: 'Talk to Dr. Kohandezh' }),
       ),
     );
   });
@@ -95,8 +95,8 @@ describe('website widget', () => {
   it('closes the panel with Escape', async () => {
     const { ui } = await mountWidget();
 
-    fireEvent.click(ui.getByRole('button', { name: 'Open the assistant' }));
-    const dialog = await ui.findByRole('dialog', { name: 'Assistant' });
+    fireEvent.click(ui.getByRole('button', { name: 'Talk to Dr. Kohandezh' }));
+    const dialog = await ui.findByRole('dialog', { name: 'Dr. Kohandezh Assistant' });
 
     fireEvent.keyDown(dialog, { key: 'Escape' });
 
@@ -108,7 +108,22 @@ describe('website widget', () => {
 
     expect(container.querySelector('[dir="rtl"]')).not.toBeNull();
     expect(
-      await ui.findByRole('dialog', { name: 'دستیار' }),
+      await ui.findByRole('dialog', { name: 'دستیار دکتر کهن‌دژ' }),
+    ).toBeInTheDocument();
+  });
+
+  it('switches the panel language from the header', async () => {
+    const { ui } = await mountWidget();
+
+    fireEvent.click(ui.getByRole('button', { name: 'Talk to Dr. Kohandezh' }));
+    const dialog = await ui.findByRole('dialog', {
+      name: 'Dr. Kohandezh Assistant',
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'فارسی' }));
+
+    expect(
+      await ui.findByRole('dialog', { name: 'دستیار دکتر کهن‌دژ' }),
     ).toBeInTheDocument();
   });
 

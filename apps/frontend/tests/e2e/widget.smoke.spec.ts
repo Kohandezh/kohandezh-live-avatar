@@ -6,12 +6,12 @@ import { expect, test } from '@playwright/test';
 test('the launcher opens the assistant panel', async ({ page }) => {
   await page.goto('/');
 
-  const launcher = page.getByRole('button', { name: 'باز کردن دستیار' });
+  const launcher = page.getByRole('button', { name: 'گفتگو با دکتر کهن‌دژ' });
   await expect(launcher).toBeVisible();
 
   await launcher.click();
 
-  const panel = page.getByRole('dialog', { name: 'دستیار' });
+  const panel = page.getByRole('dialog', { name: 'دستیار دکتر کهن‌دژ' });
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('button', { name: 'شروع گفتگو' })).toBeVisible();
 
@@ -22,8 +22,8 @@ test('the launcher opens the assistant panel', async ({ page }) => {
 test('the panel switches to English', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'باز کردن دستیار' }).click();
+  await page.getByRole('button', { name: 'گفتگو با دکتر کهن‌دژ' }).click();
   await page.getByRole('button', { name: 'English' }).click();
 
-  await expect(page.getByRole('dialog', { name: 'Assistant' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Dr. Kohandezh Assistant' })).toBeVisible();
 });
