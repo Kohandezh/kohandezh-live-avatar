@@ -187,8 +187,11 @@ class AssistantSessionResponse(CamelModel):
     provider_session_id: str
     sandbox: bool
     avatar_id: str
-    # The language the session actually started in. May differ from requestedLanguage: the
-    # provider does not support every language, so the backend falls back to one it does.
+    # The language the session actually started in. May differ from requestedLanguage: FULL mode
+    # does not support every language, and the voice agent ignores the request and uses its own.
     language: str
     requested_language: str
     max_session_duration_seconds: int
+    # Which SDK session class can drive this token. "elevenlabs" needs ElevenLabsAgentSession,
+    # "full" needs LiveAvatarSession.
+    agent_type: Literal["elevenlabs", "full"]

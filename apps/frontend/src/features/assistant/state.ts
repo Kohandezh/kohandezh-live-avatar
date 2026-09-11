@@ -34,12 +34,14 @@ export type AssistantAction =
   | { type: 'connected'; at: number }
   | { type: 'failed'; error: AssistantError }
   | { type: 'controlFailed'; error: AssistantError }
+  | { type: 'controlRecovered' }
   | { type: 'ending' }
   | { type: 'ended'; reason: AssistantEndReason }
   | { type: 'micChanged'; isMuted: boolean }
   | { type: 'userSpeaking'; isSpeaking: boolean }
   | { type: 'avatarSpeaking'; isSpeaking: boolean }
   | { type: 'transcriptAppended'; turn: TranscriptTurn }
+  | { type: 'transcriptCorrected'; original: string; corrected: string }
   | { type: 'streamReady' }
   | { type: 'audioBlocked'; isBlocked: boolean }
   | { type: 'qualityChanged'; quality: AssistantConnectionQuality };
@@ -77,6 +79,9 @@ export function assistantReducer(
       return { ...state, status: 'connecting' };
 
     case 'connected':
+      // The stream can become ready before `start()` resolves, so this arrives twice. The first
+      // one wins: a later one would push the countdown deadline forward.
+      if (state.status !== 'connecting') return state;
       return {
         ...state,
         status: 'connected',
@@ -91,6 +96,13 @@ export function assistantReducer(
     case 'controlFailed':
       // A failed control (mute, interrupt) does not end the conversation, so the status stays.
       return { ...state, error: action.error };
+
+    case 'controlRecovered':
+      // Clears a warning such as a denied microphone once the user fixed it. A failed start is
+      // not a warning, so the error of the `error` status stays.
+      return state.status === 'error' || state.error === null
+        ? state
+        : { ...state, error: null };
 
     case 'ending':
       return LIVE_STATUSES.has(state.status)
@@ -115,18 +127,25 @@ export function assistantReducer(
       return { ...state, isMicMuted: action.isMuted };
 
     case 'userSpeaking':
-      return { ...state, isUserSpeaking: action.isSpeaking };
+      return state.isUserSpeaking === action.isSpeaking
+        ? state
+        : { ...state, isUserSpeaking: action.isSpeaking };
 
     case 'avatarSpeaking':
-      return { ...state, isAvatarSpeaking: action.isSpeaking };
+      return state.isAvatarSpeaking === action.isSpeaking
+        ? state
+        : { ...state, isAvatarSpeaking: action.isSpeaking };
 
     case 'transcriptAppended':
-      return state.transcript.some((turn) => turn.id === action.turn.id)
+      return isDuplicateTurn(state.transcript, action.turn)
         ? state
         : { ...state, transcript: [...state.transcript, action.turn] };
 
+    case 'transcriptCorrected':
+      return correctLastAvatarTurn(state, action.original, action.corrected);
+
     case 'streamReady':
-      return { ...state, isStreamReady: true };
+      return state.isStreamReady ? state : { ...state, isStreamReady: true };
 
     case 'audioBlocked':
       return { ...state, isAudioBlocked: action.isBlocked };
@@ -134,6 +153,59 @@ export function assistantReducer(
     case 'qualityChanged':
       return { ...state, connectionQuality: action.quality };
   }
+}
+
+
+/** Same words, whatever the spacing or the letter case. Used to spot a repeated turn. */
+function normalizeTurnText(text: string): string {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * True when the turn adds nothing new.
+ *
+ * The provider sends the same sentence twice with two different event ids: in the real sandbox
+ * run the opening line arrived as two `avatar.transcription` events, and on the ElevenLabs path
+ * a sentence can arrive both as a generic transcription and as an agent event. So the id alone
+ * is not enough; the previous turn of the same speaker is compared by text as well.
+ */
+function isDuplicateTurn(
+  transcript: readonly TranscriptTurn[],
+  turn: TranscriptTurn,
+): boolean {
+  if (transcript.some((existing) => existing.id === turn.id)) return true;
+  const previous = [...transcript]
+    .reverse()
+    .find((existing) => existing.speaker === turn.speaker);
+  return (
+    previous !== undefined &&
+    normalizeTurnText(previous.text) === normalizeTurnText(turn.text)
+  );
+}
+
+/**
+ * Applies an ElevenLabs `agent_response_correction`: the agent rewrote what it had said,
+ * usually because the user interrupted it. The corrected text replaces the turn it corrects.
+ */
+function correctLastAvatarTurn(
+  state: AssistantState,
+  original: string,
+  corrected: string,
+): AssistantState {
+  const text = corrected.trim();
+  if (!text) return state;
+  const wanted = normalizeTurnText(original);
+  // Newest first: a correction always refers to the most recent matching answer.
+  for (let index = state.transcript.length - 1; index >= 0; index -= 1) {
+    const turn = state.transcript[index];
+    if (turn.speaker !== 'avatar' || normalizeTurnText(turn.text) !== wanted) {
+      continue;
+    }
+    const transcript = [...state.transcript];
+    transcript[index] = { ...turn, text };
+    return { ...state, transcript };
+  }
+  return state;
 }
 
 /** True while a start is in flight or a conversation is running. */
@@ -208,6 +280,98 @@ export function classifyAssistantError(error: unknown): AssistantError {
   }
 
   return { kind: 'unknown' };
+}
+
+/**
+ * One event from the ElevenLabs agent, as the LiveAvatar SDK forwards it.
+ *
+ * The SDK wraps the ElevenLabs client event: `elevenlabs_event_type` names it, and `data` is the
+ * raw ElevenLabs payload, which nests every field under a `<type>_event` object.
+ */
+export interface ElevenLabsAgentEvent {
+  event_id: string;
+  elevenlabs_event_type: string;
+  data: Record<string, unknown>;
+}
+
+/** Reads `data.<group>.<field>` when it is a string. Anything else is treated as missing. */
+function readEventText(
+  data: Record<string, unknown>,
+  group: string,
+  field: string,
+): string {
+  const payload = data[group];
+  if (typeof payload !== 'object' || payload === null) return '';
+  const value = (payload as Record<string, unknown>)[field];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * Turns one ElevenLabs agent event into the actions it means.
+ *
+ * Types we deliberately drop:
+ * - `ping` is a keepalive that the SDK answers by itself.
+ * - `audio` carries the speech in many small chunks. LiveAvatar plays them through the avatar
+ *   and reports the speaking state with its own `avatar.speak_started` / `avatar.speak_ended`
+ *   events, so handling the chunks would only cost a render each.
+ * - anything else the agent may add later.
+ */
+export function elevenLabsEventActions(
+  event: ElevenLabsAgentEvent,
+): AssistantAction[] {
+  const { data, event_id: eventId } = event;
+
+  switch (event.elevenlabs_event_type) {
+    case 'user_transcript': {
+      const text = readEventText(
+        data,
+        'user_transcription_event',
+        'user_transcript',
+      );
+      if (!text) return [];
+      return [
+        {
+          type: 'transcriptAppended',
+          turn: { id: eventId, speaker: 'user', text },
+        },
+      ];
+    }
+
+    case 'agent_response': {
+      const text = readEventText(
+        data,
+        'agent_response_event',
+        'agent_response',
+      );
+      if (!text) return [];
+      return [
+        {
+          type: 'transcriptAppended',
+          turn: { id: eventId, speaker: 'avatar', text },
+        },
+      ];
+    }
+
+    case 'agent_response_correction': {
+      const group = 'agent_response_correction_event';
+      const corrected = readEventText(data, group, 'corrected_agent_response');
+      if (!corrected) return [];
+      return [
+        {
+          type: 'transcriptCorrected',
+          original: readEventText(data, group, 'original_agent_response'),
+          corrected,
+        },
+      ];
+    }
+
+    case 'interruption':
+      // The user cut in. The agent stops talking even though its audio was still arriving.
+      return [{ type: 'avatarSpeaking', isSpeaking: false }];
+
+    default:
+      return [];
+  }
 }
 
 /** Every kind the UI must have a message for. Used by the i18n coverage test. */

@@ -21,6 +21,9 @@ from services.orchestrator.src.main import app
 ADMIN_PHONE = "+989120000001"
 EMBED_KEY = "embed-public-key"  # noqa: S105 - the embed key is public by design
 EMBED_ORIGIN = "https://client.example"
+# Left out of the default settings on purpose: an empty voice agent id keeps the FULL mode
+# (persona) path as the default under test. A test that wants the Persian path sets it.
+VOICE_AGENT_ID = "voice-agent-id"
 
 
 class FakeRedis:
@@ -182,6 +185,7 @@ class FakeLiveAvatarClient:
 
     def __init__(self) -> None:
         self.token_calls: list[dict[str, Any]] = []
+        self.voice_agent_calls: list[dict[str, Any]] = []
         self.stop_calls: list[tuple[str, str]] = []
         self.token_error: Exception | None = None
         self.stop_error: Exception | None = None
@@ -189,6 +193,13 @@ class FakeLiveAvatarClient:
 
     async def create_full_token(self, **kwargs):
         self.token_calls.append(kwargs)
+        return self._token()
+
+    async def create_voice_agent_token(self, **kwargs):
+        self.voice_agent_calls.append(kwargs)
+        return self._token()
+
+    def _token(self) -> dict[str, str]:
         if self.token_error:
             raise self.token_error
         self.counter += 1

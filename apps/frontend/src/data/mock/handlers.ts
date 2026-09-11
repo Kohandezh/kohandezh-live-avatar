@@ -1,3 +1,4 @@
+import type { AssistantAgentType } from '@/entities/assistant-session';
 import type { User } from '@/entities/user';
 import { mockSession } from './session';
 import { MOCK_OTP_CODE, mockUsers } from './users';
@@ -137,6 +138,20 @@ const MOCK_EMBED_KEY = 'mock-embed-key';
  * provider exists.
  */
 const MOCK_ASSISTANT_LANGUAGES = ['en'] as const;
+/**
+ * The provider mode the mock backend is configured with. Mirrors `LIVEAVATAR_VOICE_AGENT_ID`
+ * being set: the voice agent wraps the customer's ElevenLabs agent and is the only path that
+ * speaks Persian, so it is the default. Tests import this to cover the `full` path too.
+ */
+export const MOCK_ASSISTANT_AGENT_TYPE: AssistantAgentType = 'elevenlabs';
+
+/**
+ * What the mock backend is configured with right now. A test that needs the other provider mode
+ * sets `agentType` and puts it back to `MOCK_ASSISTANT_AGENT_TYPE` afterwards.
+ */
+export const mockAssistant: { agentType: AssistantAgentType } = {
+  agentType: MOCK_ASSISTANT_AGENT_TYPE,
+};
 
 /**
  * The assistant accepts either a logged-in user or the widget's embed key.
@@ -321,15 +336,20 @@ export const routes: MockRoute[] = [
     handle(request) {
       requireAssistantPrincipal(request);
 
-      // Defaults to "fa": the backend's configured preferred language is Persian, even though
-      // the provider cannot start a session in it today.
+      // Defaults to "fa": the backend's configured preferred language is Persian.
       const requestedLanguage: 'fa' | 'en' =
         readString(request.body, 'language') === 'en' ? 'en' : 'fa';
-      const language = (MOCK_ASSISTANT_LANGUAGES as readonly string[]).includes(
-        requestedLanguage,
-      )
-        ? requestedLanguage
-        : MOCK_ASSISTANT_LANGUAGES[0];
+      // The voice agent always answers in its own language and ignores the request. FULL mode
+      // can only start in a language the provider supports, so it may fall back.
+      const { agentType } = mockAssistant;
+      const language =
+        agentType === 'elevenlabs'
+          ? 'fa'
+          : (MOCK_ASSISTANT_LANGUAGES as readonly string[]).includes(
+                requestedLanguage,
+              )
+            ? requestedLanguage
+            : MOCK_ASSISTANT_LANGUAGES[0];
 
       return {
         body: {
@@ -342,6 +362,7 @@ export const routes: MockRoute[] = [
           language,
           requestedLanguage,
           maxSessionDurationSeconds: 60,
+          agentType,
         },
       };
     },

@@ -93,8 +93,20 @@ Response: `DashboardSummary`. `401` without a session, `403` for non-admin users
 
 ### POST /api/assistant/session
 
-Starts a LiveAvatar FULL mode conversation. The backend mints the session token with the server
-API key; the browser drives the session with the official SDK.
+Starts a LiveAvatar conversation. The backend mints the session token with the server API key;
+the browser drives the session with the official SDK.
+
+There are two provider modes and the backend configuration picks one. The client never chooses.
+
+| Provider mode | Configuration | `agentType` | SDK class | Persian |
+| --- | --- | --- | --- | --- |
+| Voice agent | `LIVEAVATAR_VOICE_AGENT_ID` is set (default) | `elevenlabs` | `ElevenLabsAgentSession` | yes |
+| Persona (FULL) | only `LIVEAVATAR_CONTEXT_ID` is set | `full` | `LiveAvatarSession` | no |
+
+The voice agent is a stored LiveAvatar Voice Agent that wraps the customer's ElevenLabs agent. It
+carries the Persian speech recognition, the prompt and the cloned voice, so it is the only path
+that speaks Persian today. Its conversation minutes are billed by ElevenLabs, separately from
+LiveAvatar, so never start a session without a user action.
 
 Auth, one of:
 
@@ -114,18 +126,27 @@ Response `200`:
   "providerSessionId": "string",
   "sandbox": true,
   "avatarId": "uuid",
-  "language": "en",
+  "language": "fa",
   "requestedLanguage": "fa",
-  "maxSessionDurationSeconds": 60
+  "maxSessionDurationSeconds": 60,
+  "agentType": "elevenlabs"
 }
 ```
 
 - `sessionToken` is a credential. Never put it in Redux, `localStorage`, a URL, or a log.
 - While sandbox is on, the backend always uses the public sandbox avatar and clamps the duration
   to 60 seconds. The client cannot turn sandbox off.
+- `agentType` says which SDK class can drive `sessionToken`: `elevenlabs` needs
+  `ElevenLabsAgentSession`, `full` needs `LiveAvatarSession`. The token itself also carries this
+  (`parseAgentTypeFromToken`), so the frontend can check both.
 - `language` is the language the session actually started in. `requestedLanguage` is what the
-  caller asked for (or the backend's configured default, when the caller did not send one). They
-  differ when the provider cannot start a session in the requested language: verified against the
+  caller asked for (or the backend's configured default, when the caller did not send one).
+  In the voice agent mode `language` is always the agent's own language
+  (`LIVEAVATAR_VOICE_AGENT_LANGUAGE`, `fa`) and the request's `language` is ignored: LiveAvatar
+  rejects a per-session language override for this agent type. `requestedLanguage` still echoes
+  what the caller asked for.
+  In the persona mode the two differ when FULL mode cannot start a session in the requested
+  language: verified against the
   real provider on 2026-09-11, LiveAvatar FULL mode accepts `avatar_persona.language: "fa"` when
   the token is minted, but rejects it at session start ("Language not supported"), because none of
   its STT providers or its ElevenLabs TTS model support Persian yet. `LIVEAVATAR_ASSISTANT_LANGUAGES`
@@ -134,7 +155,8 @@ Response `200`:
   or to the first supported language if that is not supported either. The client should show the
   fallback to the user rather than silently proceed as if Persian was used.
 - `429 assistant_rate_limited` with `retryAfterSeconds` (per user, or per visitor address for the
-  widget). `503 configuration_error` when the provider key or the context id is missing.
+  widget). `503 configuration_error` when the provider key is missing, or when neither the voice
+  agent id nor the context id is set.
   Provider failures keep their codes: `liveavatar_auth`, `liveavatar_quota`, `liveavatar_error`,
   `liveavatar_timeout`.
 

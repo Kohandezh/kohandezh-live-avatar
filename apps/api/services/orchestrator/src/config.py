@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     # neither does the ElevenLabs TTS model FULL mode uses. So "fa" is left out of the default
     # until LiveAvatar adds a provider that supports it.
     liveavatar_assistant_languages: str = "en"
+    # The LiveAvatar stored Voice Agent that wraps the customer's ElevenLabs agent. Setting it
+    # switches the assistant to the voice agent provider mode, which is the only path that speaks
+    # Persian today: FULL mode rejects "fa" at session start (see the comment above).
+    # ElevenLabs bills those conversation minutes separately, on the customer's ElevenLabs plan,
+    # so a session must never start without a user action.
+    liveavatar_voice_agent_id: str = ""
+    # The language the voice agent itself is configured with. LiveAvatar rejects a per-session
+    # language override for this agent type, so this is only what we report back to the client.
+    liveavatar_voice_agent_language: str = "fa"
     # Production avatar. Sandbox cannot use a custom avatar, so this is ignored while sandbox is on.
     liveavatar_assistant_avatar_id: str = ""
     liveavatar_assistant_max_session_seconds: int = 60

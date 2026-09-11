@@ -20,6 +20,18 @@ PROVIDER_STOP_REASON = "USER_DISCONNECTED"
 # A token is kept this long after the session could still be running, then it is useless.
 TOKEN_GRACE_SECONDS = 300
 
+# How the conversation is produced at the provider. The configuration picks one (PLAN D9).
+# "voice_agent": a stored LiveAvatar Voice Agent wrapping the customer's ElevenLabs agent. The
+#   agent owns the language, the prompt and the voice. This is the only Persian-capable path.
+# "persona": FULL mode with a LiveAvatar context. English only, until LiveAvatar supports Persian.
+PROVIDER_MODE_VOICE_AGENT = "voice_agent"
+PROVIDER_MODE_PERSONA = "persona"
+# What the browser needs to know: which SDK session class can drive this token.
+AGENT_TYPE_BY_PROVIDER_MODE = {
+    PROVIDER_MODE_VOICE_AGENT: "elevenlabs",
+    PROVIDER_MODE_PERSONA: "full",
+}
+
 
 @dataclass
 class AssistantSession:
@@ -31,10 +43,11 @@ class AssistantSession:
     language: str
     requested_language: str
     max_session_duration_seconds: int
+    agent_type: str
 
 
 class AssistantSessionService:
-    """Mints FULL mode session tokens and keeps the record of who owns which session.
+    """Mints assistant session tokens and keeps the record of who owns which session.
 
     The browser drives the conversation with the official SDK, so the only server side state is
     the raw provider token, which stays in memory and is needed to stop the session early.
@@ -49,10 +62,11 @@ class AssistantSessionService:
 
     async def create(self, *, principal: str, user_id: UUID | None, language: str) -> AssistantSession:
         settings = self.settings
-        if not settings.liveavatar_api_key.get_secret_value() or not settings.liveavatar_context_id:
+        missing = self._missing_configuration()
+        if missing:
             raise ConfigurationError(
-                "the assistant needs LIVEAVATAR_API_KEY and LIVEAVATAR_CONTEXT_ID",
-                {"missing": self._missing_configuration()},
+                "the assistant needs an API key and either a voice agent or a context",
+                {"missing": missing},
             )
         sandbox = settings.liveavatar_sandbox
         avatar_id = self._avatar_id(sandbox)
@@ -61,16 +75,30 @@ class AssistantSessionService:
             duration = min(duration, SANDBOX_MAX_SESSION_SECONDS)
 
         requested_language = language
-        effective_language = self._resolve_language(requested_language)
+        voice_agent_id = settings.liveavatar_voice_agent_id
+        provider_mode = PROVIDER_MODE_VOICE_AGENT if voice_agent_id else PROVIDER_MODE_PERSONA
 
-        data = await self.client.create_full_token(
-            avatar_id=avatar_id,
-            context_id=settings.liveavatar_context_id,
-            language=effective_language,
-            sandbox=sandbox,
-            max_session_duration=duration,
-            voice_id=settings.liveavatar_assistant_voice_id or None,
-        )
+        if provider_mode == PROVIDER_MODE_VOICE_AGENT:
+            # The agent carries its own language, prompt and voice. LiveAvatar rejects a
+            # per-session override for this agent type, so the request's language is ignored and
+            # only echoed back as requestedLanguage.
+            effective_language = settings.liveavatar_voice_agent_language
+            data = await self.client.create_voice_agent_token(
+                avatar_id=avatar_id,
+                voice_agent_id=voice_agent_id,
+                sandbox=sandbox,
+                max_session_duration=duration,
+            )
+        else:
+            effective_language = self._resolve_language(requested_language)
+            data = await self.client.create_full_token(
+                avatar_id=avatar_id,
+                context_id=settings.liveavatar_context_id,
+                language=effective_language,
+                sandbox=sandbox,
+                max_session_duration=duration,
+                voice_id=settings.liveavatar_assistant_voice_id or None,
+            )
         token = _required(data, "session_token")
         provider_session_id = _required(data, "session_id")
         row = None
@@ -89,6 +117,7 @@ class AssistantSessionService:
                         "language": effective_language,
                         "requested_language": requested_language,
                         "transport": "managed",
+                        "provider_mode": provider_mode,
                         "max_session_duration": duration,
                     },
                 }
@@ -104,6 +133,7 @@ class AssistantSessionService:
                         "sandbox": sandbox,
                         "language": effective_language,
                         "requested_language": requested_language,
+                        "provider_mode": provider_mode,
                         "principal": principal,
                     },
                 }
@@ -125,6 +155,7 @@ class AssistantSessionService:
                 "session_id": str(session_id),
                 "provider_session_id": provider_session_id,
                 "sandbox": sandbox,
+                "provider_mode": provider_mode,
             },
         )
         return AssistantSession(
@@ -136,6 +167,7 @@ class AssistantSessionService:
             language=effective_language,
             requested_language=requested_language,
             max_session_duration_seconds=duration,
+            agent_type=AGENT_TYPE_BY_PROVIDER_MODE[provider_mode],
         )
 
     async def close(self, session_id: UUID, principal: str) -> None:
@@ -172,7 +204,7 @@ class AssistantSessionService:
             del self._tokens[session_id]
 
     def _resolve_language(self, requested: str) -> str:
-        """Pick a language the provider will actually accept at session start.
+        """Pick a language FULL mode will actually accept at session start.
 
         The requested language wins when the provider supports it. Otherwise the configured
         preferred language wins, if that is itself supported. Otherwise the first supported
@@ -193,11 +225,15 @@ class AssistantSessionService:
         return self.settings.liveavatar_assistant_avatar_id or self.settings.liveavatar_avatar_id
 
     def _missing_configuration(self) -> list[str]:
+        """What has to be set before a session can be minted. Empty means the assistant is ready.
+
+        Either provider mode is enough, so only the pair is required, not both ids.
+        """
         missing = []
         if not self.settings.liveavatar_api_key.get_secret_value():
             missing.append("LIVEAVATAR_API_KEY")
-        if not self.settings.liveavatar_context_id:
-            missing.append("LIVEAVATAR_CONTEXT_ID")
+        if not self.settings.liveavatar_voice_agent_id and not self.settings.liveavatar_context_id:
+            missing.append("LIVEAVATAR_VOICE_AGENT_ID or LIVEAVATAR_CONTEXT_ID")
         return missing
 
     async def _stop_at_provider(self, token: str, provider_session_id: str) -> None:

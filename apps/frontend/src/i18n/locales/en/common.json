@@ -215,6 +215,7 @@
     "title": "Assistant",
     "subtitle": "Talk to the assistant with your voice. It answers you in real time.",
     "sandbox": "Test mode",
+    "agentLanguage": "Speaks {{language}}",
     "start": "Start the conversation",
     "restart": "Start again",
     "end": "End",

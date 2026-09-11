@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
+import type {
+  ElevenLabsAgentSession,
+  LiveAvatarSession,
+} from '@heygen/liveavatar-web-sdk';
 import {
   closeAssistantSession,
   createAssistantSession,
@@ -10,6 +13,7 @@ import { useOnline } from '@/shared/hooks';
 import {
   assistantReducer,
   classifyAssistantError,
+  elevenLabsEventActions,
   endReasonFromProvider,
   initialAssistantState,
   isAssistantBusy,
@@ -33,11 +37,16 @@ export interface UseAssistantSessionOptions {
 }
 
 /**
- * Drives one LiveAvatar FULL conversation:
+ * Drives one LiveAvatar conversation:
  *
  *   start -> POST /api/assistant/session (our backend mints the provider token)
- *         -> new LiveAvatarSession(token) -> start() -> attach(<video>)
+ *         -> new <session class>(token) -> start() -> attach(<video>)
  *   stop  -> SDK stop + POST /api/assistant/session/{id}/close
+ *
+ * The token itself says which session class can drive it, so the SDK decides, not our backend
+ * response: `ElevenLabsAgentSession` for a LiveAvatar Voice Agent (the Persian path) and
+ * `LiveAvatarSession` for FULL mode. Both share the same lifecycle and the same events; only
+ * the way a typed turn is sent differs.
  *
  * The provider token stays in a local variable. It never reaches Redux, storage, or a log.
  * The SDK is imported on demand because it pulls in LiveKit, which is large and is only
@@ -53,6 +62,11 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
   const online = useOnline();
 
   const sessionRef = useRef<LiveAvatarSession | null>(null);
+  // The same object as `sessionRef` when the token belongs to an ElevenLabs agent, null
+  // otherwise. It is what tells `sendText` which outbound command the session understands.
+  const elevenLabsRef = useRef<ElevenLabsAgentSession | null>(null);
+  // The loaded SDK module. The controls need its enums, and it is imported on demand.
+  const sdkRef = useRef<LiveAvatarSdk | null>(null);
   const backendIdRef = useRef<string | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const keepAliveRef = useRef<number | null>(null);
@@ -105,6 +119,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
     const session = sessionRef.current;
     const backendId = backendIdRef.current;
     sessionRef.current = null;
+    elevenLabsRef.current = null;
     backendIdRef.current = null;
     stopKeepAlive();
 
@@ -141,12 +156,20 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       } = sdk;
 
       session.on(SessionEvent.SESSION_STATE_CHANGED, (next) => {
+        if (next === SessionState.CONNECTED) {
+          dispatch({ type: 'connected', at: Date.now() });
+        }
         if (next === SessionState.DISCONNECTED) {
           dispatch({ type: 'ended', reason: 'provider' });
         }
       });
       session.on(SessionEvent.SESSION_STREAM_READY, () => {
+        // `start()` only resolves after the SDK has waited for the LiveAvatar participants,
+        // which in FULL mode happens well after the avatar is already speaking. Waiting for it
+        // left the UI on "Connecting…" during a live conversation, so the stream decides.
         dispatch({ type: 'streamReady' });
+        dispatch({ type: 'connected', at: Date.now() });
+        if (mediaRef.current) session.attach(mediaRef.current);
         void playAttachedMedia();
       });
       session.on(SessionEvent.SESSION_CONNECTION_QUALITY_CHANGED, (quality) => {
@@ -182,6 +205,13 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () =>
         dispatch({ type: 'avatarSpeaking', isSpeaking: false }),
       );
+
+      // An ElevenLabs agent reports the conversation on its own event stream instead of (or in
+      // addition to) the generic transcription events. The reducer drops a sentence that
+      // repeats the previous turn of the same speaker, so both paths can stay subscribed.
+      session.on(AgentEventsEnum.ELEVENLABS_AGENT_EVENT, (event) => {
+        for (const action of elevenLabsEventActions(event)) dispatch(action);
+      });
 
       // Only the final transcription is kept. The chunk events carry the same words again
       // while they stream, which would duplicate every turn.
@@ -232,9 +262,24 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       dispatch({ type: 'created', session: toAssistantSessionInfo(created) });
 
       const sdk = await import('@heygen/liveavatar-web-sdk');
-      const session = new sdk.LiveAvatarSession(created.sessionToken, {
-        voiceChat: { defaultMuted: false },
-      });
+      sdkRef.current = sdk;
+      // The token carries the agent type, so the SDK picks the class, not our own field.
+      const config = { voiceChat: { defaultMuted: false } };
+      let session: LiveAvatarSession;
+      if (
+        sdk.parseAgentTypeFromToken(created.sessionToken) ===
+        sdk.AgentType.ELEVENLABS_AGENT
+      ) {
+        const agentSession = new sdk.ElevenLabsAgentSession(
+          created.sessionToken,
+          config,
+        );
+        elevenLabsRef.current = agentSession;
+        session = agentSession;
+      } else {
+        elevenLabsRef.current = null;
+        session = new sdk.LiveAvatarSession(created.sessionToken, config);
+      }
       sessionRef.current = session;
       subscribe(session, sdk);
 
@@ -249,7 +294,15 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       if (mediaRef.current) session.attach(mediaRef.current);
       await playAttachedMedia();
       dispatch({ type: 'micChanged', isMuted: session.voiceChat.isMuted });
+      // A fallback for a session that connected without ever reporting a ready stream.
       dispatch({ type: 'connected', at: Date.now() });
+
+      // The SDK only writes a console warning when the microphone fails to start, so a denied
+      // permission would look like a working conversation the avatar cannot hear. The avatar
+      // still plays, so this is a warning next to the video, not a failed start.
+      if (session.voiceChat.state !== sdk.VoiceChatState.ACTIVE) {
+        dispatch({ type: 'controlFailed', error: { kind: 'micPermission' } });
+      }
 
       // Sandbox sessions last about a minute, so a keep-alive would never land in time.
       // Only ask for more time when the provider allows a longer session.
@@ -278,14 +331,23 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
 
   const toggleMic = useCallback(async () => {
     const session = sessionRef.current;
-    if (!session) return;
-    const shouldMute = !session.voiceChat.isMuted;
+    const sdk = sdkRef.current;
+    if (!session || !sdk) return;
+    const { voiceChat } = session;
     try {
-      if (shouldMute) await session.voiceChat.mute();
-      else await session.voiceChat.unmute();
-      dispatch({ type: 'micChanged', isMuted: session.voiceChat.isMuted });
+      if (voiceChat.state !== sdk.VoiceChatState.ACTIVE) {
+        // The microphone never started, usually because the user denied it. `unmute()` is a
+        // no-op in that state, so the only way back is to ask for the device again.
+        await voiceChat.start({ defaultMuted: false });
+        dispatch({ type: 'controlRecovered' });
+      } else if (voiceChat.isMuted) {
+        await voiceChat.unmute();
+      } else {
+        await voiceChat.mute();
+      }
+      dispatch({ type: 'micChanged', isMuted: voiceChat.isMuted });
     } catch (error) {
-      // Unmuting asks the browser for the microphone again, so a denied permission lands here.
+      // Asking for the microphone again can be denied again, and that lands here.
       dispatch({ type: 'controlFailed', error: classifyAssistantError(error) });
     }
   }, []);
@@ -305,7 +367,13 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
     const trimmed = text.trim();
     if (!session || !trimmed) return;
     try {
-      const eventId = session.message(trimmed);
+      // An ElevenLabs agent owns the answer, so a typed turn is a user message to the agent.
+      // `message()` throws on that session class, and `sendUserMessage()` does not exist on
+      // the FULL one, so the class decides which call is right.
+      const elevenLabs = elevenLabsRef.current;
+      const eventId = elevenLabs
+        ? elevenLabs.sendUserMessage(trimmed)
+        : session.message(trimmed);
       // A typed turn produces no speech transcription, so record it here.
       dispatch({
         type: 'transcriptAppended',

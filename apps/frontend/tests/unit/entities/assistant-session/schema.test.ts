@@ -14,6 +14,7 @@ const response = {
   language: 'en',
   requestedLanguage: 'fa',
   maxSessionDurationSeconds: 60,
+  agentType: 'elevenlabs',
 };
 
 describe('assistantSessionSchema', () => {
@@ -24,6 +25,12 @@ describe('assistantSessionSchema', () => {
   it('rejects a response without a session token', () => {
     expect(() =>
       assistantSessionSchema.parse({ ...response, sessionToken: '' }),
+    ).toThrow();
+  });
+
+  it('rejects an unknown agent type', () => {
+    expect(() =>
+      assistantSessionSchema.parse({ ...response, agentType: 'openai' }),
     ).toThrow();
   });
 
@@ -48,6 +55,8 @@ describe('assistantSessionSchema', () => {
     expect(info).not.toHaveProperty('sessionToken');
     expect(JSON.stringify(info)).not.toContain('provider-token');
     expect(info.maxSessionDurationSeconds).toBe(60);
+    // The panel needs it to pick the session class and the language notice.
+    expect(info.agentType).toBe('elevenlabs');
   });
 
   it('accepts only the documented close result', () => {

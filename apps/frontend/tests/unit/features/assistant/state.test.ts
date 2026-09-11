@@ -4,6 +4,7 @@ import {
   ASSISTANT_ERROR_KINDS,
   assistantReducer,
   classifyAssistantError,
+  elevenLabsEventActions,
   endReasonFromProvider,
   initialAssistantState,
   isAssistantBusy,
@@ -22,6 +23,7 @@ const sessionInfo: AssistantSessionInfo = {
   language: 'en',
   requestedLanguage: 'fa',
   maxSessionDurationSeconds: 60,
+  agentType: 'full',
 };
 
 function reduce(actions: AssistantAction[]) {
@@ -124,6 +126,126 @@ describe('assistantReducer', () => {
     expect(state.error).toEqual({ kind: 'micPermission' });
   });
 
+  it('ignores a sentence that repeats the previous turn of the same speaker', () => {
+    // The real run sent the opening line twice, with two different event ids.
+    const state = reduce([
+      ...connected(),
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'a1', speaker: 'avatar', text: 'سلام، چطور کمک کنم؟' },
+      },
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'a2', speaker: 'avatar', text: '  سلام، چطور   کمک کنم؟ ' },
+      },
+    ]);
+
+    expect(state.transcript).toHaveLength(1);
+  });
+
+  it('compares a turn with the previous turn of the same speaker only', () => {
+    // The same words from the two speakers are two real turns.
+    const state = reduce([
+      ...connected(),
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'a1', speaker: 'avatar', text: 'بله' },
+      },
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'u1', speaker: 'user', text: 'بله' },
+      },
+      // The late copy of the avatar line is still dropped, even with a turn in between,
+      // because the provider can deliver it after the next transcription.
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'a2', speaker: 'avatar', text: 'بله' },
+      },
+    ]);
+
+    expect(state.transcript.map((turn) => turn.id)).toEqual(['a1', 'u1']);
+  });
+
+  it('rewrites the answer the agent corrected', () => {
+    const state = reduce([
+      ...connected(),
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'a1', speaker: 'avatar', text: 'دو هزار تومان' },
+      },
+      {
+        type: 'transcriptCorrected',
+        original: 'دو هزار تومان',
+        corrected: 'سه هزار تومان',
+      },
+    ]);
+
+    expect(state.transcript).toEqual([
+      { id: 'a1', speaker: 'avatar', text: 'سه هزار تومان' },
+    ]);
+  });
+
+  it('leaves the transcript alone when the corrected answer is unknown', () => {
+    const state = reduce([
+      ...connected(),
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'a1', speaker: 'avatar', text: 'بله' },
+      },
+      { type: 'transcriptCorrected', original: 'چیز دیگری', corrected: 'خیر' },
+    ]);
+
+    expect(state.transcript[0].text).toBe('بله');
+  });
+
+  it('connects on the ready stream, before the SDK reports the state', () => {
+    // `start()` resolves late in FULL mode, so the stream is what proves the call is live.
+    const state = reduce([
+      { type: 'requesting' },
+      { type: 'created', session: sessionInfo },
+      { type: 'connecting' },
+      { type: 'streamReady' },
+      { type: 'connected', at: 10_000 },
+      // The SDK state change arrives later and must not move the deadline.
+      { type: 'connected', at: 25_000 },
+    ]);
+
+    expect(state.status).toBe('connected');
+    expect(state.isStreamReady).toBe(true);
+    expect(state.endsAt).toBe(10_000 + 60_000);
+  });
+
+  it('does not connect a conversation that already ended', () => {
+    const state = reduce([
+      ...connected(),
+      { type: 'ended', reason: 'user' },
+      { type: 'connected', at: 90_000 },
+    ]);
+
+    expect(state.status).toBe('ended');
+  });
+
+  it('clears a warning once the control works again', () => {
+    const state = reduce([
+      ...connected(),
+      { type: 'controlFailed', error: { kind: 'micPermission' } },
+      { type: 'controlRecovered' },
+    ]);
+
+    expect(state.error).toBeNull();
+    expect(state.status).toBe('connected');
+  });
+
+  it('keeps a failed start visible when a control recovers', () => {
+    const state = reduce([
+      { type: 'requesting' },
+      { type: 'failed', error: { kind: 'provider' } },
+      { type: 'controlRecovered' },
+    ]);
+
+    expect(state.error).toEqual({ kind: 'provider' });
+  });
+
   it('tracks mute, speaking and connection quality', () => {
     const state = reduce([
       ...connected(),
@@ -141,6 +263,90 @@ describe('assistantReducer', () => {
       isStreamReady: true,
       isAudioBlocked: true,
     });
+  });
+});
+
+describe('elevenLabsEventActions', () => {
+  const event = (
+    elevenLabsEventType: string,
+    data: Record<string, unknown>,
+  ) => ({
+    event_id: 'el-1',
+    elevenlabs_event_type: elevenLabsEventType,
+    data,
+  });
+
+  it('maps a user transcript to a user turn', () => {
+    expect(
+      elevenLabsEventActions(
+        event('user_transcript', {
+          user_transcription_event: { user_transcript: ' سلام ' },
+        }),
+      ),
+    ).toEqual([
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'el-1', speaker: 'user', text: 'سلام' },
+      },
+    ]);
+  });
+
+  it('maps an agent response to an avatar turn', () => {
+    expect(
+      elevenLabsEventActions(
+        event('agent_response', {
+          agent_response_event: { agent_response: 'بله' },
+        }),
+      ),
+    ).toEqual([
+      {
+        type: 'transcriptAppended',
+        turn: { id: 'el-1', speaker: 'avatar', text: 'بله' },
+      },
+    ]);
+  });
+
+  it('maps a correction to a rewrite of the answer it corrects', () => {
+    expect(
+      elevenLabsEventActions(
+        event('agent_response_correction', {
+          agent_response_correction_event: {
+            original_agent_response: 'بله',
+            corrected_agent_response: 'خیر',
+          },
+        }),
+      ),
+    ).toEqual([{ type: 'transcriptCorrected', original: 'بله', corrected: 'خیر' }]);
+  });
+
+  it('stops the speaking state on an interruption', () => {
+    expect(elevenLabsEventActions(event('interruption', {}))).toEqual([
+      { type: 'avatarSpeaking', isSpeaking: false },
+    ]);
+  });
+
+  it('ignores the events the UI does not use', () => {
+    expect(elevenLabsEventActions(event('ping', { ping_event: {} }))).toEqual(
+      [],
+    );
+    expect(
+      elevenLabsEventActions(event('audio', { audio_event: { audio_base_64: 'x' } })),
+    ).toEqual([]);
+    expect(elevenLabsEventActions(event('something_new', {}))).toEqual([]);
+  });
+
+  it('drops an empty or malformed payload instead of adding a blank turn', () => {
+    expect(
+      elevenLabsEventActions(
+        event('user_transcript', { user_transcription_event: {} }),
+      ),
+    ).toEqual([]);
+    expect(
+      elevenLabsEventActions(
+        event('agent_response', { agent_response_event: { agent_response: 7 } }),
+      ),
+    ).toEqual([]);
+    expect(elevenLabsEventActions(event('agent_response', {}))).toEqual([]);
   });
 });
 

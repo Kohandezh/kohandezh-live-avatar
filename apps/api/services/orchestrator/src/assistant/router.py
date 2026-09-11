@@ -75,6 +75,7 @@ async def create_assistant_session(
         language=session.language,
         requested_language=session.requested_language,
         max_session_duration_seconds=session.max_session_duration_seconds,
+        agent_type=session.agent_type,
     )
 
 

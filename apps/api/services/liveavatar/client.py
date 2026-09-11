@@ -111,6 +111,39 @@ class LiveAvatarClient:
         )
         return self._data(response)
 
+    async def create_voice_agent_token(
+        self,
+        *,
+        avatar_id: str,
+        voice_agent_id: str,
+        sandbox: bool,
+        max_session_duration: int,
+    ) -> dict:
+        """Create a session token for a stored LiveAvatar Voice Agent.
+
+        The voice agent wraps an external conversation provider (ElevenLabs today), so LiveAvatar
+        derives the session mode from the agent itself. Sending "mode" is an error: the provider
+        answers "mode=FULL does not apply to a voice_agent of type 'elevenlabs_agent'".
+
+        Per-session overrides (language, dynamic variables) are rejected for this agent type. The
+        agent's own configuration decides the language and the voice.
+        """
+        self._require_key()
+        payload = {
+            "avatar_id": avatar_id,
+            "is_sandbox": sandbox,
+            "max_session_duration": max_session_duration,
+            "video_settings": {"quality": "high", "encoding": "H264"},
+            "voice_agent": {"id": voice_agent_id},
+        }
+        response = await self._request(
+            "POST",
+            "/v1/sessions/token",
+            headers={"X-API-KEY": self.api_key},
+            json=payload,
+        )
+        return self._data(response)
+
     async def start_session(self, session_token: str) -> dict:
         response = await self._request(
             "POST", "/v1/sessions/start", headers={"Authorization": f"Bearer {session_token}"}
