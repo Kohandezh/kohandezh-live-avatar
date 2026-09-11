@@ -1,8 +1,8 @@
-# Dr.Kohandezh Live Avatar
+# Dr. Kohandezh Assistant
 
-A real-time "LiveAvatar Twin" assistant. A user logs in with a phone number and a one-time code,
-then has a live voice or video conversation with the assistant, on the mobile app, the web PWA,
-or a script embedded on the customer's own website. Everything runs in LiveAvatar sandbox mode:
+A live voice and video conversation with the digital avatar of Dr. Kohandezh. A user logs in
+with a phone number and a one-time code, then talks to the avatar, on the mobile app, the web
+PWA, or a script embedded on the customer's own website. Everything runs in LiveAvatar sandbox mode:
 no credits are spent, and every session ends after about 60 seconds.
 
 The repository also still has the Phase 1 workbench: a local, Dockerized proof for a hybrid

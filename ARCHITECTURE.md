@@ -67,6 +67,25 @@ demo page rather than the app shell. Everything else is shared. Rules:
 - The build target is not the runtime platform. `src/shared/platform` answers "am I inside Capacitor?" at runtime.
 - The widget renders the shared `features/assistant` panel. It has no Redux store and no service worker, and it authenticates with a public embed key instead of a user session (ADR 0010).
 
+### Navigation
+
+The product is "Dr. Kohandezh Assistant": one conversation screen, one account screen, and a
+login. The routers keep the same shape on every target.
+
+| Route        | mobile                   | web                      | admin                       |
+| ------------ | ------------------------ | ------------------------ | --------------------------- |
+| `/`          | landing, or `/assistant` | landing, or `/assistant` | dashboard (auth + admin)    |
+| `/login`     | phone + code             | phone + code             | phone + code                |
+| `/assistant` | conversation (auth)      | conversation (auth)      |                             |
+| `/profile`   | account (auth)           | account (auth)           |                             |
+| `/avatar`    |                          | Phase 1 workbench        |                             |
+| `/users`     |                          |                          | user table (auth + admin)   |
+| `/forbidden` |                          |                          | signed in without the role  |
+
+`/` shows the landing to visitors and sends a signed-in user straight to `/assistant`. The mobile
+tab bar (Conversation, Profile) is hidden until the user is signed in. The web navigation shows
+the Phase 1 workbench link only to admins; the route itself stays reachable.
+
 ## System Boundaries
 
 Frontend owns UI, navigation, client state, API consumption, local persistence, platform integration, and user interaction.
