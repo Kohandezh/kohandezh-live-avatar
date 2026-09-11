@@ -16,6 +16,24 @@ export function HomePage() {
         <p className="mt-2 text-slate-600">{t('home.description')}</p>
       </div>
 
+      {/* The assistant is the product. RequireAuth sends anonymous users to login first. */}
+      <Card className="flex flex-col items-start gap-3">
+        <h2 className="text-lg font-semibold text-slate-900">
+          {t('home.assistant.title')}
+        </h2>
+        <p className="text-sm text-slate-600">
+          {t('home.assistant.description')}
+        </p>
+        <Link
+          to="/assistant"
+          className={buttonClassName({
+            className: 'min-h-11 w-full sm:w-auto',
+          })}
+        >
+          {t('home.assistant.cta')}
+        </Link>
+      </Card>
+
       <Card className="flex flex-col items-start gap-3">
         <p className="text-sm text-slate-600">{t('app.tagline')}</p>
         <Link

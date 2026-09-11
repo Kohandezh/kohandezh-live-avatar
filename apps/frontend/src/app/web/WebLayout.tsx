@@ -24,7 +24,8 @@ export function WebLayout() {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4">
+        {/* Wraps instead of overflowing: the PWA also runs at phone width. */}
+        <div className="mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
           <Link to="/" className="font-semibold">
             {t('app.name')}
           </Link>
@@ -32,6 +33,9 @@ export function WebLayout() {
           <nav aria-label={t('nav.menu')} className="flex items-center gap-1">
             <NavLink to="/" end className={navLinkClass}>
               {t('nav.home')}
+            </NavLink>
+            <NavLink to="/assistant" className={navLinkClass}>
+              {t('nav.assistant')}
             </NavLink>
             <NavLink to="/avatar" className={navLinkClass}>
               {t('nav.avatar')}

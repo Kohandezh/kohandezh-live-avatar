@@ -128,6 +128,11 @@ export default defineConfig(() => {
             ) {
               return 'react';
             }
+            // The assistant loads the SDK (and LiveKit with it) only when a conversation
+            // starts, so keep both out of the chunk every page downloads.
+            if (/@heygen[\\/]liveavatar-web-sdk|livekit-client/.test(id)) {
+              return 'liveavatar';
+            }
             if (id.includes('@tanstack')) return 'query';
             if (id.includes('i18next')) return 'i18n';
             if (id.includes('zod')) return 'zod';
