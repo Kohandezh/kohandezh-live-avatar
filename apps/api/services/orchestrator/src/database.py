@@ -92,6 +92,25 @@ class Database:
             json.dumps(data.get("metadata", {})),
         )
 
+    async def create_assistant_session(self, data: dict[str, Any]) -> asyncpg.Record:
+        """Store a FULL mode session. The browser drives it, so there is no connection of ours."""
+        return await self._pool().fetchrow(
+            """
+            INSERT INTO sessions
+              (provider_session_id,avatar_id,room_name,mode,sandbox,status,metadata,
+               user_id,session_token_hash)
+            VALUES ($1,$2,$3,'FULL',$4,'TOKEN_ISSUED',$5::jsonb,$6,$7)
+            RETURNING *
+            """,
+            data["provider_session_id"],
+            data["avatar_id"],
+            data["room_name"],
+            data["sandbox"],
+            json.dumps(data.get("metadata", {})),
+            data.get("user_id"),
+            data["session_token_hash"],
+        )
+
     async def get_session(self, session_id: UUID) -> asyncpg.Record | None:
         return await self._pool().fetchrow("SELECT * FROM sessions WHERE id=$1", session_id)
 
@@ -160,6 +179,83 @@ class Database:
             asset_id,
             status,
         )
+
+    async def get_user(self, user_id: UUID) -> asyncpg.Record | None:
+        return await self._pool().fetchrow("SELECT * FROM users WHERE id=$1", user_id)
+
+    async def get_user_by_phone(self, phone: str) -> asyncpg.Record | None:
+        return await self._pool().fetchrow("SELECT * FROM users WHERE phone=$1", phone)
+
+    async def create_user(self, phone: str, role: str) -> asyncpg.Record:
+        """Create the user of a first successful login.
+
+        Two parallel logins with the same phone can both reach this point, so the conflict clause
+        returns the existing row instead of failing.
+        """
+        return await self._pool().fetchrow(
+            """
+            INSERT INTO users (phone, role) VALUES ($1,$2)
+            ON CONFLICT (phone) DO UPDATE SET updated_at=now()
+            RETURNING *
+            """,
+            phone,
+            role,
+        )
+
+    async def set_user_role(self, user_id: UUID, role: str) -> asyncpg.Record | None:
+        return await self._pool().fetchrow(
+            "UPDATE users SET role=$2, updated_at=now() WHERE id=$1 RETURNING *",
+            user_id,
+            role,
+        )
+
+    async def set_user_status(self, user_id: UUID, status: str) -> asyncpg.Record | None:
+        return await self._pool().fetchrow(
+            "UPDATE users SET status=$2, updated_at=now() WHERE id=$1 RETURNING *",
+            user_id,
+            status,
+        )
+
+    async def list_users(
+        self, *, search: str | None, page: int, page_size: int
+    ) -> tuple[list[asyncpg.Record], int]:
+        # One pattern for every searchable column. ILIKE keeps the search case insensitive.
+        pattern = f"%{search.strip()}%" if search and search.strip() else None
+        offset = (page - 1) * page_size
+        if pattern:
+            total = await self._pool().fetchval(
+                "SELECT count(*) FROM users WHERE phone ILIKE $1 OR first_name ILIKE $1 "
+                "OR last_name ILIKE $1 OR email ILIKE $1",
+                pattern,
+            )
+            rows = await self._pool().fetch(
+                "SELECT * FROM users WHERE phone ILIKE $1 OR first_name ILIKE $1 "
+                "OR last_name ILIKE $1 OR email ILIKE $1 "
+                "ORDER BY created_at DESC, id LIMIT $2 OFFSET $3",
+                pattern,
+                page_size,
+                offset,
+            )
+        else:
+            total = await self._pool().fetchval("SELECT count(*) FROM users")
+            rows = await self._pool().fetch(
+                "SELECT * FROM users ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+                page_size,
+                offset,
+            )
+        return list(rows), int(total or 0)
+
+    async def user_counts(self) -> dict[str, int]:
+        row = await self._pool().fetchrow(
+            """
+            SELECT count(*) AS total_users,
+              count(*) FILTER (WHERE status='active') AS active_users,
+              count(*) FILTER (WHERE status='disabled') AS disabled_users,
+              count(*) FILTER (WHERE created_at >= now() - interval '7 days') AS new_users_this_week
+            FROM users
+            """
+        )
+        return {key: int(value) for key, value in dict(row).items()}
 
     async def record_usage(self, data: dict[str, Any]) -> None:
         await self._pool().execute(

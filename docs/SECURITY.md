@@ -10,7 +10,8 @@
 8. Use HTTPS outside local development.
 9. Never ship frontend secrets.
 10. Keep sensitive data out of client error messages and logs.
-11. Never enable `VITE_API_MOCK` in staging or production. The mock accepts a fixed demo password.
+11. Never enable `VITE_API_MOCK` in staging or production. The mock signs a visitor in without a
+    real credential check.
 12. Host the admin dashboard on its own origin and limit who can reach it.
 13. An AI gateway logs metadata only: user, model, token counts, latency. Never log prompt or
     answer text. If a product promises it does not store conversations, that must be true in the
@@ -19,3 +20,38 @@
     A client-side check is a hint, not a control.
 15. Backend secrets (model API keys, database passwords) come from the runtime environment.
     Never bake them into a container image or a build artifact.
+
+## Sessions
+
+- Login is a phone number plus a one-time code. There is no password to steal, reuse, or leak.
+- A session is an opaque random token (`secrets.token_urlsafe(32)`). It carries no claims, so it
+  can be revoked at any moment by deleting one Redis key.
+- Redis stores the SHA-256 of the token, not the token. A dump of Redis holds no usable session.
+- Web keeps the token in the HttpOnly cookie `kd_session` (`SameSite=Lax`, `Path=/`, `Secure`
+  outside development). JavaScript never sees it. `SameSite=Lax` is the CSRF protection.
+- Native keeps the same token in OS-backed secure storage and sends it as `Authorization: Bearer`.
+- `POST /api/auth/logout` revokes the token for both.
+- Lifetime: `SESSION_TTL_DAYS` (30 days by default).
+
+## One-time codes
+
+- The code is created with `secrets`, never with `random`.
+- Redis stores the SHA-256 of the code, and the check is a constant time compare.
+- Limits: one code per minute and five per hour for one phone, twenty per hour for one IP address.
+  Five wrong codes destroy the code and lock the number for five minutes.
+- The code is written to the log only when `APP_ENV=development`. In any other environment the
+  console sender logs a warning and delivers nothing, so a live code never reaches a log file.
+  Returning the code in the response (`devCode`) is also development only.
+- Phone numbers are masked in logs.
+
+## Website widget (embed key)
+
+- `ASSISTANT_EMBED_KEY` ships inside a public script, so it is not a secret. Treat it as a name,
+  not as a credential.
+- What protects the account is the rest of the model: the request `Origin` must be listed in
+  `ASSISTANT_EMBED_ALLOWED_ORIGINS` (exact match), every visitor address gets at most
+  `ASSISTANT_RATE_LIMIT_PER_HOUR` sessions, and sandbox mode means no credits are spent.
+- `*` as an allowed origin only works when `APP_ENV=development`. It is ignored anywhere else.
+- Leave `ASSISTANT_EMBED_KEY` empty to turn the widget off.
+- The provider API key never leaves the backend. The browser only receives a short-lived session
+  token for one conversation, and that token is never logged and never stored by the frontend.

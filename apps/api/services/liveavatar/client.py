@@ -71,6 +71,46 @@ class LiveAvatarClient:
         )
         return self._data(response)
 
+    async def create_full_token(
+        self,
+        *,
+        avatar_id: str,
+        context_id: str,
+        language: str,
+        sandbox: bool,
+        max_session_duration: int,
+        voice_id: str | None = None,
+    ) -> dict:
+        """Create a FULL session token.
+
+        FULL mode runs the whole conversation in LiveAvatar's cloud: microphone in, avatar audio
+        and video out. The browser SDK starts and drives the session with this token, so we never
+        create a LiveKit room and never send livekit_config.
+
+        avatar_persona carries the context (the persona the avatar answers with). LiveAvatar
+        accepts avatar_persona or voice_agent, never both.
+        """
+        self._require_key()
+        persona: dict[str, str] = {"context_id": context_id, "language": language}
+        if voice_id:
+            persona["voice_id"] = voice_id
+        payload = {
+            "mode": "FULL",
+            "avatar_id": avatar_id,
+            "is_sandbox": sandbox,
+            "max_session_duration": max_session_duration,
+            "video_settings": {"quality": "high", "encoding": "H264"},
+            "avatar_persona": persona,
+            "interactivity_type": "CONVERSATIONAL",
+        }
+        response = await self._request(
+            "POST",
+            "/v1/sessions/token",
+            headers={"X-API-KEY": self.api_key},
+            json=payload,
+        )
+        return self._data(response)
+
     async def start_session(self, session_token: str) -> dict:
         response = await self._request(
             "POST", "/v1/sessions/start", headers={"Authorization": f"Bearer {session_token}"}
