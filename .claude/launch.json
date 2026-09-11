@@ -4,25 +4,90 @@
     {
       "name": "mobile",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "dev:mobile"],
+      "runtimeArgs": [
+        "run",
+        "dev:mobile"
+      ],
       "port": 5173
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "dev:web"],
+      "runtimeArgs": [
+        "run",
+        "dev:web"
+      ],
       "port": 5174
     },
     {
       "name": "admin",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "dev:admin"],
+      "runtimeArgs": [
+        "run",
+        "dev:admin"
+      ],
       "port": 5175
     },
     {
       "name": "widget",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "dev:widget"],
+      "runtimeArgs": [
+        "run",
+        "dev:widget"
+      ],
+      "port": 5176
+    },
+    {
+      "name": "mobile-mock",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_API_MOCK=true",
+        "VITE_API_BASE_URL=",
+        "APP_TARGET=mobile",
+        "pnpm",
+        "--filter",
+        "@app/frontend",
+        "exec",
+        "vite",
+        "--port",
+        "5183"
+      ],
+      "port": 5183
+    },
+    {
+      "name": "web-mock",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_API_MOCK=true",
+        "VITE_API_BASE_URL=",
+        "pnpm",
+        "run",
+        "dev:web"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "admin-mock",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_API_MOCK=true",
+        "VITE_API_BASE_URL=",
+        "pnpm",
+        "run",
+        "dev:admin"
+      ],
+      "port": 5175
+    },
+    {
+      "name": "widget-mock",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_API_MOCK=true",
+        "VITE_API_BASE_URL=",
+        "pnpm",
+        "run",
+        "dev:widget"
+      ],
       "port": 5176
     }
   ]
