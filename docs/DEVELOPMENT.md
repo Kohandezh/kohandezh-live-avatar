@@ -33,10 +33,15 @@ pnpm dlx cross-env APP_TARGET=admin vite
 
 `.env.development` sets `VITE_API_MOCK=true`, so `vite` answers API calls from `src/data/mock` and no backend is needed.
 
-Demo accounts (password: `password`):
+Login is phone + one-time code. The mock accepts the code `123456` for every phone number.
+Demo accounts:
 
-- `admin@example.com` (role `admin`)
-- `user@example.com` (role `user`)
+- `+989121234567` (role `admin`)
+- `+989351234567` (role `user`)
+
+Verifying a phone number that is not in the demo list creates a new `user`-role account on the
+spot, same as the real backend. The code input's own "Development code" hint shows `123456` too,
+copied from the mock's `devCode` response field.
 
 To use a real backend, start `apps/api` (Python / FastAPI, ADR 0006), then create
 `apps/frontend/.env.development.local` (git-ignored):

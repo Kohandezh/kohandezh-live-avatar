@@ -1,7 +1,7 @@
 import type { User } from '@/entities/user';
 
-/** Password accepted for every mock account. */
-export const MOCK_PASSWORD = 'password';
+/** One-time code accepted for every mock account (see docs/DEVELOPMENT.md). */
+export const MOCK_OTP_CODE = '123456';
 
 const firstNames = [
   'Sara',
@@ -37,6 +37,11 @@ function isoDaysFrom(start: Date, days: number): string {
   return new Date(start.getTime() + days * 86_400_000).toISOString();
 }
 
+/** Deterministic Iranian mobile number, distinct from the two fixed demo accounts. */
+function phoneFor(index: number): string {
+  return `+98990${String(index).padStart(7, '0')}`;
+}
+
 const start = new Date(Date.UTC(2026, 0, 1));
 
 /** Deterministic list. Same data on every run, which keeps tests stable. */
@@ -44,6 +49,7 @@ function generateUsers(count: number): User[] {
   const users: User[] = [
     {
       id: 'u-admin',
+      phone: '+989121234567',
       firstName: 'Admin',
       lastName: 'Example',
       email: 'admin@example.com',
@@ -53,6 +59,7 @@ function generateUsers(count: number): User[] {
     },
     {
       id: 'u-user',
+      phone: '+989351234567',
       firstName: 'User',
       lastName: 'Example',
       email: 'user@example.com',
@@ -68,10 +75,12 @@ function generateUsers(count: number): User[] {
 
     users.push({
       id: `u-${String(i + 1).padStart(3, '0')}`,
+      phone: phoneFor(i),
       firstName,
       lastName,
       email: `${firstName}.${lastName}${i + 1}@example.com`.toLowerCase(),
       role: i % 15 === 0 ? 'admin' : 'user',
+      // i === 0 gives one disabled account (u-001) so the "account disabled" flow is testable.
       status: i % 9 === 0 ? 'disabled' : 'active',
       createdAt: isoDaysFrom(start, 2 + i * 3),
     });
