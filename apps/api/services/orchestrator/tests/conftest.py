@@ -244,6 +244,20 @@ class RecordingOtpSender:
         self.codes.append(code)
 
 
+@pytest.fixture(autouse=True)
+def isolate_settings_from_environment(monkeypatch):
+    """Drop every Settings variable from the process environment for the test.
+
+    CI runs pytest inside the Compose container with .env.example loaded as real environment
+    variables, and a developer may have a real .env exported in the shell. Either would silently
+    change which code path a test exercises (for example a voice agent id turns the persona tests
+    into voice agent tests). Tests get only what build_settings passes explicitly.
+    """
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name.upper(), raising=False)
+    monkeypatch.delenv("APP_ENV", raising=False)
+
+
 def build_settings(**overrides: Any) -> Settings:
     """Settings the tests control. Values passed here win over the environment."""
     values: dict[str, Any] = {
