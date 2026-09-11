@@ -91,7 +91,18 @@ extra configuration is needed for that part.
 
 ## Icons
 
-`pnpm icons` writes placeholder PWA icons to `public/icons/`. Replace them with real brand icons before release.
+The app icon is a rounded square in the HeroUI accent blue (`#0485f7`) with a white speech
+bubble holding a "K". The source is `public/icons/favicon.svg` (viewBox `0 0 64 64`). The PNG
+sizes (`pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png`, `apple-touch-icon.png`)
+were rendered from that SVG with macOS `qlmanage -t -s <size> -o <dir> favicon.svg` (the maskable
+and apple-touch variants use a full-bleed background with the bubble scaled down so it survives
+a circular crop). If you change the mark, re-render the SVG the same way, or with
+`rsvg-convert -w <size> -h <size> favicon.svg -o <file>` on Linux/CI.
+
+`pnpm icons` (`scripts/generate-icons.mjs`) is a dependency-free fallback: it draws the same
+rounded square and a simplified circle mark in the brand color without any image library, in
+case no SVG renderer is available. Prefer rendering `favicon.svg` directly when you can; only
+fall back to `pnpm icons` when neither `qlmanage`, `rsvg-convert`, nor `sips` are available.
 
 ## HeroUI docs for agents
 

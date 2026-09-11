@@ -4,7 +4,7 @@
 
 @theme {
   --font-sans:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Vazirmatn', sans-serif;
+    'Vazirmatn', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* Safe-area padding for notched devices (Capacitor and standalone PWA). */
