@@ -263,7 +263,8 @@ def build_settings(**overrides: Any) -> Settings:
         "admin_phones": ADMIN_PHONE,
     }
     values.update(overrides)
-    return Settings(**values)
+    # _env_file=None: the developer's real .env must never leak into a test.
+    return Settings(_env_file=None, **values)
 
 
 @pytest.fixture
