@@ -3,12 +3,13 @@
   "configurations": [
     {
       "name": "mobile",
-      "runtimeExecutable": "pnpm",
+      "runtimeExecutable": "sh",
       "runtimeArgs": [
-        "run",
-        "dev:mobile"
+        "-c",
+        "APP_TARGET=mobile exec pnpm --filter @app/frontend exec vite --port \"${PORT:-5173}\""
       ],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     },
     {
       "name": "web",
