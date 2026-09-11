@@ -7,6 +7,8 @@ export interface MockRequest {
   url: URL;
   body: unknown;
   authorization?: string;
+  /** `X-Embed-Key` header: how the website widget authenticates without a user. */
+  embedKey?: string;
 }
 
 export interface MockResponse {
@@ -57,6 +59,21 @@ function requireAdmin(request: MockRequest): User {
   if (user.role !== 'admin')
     throw new MockHttpError(403, 'forbidden', 'Admin role required.');
   return user;
+}
+
+/** The public Wayne avatar. Sandbox sessions always use it (PLAN D6). */
+const MOCK_SANDBOX_AVATAR_ID = 'dd73ea75-1218-4ef3-92ce-606d5f7fbc0a';
+const MOCK_ASSISTANT_SESSION_ID = 'mock-assistant-session';
+/** Stands in for `ASSISTANT_EMBED_KEY`, the key the website widget sends. */
+const MOCK_EMBED_KEY = 'mock-embed-key';
+
+/**
+ * The assistant accepts either a logged-in user or the widget's embed key.
+ * The real backend also checks the request origin; the mock cannot see one.
+ */
+function requireAssistantPrincipal(request: MockRequest): void {
+  if (request.embedKey === MOCK_EMBED_KEY) return;
+  requireUser(request);
 }
 
 function readString(body: unknown, key: string): string {
@@ -177,6 +194,38 @@ export const routes: MockRoute[] = [
           newUsersThisWeek: newest,
         },
       };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/assistant\/session$/,
+    handle(request) {
+      requireAssistantPrincipal(request);
+
+      const language =
+        readString(request.body, 'language') === 'en' ? 'en' : 'fa';
+
+      return {
+        body: {
+          id: MOCK_ASSISTANT_SESSION_ID,
+          // A stand-in for the LiveAvatar token. The SDK is mocked in tests and never called.
+          sessionToken: 'mock-session-token',
+          providerSessionId: 'mock-provider-session',
+          sandbox: true,
+          avatarId: MOCK_SANDBOX_AVATAR_ID,
+          language,
+          maxSessionDurationSeconds: 60,
+        },
+      };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/assistant\/session\/[^/]+\/close$/,
+    handle(request) {
+      requireAssistantPrincipal(request);
+      // The real backend is idempotent, so closing twice is still a 200.
+      return { body: { status: 'closed' } };
     },
   },
 ];

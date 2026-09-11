@@ -38,6 +38,31 @@ Each model has a Zod schema in `apps/frontend/src/entities/<name>/types.ts`; the
 - Hook: `useDashboardSummary()`
 - Permissions: admin role
 
+## AssistantSession (`src/entities/assistant-session`)
+
+One real-time conversation with the LiveAvatar assistant (FULL mode). The backend mints the
+provider token with its own API key; the browser drives the session with the official SDK.
+
+| Field                       | Type              | Notes                                                     |
+| --------------------------- | ----------------- | --------------------------------------------------------- |
+| `id`                        | string (uuid)     | Our session row. Used to close the session.                |
+| `sessionToken`              | string            | Provider credential. See the rule below.                   |
+| `providerSessionId`         | string            | LiveAvatar's own session id, for support and logs.          |
+| `sandbox`                   | boolean           | Server-side decision. The client cannot turn it off.        |
+| `avatarId`                  | string            | Public avatar in sandbox, the custom avatar in production.  |
+| `language`                  | `"fa"` \| `"en"`  | Language of the avatar persona.                             |
+| `maxSessionDurationSeconds` | integer           | About 60 in sandbox. Drives the countdown in the UI.        |
+
+`sessionToken` is handed to `new LiveAvatarSession(...)` once, inside the feature hook, and
+never goes into Redux, storage, a URL, or a log. `toAssistantSessionInfo()` strips it before
+anything else sees the session.
+
+- Endpoints: `POST /api/assistant/session`, `POST /api/assistant/session/{id}/close`
+- Functions: `createAssistantSession(body)`, `closeAssistantSession(id)`
+- No query hook: a session is created by a user action and must never be cached or replayed,
+  so the feature hook (`useAssistantSession`) owns it instead of TanStack Query.
+- Permissions: a signed-in user, or the website widget with a valid `X-Embed-Key` and origin
+
 ## Adding a model
 
 1. Create `src/entities/<name>/types.ts` with a Zod schema and inferred type.
