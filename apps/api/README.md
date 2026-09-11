@@ -8,7 +8,7 @@ The backend. Python with FastAPI (ADR 0006).
 services/orchestrator/       FastAPI app, schemas, migrations, LiveKit gateway, media probe
 services/orchestrator/src/auth/       phone login: one-time codes, session tokens, guards
 services/orchestrator/src/auth/asanak.py  sends the login code by SMS (OTP_DELIVERY=asanak)
-services/orchestrator/src/assistant/  LiveAvatar FULL mode sessions for the assistant
+services/orchestrator/src/assistant/  assistant session tokens: voice agent (Persian) or FULL persona
 services/elevenlabs/         TTS client, PCM validation, deterministic content-addressed cache
 services/liveavatar/         LiveAvatar session client, event socket, LITE session manager
 ```
