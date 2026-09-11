@@ -22,7 +22,8 @@ from services.liveavatar.manager import LiveAvatarManager
 from .assistant.router import router as assistant_router
 from .assistant.service import AssistantSessionService
 from .auth.admin import router as admin_router
-from .auth.otp import ConsoleOtpSender, OtpService
+from .auth.asanak import AsanakOtpSender, build_otp_sender
+from .auth.otp import OtpService
 from .auth.router import router as auth_router
 from .auth.sessions import SessionService
 from .config import Settings, get_settings
@@ -52,6 +53,8 @@ logger = logging.getLogger(__name__)
 
 
 def build_services(app: FastAPI, config: Settings) -> None:
+    # First, so a missing SMS credential stops the process before anything else is built.
+    otp_sender = build_otp_sender(config)
     config.ensure_media_dirs()
     migrations = Path(__file__).resolve().parents[1] / "migrations"
     database = Database(config.database_url, migrations)
@@ -94,12 +97,7 @@ def build_services(app: FastAPI, config: Settings) -> None:
     )
     assistant = AssistantSessionService(client=liveavatar_client, database=database, settings=config)
     sessions = SessionService(coordinator=coordinator, ttl_seconds=config.session_ttl_seconds)
-    otp = OtpService(
-        coordinator=coordinator,
-        # The code is only written to the log in development. See ConsoleOtpSender.
-        sender=ConsoleOtpSender(log_codes=config.is_development),
-        settings=config,
-    )
+    otp = OtpService(coordinator=coordinator, sender=otp_sender, settings=config)
     app.state.settings = config
     app.state.database = database
     app.state.coordinator = coordinator
@@ -110,6 +108,7 @@ def build_services(app: FastAPI, config: Settings) -> None:
     app.state.assistant = assistant
     app.state.sessions = sessions
     app.state.otp = otp
+    app.state.otp_sender = otp_sender
 
 
 @asynccontextmanager
@@ -121,6 +120,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await app.state.avatar.close_all()
+        if isinstance(app.state.otp_sender, AsanakOtpSender):
+            await app.state.otp_sender.close()
         await app.state.liveavatar_client.close()
         await app.state.tts.client.close()
         await app.state.livekit.close()

@@ -44,6 +44,19 @@
   Returning the code in the response (`devCode`) is also development only.
 - Phone numbers are masked in logs.
 
+## SMS credentials (Asanak)
+
+`ASANAK_USERNAME` and `ASANAK_PASSWORD` are the web service credentials for the customer's SMS
+account. Anyone who holds them can send SMS on that account and spend its credit, so treat them
+like any other production secret. They live in the runtime environment only: never in the
+repository, never in a build artifact, never in a frontend variable. Asanak wants them in the
+request body, so the backend never logs the request body, and a failed send logs only the masked
+phone, the Asanak `meta.status`, and the HTTP status. The error returned to the browser
+(`otp_delivery_failed`) carries no credential, no provider detail, and no code. Asanak expires
+web service passwords, so plan a rotation: change it in the panel, update the environment
+variable, restart the backend. The backend refuses to start when `OTP_DELIVERY=asanak` and either
+value is empty, so a bad rotation fails the deploy instead of breaking login silently.
+
 ## Website widget (embed key)
 
 - `ASSISTANT_EMBED_KEY` ships inside a public script, so it is not a secret. Treat it as a name,

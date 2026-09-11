@@ -69,10 +69,25 @@ class Settings(BaseSettings):
     assistant_embed_allowed_origins: str = ""
     assistant_rate_limit_per_hour: int = 20
 
-    # Phone login. "console" writes the code to the log instead of sending an SMS.
-    otp_delivery: Literal["console"] = "console"
+    # Phone login. "console" writes the code to the log instead of sending an SMS. It stays the
+    # default so tests and CI can never send a real message. "asanak" sends the code by SMS.
+    otp_delivery: Literal["console", "asanak"] = "console"
     otp_code_length: int = 6
     otp_ttl_seconds: int = 120
+
+    # Asanak SMS (Iranian provider). Used only when OTP_DELIVERY=asanak, and then the username
+    # and the password are required: the process refuses to start without them.
+    asanak_username: str = ""
+    asanak_password: SecretStr = SecretStr("")
+    # The sender line the template is registered on. Asanak takes the line from the template, so
+    # it is not sent in the request; it is configuration the operator records and sees in logs.
+    asanak_source: str = "9821700021"
+    asanak_template_id: int = 1654
+    # The template variable that holds the code. Asanak's documentation does not name it, so it
+    # is configurable: change it if the template in the panel uses another variable name.
+    asanak_template_code_parameter: str = "code"
+    asanak_base_url: str = "https://sms.asanak.ir/webservice/v2rest"
+    asanak_timeout_seconds: float = 10.0
     # Comma separated E.164 phones that get the admin role on every successful login.
     admin_phones: str = ""
     session_ttl_days: int = 30
