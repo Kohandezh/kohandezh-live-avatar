@@ -1,11 +1,24 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Ports must match `devPorts` in vite.config.ts.
+/**
+ * E2E gets its OWN ports, deliberately NOT the `devPorts` in vite.config.ts.
+ *
+ * The dev ports belong to whoever ran `pnpm dev`, and their servers usually
+ * run against the real backend (`.env.development.local` sets
+ * `VITE_API_MOCK=false`). With `reuseExistingServer` on, Playwright would
+ * happily attach to one of those instead of starting its own, and every
+ * login test would then wait forever for an SMS code that the mock was
+ * supposed to provide. The suite would fail, or worse pass, for reasons
+ * that have nothing to do with the code under test.
+ *
+ * Separate ports mean the two never meet: e2e always talks to a server it
+ * started itself, with the mock on, whether or not `pnpm dev` is running.
+ */
 const ports = {
-  mobile: 5173,
-  web: 5174,
-  admin: 5175,
-  widget: 5176,
+  mobile: 5273,
+  web: 5274,
+  admin: 5275,
+  widget: 5276,
 } as const;
 
 const isCI = Boolean(process.env.CI);
@@ -13,6 +26,20 @@ const isCI = Boolean(process.env.CI);
 // E2E tests run against the dev servers with the mock API enabled,
 // so they do not need a backend.
 const mockEnv = { VITE_API_MOCK: 'true' };
+
+/**
+ * `--port` on the vite CLI overrides `server.port` from vite.config.ts.
+ * `strictPort` is on there, so a clash fails loudly instead of silently
+ * sliding to another port and leaving the tests pointed at nothing.
+ */
+function devServer(target: keyof typeof ports) {
+  return {
+    command: `pnpm --filter @app/frontend exec vite --port ${ports[target]}`,
+    url: `http://localhost:${ports[target]}`,
+    reuseExistingServer: !isCI,
+    env: { ...mockEnv, APP_TARGET: target },
+  };
+}
 
 /**
  * Requirement 10 needs a real `getUserMedia` call to succeed with nobody at
@@ -73,29 +100,9 @@ export default defineConfig({
     },
   ],
   webServer: [
-    {
-      command: 'pnpm run dev:web',
-      url: `http://localhost:${ports.web}`,
-      reuseExistingServer: !isCI,
-      env: mockEnv,
-    },
-    {
-      command: 'pnpm run dev:mobile',
-      url: `http://localhost:${ports.mobile}`,
-      reuseExistingServer: !isCI,
-      env: mockEnv,
-    },
-    {
-      command: 'pnpm run dev:admin',
-      url: `http://localhost:${ports.admin}`,
-      reuseExistingServer: !isCI,
-      env: mockEnv,
-    },
-    {
-      command: 'pnpm run dev:widget',
-      url: `http://localhost:${ports.widget}`,
-      reuseExistingServer: !isCI,
-      env: mockEnv,
-    },
+    devServer('web'),
+    devServer('mobile'),
+    devServer('admin'),
+    devServer('widget'),
   ],
 });

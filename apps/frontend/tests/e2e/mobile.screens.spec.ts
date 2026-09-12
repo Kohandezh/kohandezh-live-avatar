@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -11,8 +12,17 @@ import { expect, test, type Page } from '@playwright/test';
  * silently be a loading state or the previous screen instead.
  */
 
+/**
+ * Inside the repo by default, so this runs anywhere. `test-results/` is
+ * already git-ignored and is wiped between runs, which is what we want:
+ * the shots always describe the current build.
+ *
+ * Set `SCREENSHOT_DIR` to collect them somewhere else, for example to keep
+ * a before-and-after pair while working on the look.
+ */
 const SCREENSHOT_DIR =
-  '/private/tmp/claude-501/-Users-sinashamsizadeh-Library-Application-Support-Claude-scratch-workspaces-df051ed8-b81f-441e-9372-6b72a63bc232-eddd47de-0431-48ff-b651-90346f861508-scratch-2026-09-11-c3a784/1bcd12f2-cdc5-45fe-ab31-7e69c861b2ea/scratchpad/screenshots';
+  process.env.SCREENSHOT_DIR ??
+  path.join(process.cwd(), 'test-results', 'screens');
 
 /** "User Example" — already has a name in the mock seed data, so login skips onboarding. */
 const SEEDED_PHONE = '09351234567';
