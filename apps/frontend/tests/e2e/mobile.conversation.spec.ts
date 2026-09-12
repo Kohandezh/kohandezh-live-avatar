@@ -36,18 +36,19 @@ import { installFakeLiveAvatarSdk } from './utils/fakeLiveAvatarSdk';
  * as the test wants, with no race and no real network call ever leaving
  * the browser.
  *
- * `isAvatarSpeaking` is a different story: it only flips to true on the
- * SDK's own `AVATAR_SPEAK_STARTED` event, which needs a session that
- * actually finished connecting to a real provider. Nothing available here
- * can produce that event, so the "blocked tap shows a toast while the
- * avatar is speaking" half of requirement 18 is NOT exercised in this
- * file — it needs the integration tests, which run against the fake SDK.
- * What this file does test is the rest of the same guard
- * (`src/features/navigation/useNavigationGuard.ts`): a route change is
- * unblocked while idle, and asks for confirmation (not a toast) once a
- * session is live but not yet speaking. That proves the guard is reading
- * two different signals, not one, even though only one of the two is
- * reachable here.
+ * `isAvatarSpeaking` needs more than a frozen request: it only flips to
+ * true on the SDK's own `AVATAR_SPEAK_STARTED` event, which needs a session
+ * that actually finished connecting. `utils/fakeLiveAvatarSdk.ts` supplies
+ * that by serving a stand-in module in place of the SDK — the hook loads it
+ * with a dynamic `import()`, so replacing that one URL swaps the whole SDK
+ * without the app knowing. The tests that need a genuinely connected,
+ * speaking avatar call `installFakeLiveAvatarSdk(page)` first.
+ *
+ * Two ways to reach "live" therefore live side by side, on purpose:
+ *   - `startAndFreezeConnecting` — the real SDK, parked in "connecting".
+ *     Proves the guard treats a not-yet-connected session as live.
+ *   - `installFakeLiveAvatarSdk` — a fully connected session that can be
+ *     driven through speaking, muting and stopping.
  */
 
 /** "User Example" — already has a name in the mock seed data, so login skips onboarding. */
@@ -127,10 +128,9 @@ test.describe('requirement 16: the video screen', () => {
     // bleed (a literal 16:9 box on a portrait phone would cover about a
     // quarter of the screen — see UX_OVERHAUL_DESIGN.md section D11), and
     // the 16:9 shape belongs to the chrome column that holds the button
-    // instead. On the portrait Pixel 7 viewport the column's own
-    // `max-width` (min(42rem, 100dvh*16/9)) is wider than the screen, so it
-    // never visibly caps anything there — the check below uses a short,
-    // wide viewport instead, where the cap actually has to do something.
+    // instead (`stage-16x9` in globals.css). On a portrait phone the
+    // column's readable-width cap is what binds, so the ratio is only
+    // visible on a short, wide window; both cases are checked below.
     const stageBox = await stage.boundingBox();
     const mainBox = await main.boundingBox();
     expect(stageBox).not.toBeNull();
@@ -388,9 +388,7 @@ test.describe('requirements 18 and 19: the navigation guard', () => {
     // helper above does.
     await expect(page.getByRole('button', { name: 'End' })).toBeVisible();
 
-    await page.evaluate(() =>
-      window.__liveAvatar.emit('avatar.speak_started'),
-    );
+    await page.evaluate(() => window.__liveAvatar.emit('avatar.speak_started'));
 
     // The interrupt button only renders while `isAvatarSpeaking` is true, so
     // its presence is the app's own confirmation that the flag really flipped.
@@ -402,7 +400,9 @@ test.describe('requirements 18 and 19: the navigation guard', () => {
       .click();
 
     // Refused, and refused with an explanation.
-    await expect(page.getByText('Wait until the answer finishes.')).toBeVisible();
+    await expect(
+      page.getByText('Wait until the answer finishes.'),
+    ).toBeVisible();
     // A blocked tap is not the confirm path: no dialog may appear.
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     // Still on /video, and the call is still up.
@@ -413,9 +413,9 @@ test.describe('requirements 18 and 19: the navigation guard', () => {
     // Once the avatar stops speaking the same tap is allowed again — this
     // time reaching the confirm dialog, because the session is still live.
     await page.evaluate(() => window.__liveAvatar.emit('avatar.speak_ended'));
-    await expect(
-      page.getByRole('button', { name: 'Interrupt' }),
-    ).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Interrupt' })).toHaveCount(
+      0,
+    );
 
     await page
       .getByRole('navigation', { name: 'Menu' })

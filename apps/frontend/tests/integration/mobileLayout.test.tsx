@@ -14,6 +14,7 @@ function renderShell(route = '/') {
         <Route path="/video" element={<p>video page</p>} />
         <Route path="/audio" element={<p>audio page</p>} />
         <Route path="/settings" element={<p>settings page</p>} />
+        <Route path="/settings/appearance" element={<p>appearance page</p>} />
         <Route path="/onboarding" element={<p>onboarding page</p>} />
       </Route>
     </Routes>,
@@ -69,6 +70,48 @@ describe('MobileLayout', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Video' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Audio' })).toBeInTheDocument();
+  });
+
+  it('marks the current menu item, and keeps Settings current inside its sub-pages', async () => {
+    mockSession.set('u-user');
+    renderShell('/video');
+
+    // The menu only appears once the `me` query resolves, so wait for the
+    // menu itself rather than the page text behind it.
+    await screen.findByRole('navigation', { name: 'Menu' });
+    expect(screen.getByRole('button', { name: 'Video' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Settings' }),
+    ).not.toHaveAttribute('aria-current');
+  });
+
+  /**
+   * The bar stopped using `NavLink` (amendment 1) and sets `aria-current` by
+   * hand. `NavLink` matched nested paths by default; an exact path comparison
+   * does not, so on `/settings/appearance` NO item was current at all and the
+   * menu showed nothing selected while the user was inside settings.
+   */
+  it('keeps Settings current on a settings sub-page', async () => {
+    mockSession.set('u-user');
+    renderShell('/settings/appearance');
+
+    await screen.findByRole('navigation', { name: 'Menu' });
+    expect(screen.getByText('appearance page')).toBeInTheDocument();
+
+    const settings = screen.getByRole('button', { name: 'Settings' });
+    expect(settings).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Video' })).not.toHaveAttribute(
+      'aria-current',
+    );
+    expect(screen.getByRole('button', { name: 'Audio' })).not.toHaveAttribute(
+      'aria-current',
+    );
+
+    const nav = screen.getByRole('navigation', { name: 'Menu' });
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
   it('hides the menu on /onboarding even for a signed-in user', async () => {

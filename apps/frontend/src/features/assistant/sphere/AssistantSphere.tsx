@@ -16,6 +16,7 @@ import {
   sphereView,
   type SphereHues,
   type SphereSignals,
+  type SphereTheme,
 } from './sphere';
 import { useAvatarAudioLevel } from './useAvatarAudioLevel';
 
@@ -42,6 +43,30 @@ function readHues(element: Element): SphereHues {
     user: read('--sphere-hue-user', DEFAULT_SPHERE_HUES.user),
     agent: read('--sphere-hue-agent', DEFAULT_SPHERE_HUES.agent),
   };
+}
+
+/**
+ * How the app marks dark mode. `ThemeSync` writes both the class and the attribute on `<html>`,
+ * and `globals.css` keys its `dark` variant on the same pair, so matching here keeps the sphere
+ * and the page it sits on in step. Deliberately not `prefers-color-scheme`: the app resolves
+ * `system` itself, so the OS preference is not the answer when the user picked a theme by hand.
+ */
+const DARK_SELECTOR = '.dark, [data-theme="dark"]';
+
+/** Which ground the sphere is being painted on. */
+function readTheme(element: Element): SphereTheme {
+  if (element.closest(DARK_SELECTOR)) return 'dark';
+  // The widget target renders inside a Shadow DOM, where `closest` stops at the shadow
+  // boundary. The theme marker is on the host, so check it by hand.
+  const root = element.getRootNode();
+  if (
+    typeof ShadowRoot !== 'undefined' &&
+    root instanceof ShadowRoot &&
+    root.host.closest(DARK_SELECTOR)
+  ) {
+    return 'dark';
+  }
+  return 'light';
 }
 
 /**
@@ -126,7 +151,9 @@ export function AssistantSphere({
     (idle, ended, error) is one still frame, which costs nothing.
   */
   const isAnimating =
-    status === 'requesting' || status === 'connecting' || status === 'connected';
+    status === 'requesting' ||
+    status === 'connecting' ||
+    status === 'connected';
 
   /**
    * Paints one frame and stops. `dt = 0` makes the eased values snap to their targets, so
@@ -152,6 +179,17 @@ export function AssistantSphere({
     const painter = new SpherePainter(context);
     painterRef.current = painter;
 
+    /*
+      The colours live in CSS, so a theme switch changes them while the element keeps the exact
+      same size. Reading them only on resize would leave the sphere in the old theme's palette
+      until something happened to resize it, and on this screen nothing ever does.
+    */
+    const applyColours = () => {
+      painter.setHues(readHues(wrapper));
+      painter.setTheme(readTheme(wrapper));
+      paintStill();
+    };
+
     const resize = () => {
       const rect = wrapper.getBoundingClientRect();
       const width = Math.max(1, Math.round(rect.width));
@@ -162,25 +200,46 @@ export function AssistantSphere({
       canvas.height = Math.round(height * dpr);
       // Setting the size resets the context, so the scale has to be reapplied here.
       painter.setSize(width, height, dpr);
-      painter.setHues(readHues(wrapper));
-      paintStill();
+      applyColours();
     };
 
     resize();
 
+    const stops: (() => void)[] = [];
+
     if (typeof ResizeObserver === 'undefined') {
       // Old WebViews and the test environment. The window is the next best signal.
       window.addEventListener('resize', resize);
-      return () => {
-        window.removeEventListener('resize', resize);
-        painterRef.current = null;
-      };
+      stops.push(() => window.removeEventListener('resize', resize));
+    } else {
+      const observer = new ResizeObserver(resize);
+      observer.observe(wrapper);
+      stops.push(() => observer.disconnect());
     }
 
-    const observer = new ResizeObserver(resize);
-    observer.observe(wrapper);
+    /*
+      The theme marker is written on <html> by `ThemeSync` (and on the host element for the
+      widget target), so watch those two attributes. This also covers the system-mode user whose
+      operating system flips to dark while the screen is open: `ThemeSync` rewrites the class for
+      that case too, so one observer catches every route into a theme change.
+    */
+    if (typeof MutationObserver !== 'undefined') {
+      const themeObserver = new MutationObserver(applyColours);
+      const options = {
+        attributes: true,
+        attributeFilter: ['class', 'data-theme'],
+      };
+      themeObserver.observe(document.documentElement, options);
+
+      const root = wrapper.getRootNode();
+      if (typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot) {
+        themeObserver.observe(root.host, options);
+      }
+      stops.push(() => themeObserver.disconnect());
+    }
+
     return () => {
-      observer.disconnect();
+      for (const stop of stops) stop();
       painterRef.current = null;
     };
   }, [paintStill]);
@@ -195,9 +254,13 @@ export function AssistantSphere({
     const step = (time: number) => {
       const painter = painterRef.current;
       if (painter) {
-        const elapsed = previous === 0 ? 0 : Math.min(MAX_FRAME_MS, time - previous);
+        const elapsed =
+          previous === 0 ? 0 : Math.min(MAX_FRAME_MS, time - previous);
         previous = time;
-        painter.paint(sphereView(signalsRef.current, readLevel(), time), elapsed);
+        painter.paint(
+          sphereView(signalsRef.current, readLevel(), time),
+          elapsed,
+        );
       }
       frame = requestAnimationFrame(step);
     };
@@ -265,7 +328,12 @@ export function AssistantSphere({
       </p>
 
       {/* A screen reader gets it once the turn has settled. */}
-      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
         {announced}
       </p>
     </div>

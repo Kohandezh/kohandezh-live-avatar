@@ -134,3 +134,56 @@ test('log out lives on the personal info page and works (requirement 15)', async
   await page.goto('/settings');
   await expect(page).toHaveURL(/\/login$/);
 });
+
+/**
+ * The floating menu has to keep showing which screen you are on once you go
+ * one level deeper into settings.
+ *
+ * This regressed: the bar swapped `NavLink` for guarded buttons (amendment 1)
+ * and set `aria-current` by hand with an exact path comparison, so on
+ * `/settings/personal` and `/settings/appearance` no item was current at all
+ * — the user was inside settings and the menu showed nothing selected.
+ */
+test('the menu keeps Settings current inside its sub-pages (requirement 14)', async ({
+  page,
+}) => {
+  await loginSeeded(page);
+
+  const menu = page.getByRole('navigation', { name: 'Menu' });
+  const settingsItem = menu.getByRole('button', { name: 'Settings' });
+  const videoItem = menu.getByRole('button', { name: 'Video' });
+
+  // On /video it is Video that is current, not Settings.
+  await expect(videoItem).toHaveAttribute('aria-current', 'page');
+  await expect(settingsItem).not.toHaveAttribute('aria-current', 'page');
+
+  await settingsItem.click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(settingsItem).toHaveAttribute('aria-current', 'page');
+
+  // One level deeper: still Settings, and still only Settings.
+  for (const [link, path] of [
+    ['Appearance', /\/settings\/appearance$/],
+    ['Personal information', /\/settings\/personal$/],
+  ] as const) {
+    await page.getByRole('link', { name: link }).click();
+    await expect(page).toHaveURL(path);
+    // Wait for the sub-page itself to render before reading the menu.
+    // The URL changes before React commits the new tree, and until it does
+    // the bar still carries the PREVIOUS route's `aria-current` — so an
+    // assertion made right after `toHaveURL` can pass on a stale attribute
+    // and never see the bug it was written for.
+    await expect(
+      page.getByRole('heading', { level: 1, name: link }),
+    ).toBeVisible();
+    await expect(
+      settingsItem,
+      `Settings should stay current on ${link}`,
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(videoItem).not.toHaveAttribute('aria-current', 'page');
+    // Exactly one item is ever current.
+    await expect(menu.locator('[aria-current="page"]')).toHaveCount(1);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/settings$/);
+  }
+});

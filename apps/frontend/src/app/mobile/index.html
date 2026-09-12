@@ -34,15 +34,20 @@
         } catch (e) {
           /* Never block first paint on a storage or parse failure. Falls back to light. */
         }
-        /* #0b0b0e is the hex of HeroUI's dark --background (oklch(12% .005 285.823)); #0485f7
-           is the app's existing light theme-color. Written outside the try block so a failure
+        /* #0b0b0e is a near-black that matches the app's dark ground (HeroUI's dark
+           --background is oklch(12% .005 285.823) = #060607; #0b0b0e is oklch(15.1% .0064
+           285.6), one step lighter, and is left as it is - only the light value changes); #9e49d9
+           is the hex of the light app accent, oklch(58% 0.215 308), declared in
+           src/styles/globals.css. These two strings must stay byte for byte identical to
+           THEME_COLOR in src/features/settings/ThemeSync.tsx, or the browser chrome flashes the
+           old colour on the first client render. Written outside the try block so a failure
            above still leaves a theme-color meta in the page. document.write, not a static
            <meta> tag updated afterwards: at this point in the parse that tag does not exist
            yet for a query to find, and this keeps a single source of truth for the value. */
         document.write(
           '<meta name="theme-color" content="' +
-            (isDark ? '#0b0b0e' : '#0485f7') +
-            '">'
+            (isDark ? '#0b0b0e' : '#9e49d9') +
+            '">',
         );
       })();
     </script>

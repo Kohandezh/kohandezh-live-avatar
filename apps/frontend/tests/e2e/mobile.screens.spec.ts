@@ -162,3 +162,58 @@ test('07: login screen, Persian RTL', async ({ page }) => {
     fullPage: true,
   });
 });
+
+/**
+ * The two dark-mode screens the reference image is really about. The audio
+ * screen follows the app theme rather than forcing its own dark ground, so
+ * the only way to see the reference look is to switch the theme first.
+ */
+async function switchToDark(page: Page): Promise<void> {
+  await page
+    .getByRole('navigation', { name: 'Menu' })
+    .getByRole('button', { name: 'Settings' })
+    .click();
+  await page.waitForURL('**/settings');
+  await page.getByRole('link', { name: 'Appearance' }).click();
+  await page.waitForURL('**/settings/appearance');
+  // See the note in test 06: the animated control graphic intercepts the
+  // press mid-transition, which is a visual race and not a real blocked state.
+  await page.getByRole('radio', { name: 'Dark' }).click({ force: true });
+  await expect(page.locator('html')).toHaveClass(/dark/);
+}
+
+test('08: audio sphere, dark', async ({ page }) => {
+  await fillPhoneAndSendCode(page, SEEDED_PHONE);
+  await page.waitForURL('**/video');
+  await switchToDark(page);
+
+  await page
+    .getByRole('navigation', { name: 'Menu' })
+    .getByRole('button', { name: 'Audio' })
+    .click();
+  await page.waitForURL('**/audio');
+  await expect(page.locator('[data-sphere-state]')).toBeVisible();
+
+  await page.screenshot({
+    path: `${SCREENSHOT_DIR}/08-audio-sphere-dark.png`,
+    fullPage: true,
+  });
+});
+
+test('09: settings index, dark', async ({ page }) => {
+  await fillPhoneAndSendCode(page, SEEDED_PHONE);
+  await page.waitForURL('**/video');
+  await switchToDark(page);
+
+  await page
+    .getByRole('navigation', { name: 'Menu' })
+    .getByRole('button', { name: 'Settings' })
+    .click();
+  await page.waitForURL('**/settings');
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+
+  await page.screenshot({
+    path: `${SCREENSHOT_DIR}/09-settings-index-dark.png`,
+    fullPage: true,
+  });
+});

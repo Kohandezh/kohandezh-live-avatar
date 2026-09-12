@@ -3,9 +3,20 @@ import { useReduceTransparency, useTheme } from './hooks';
 
 type ResolvedTheme = 'light' | 'dark';
 
-/** Hex of HeroUI's dark `--background` (oklch(12% .005 285.823)). */
+/**
+ * The browser chrome colour per resolved theme.
+ *
+ * `light` is the hex of the app accent, oklch(58% 0.215 308), declared in
+ * `src/styles/globals.css`. `dark` is a near-black matching the app's dark ground; it is
+ * unchanged by the accent work.
+ *
+ * These two strings must stay byte for byte identical to the values the anti-FOUC script writes
+ * in `src/app/{mobile,web,admin}/index.html`. That script sets the meta before first paint and
+ * this component rewrites it on the first client render; if the two disagree, the browser chrome
+ * flashes the old colour.
+ */
 const THEME_COLOR: Record<ResolvedTheme, string> = {
-  light: '#0485f7',
+  light: '#9e49d9',
   dark: '#0b0b0e',
 };
 

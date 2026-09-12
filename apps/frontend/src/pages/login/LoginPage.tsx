@@ -25,7 +25,20 @@ export function LoginPage({ redirectTo = '/' }: { redirectTo?: string }) {
   }
 
   return (
-    <section className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-8">
+    // This is the first screen a user sees, before RequireAuth and before any layout
+    // header, so it has to carry its own safe area instead of borrowing one from a
+    // parent. `stage-safe-top` keeps the product name clear of a notch or the status
+    // bar (same choice `OnboardingPage` already makes for the same kind of centered,
+    // header-less screen). `safe-inline-gutter` is the horizontal case nobody had
+    // covered: in landscape on a notched phone, or on an Android camera-cutout device,
+    // the cutout moves to one side, and a plain `px-4` does not know about it. Both come
+    // from `src/styles/globals.css`; nothing new was added here. `pb-8` (not `safe-bottom`)
+    // stays fixed on purpose: it already clears a home indicator on every device that has
+    // one, and stacking it with `safe-bottom` on the same `padding-bottom` property would
+    // just leave one of the two rules to win by accident. The keyboard-open case needs no
+    // CSS at all: the shell's own `<main>` (WebLayout / MobileLayout) is already
+    // `overflow-y-auto`, so a shorter visual viewport scrolls instead of clipping.
+    <section className="stage-safe-top safe-inline-gutter mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 pb-8">
       {/*
        * The product name stays. This screen is now the first thing a new user sees,
        * and a bare phone-number form with no product name reads as a phishing page.

@@ -104,8 +104,15 @@ export default defineConfig(() => {
           dir: 'rtl',
           start_url: '/',
           display: 'standalone',
+          // `background_color` is the splash-screen ground behind the icon while the app boots.
+          // It stays #f5f5f5: that is the exact hex of HeroUI's light `--background`
+          // (oklch(97.02% 0 0)), which is what the app paints one frame later. Making the splash
+          // purple would flash a colour no screen of the app actually shows, so this one does
+          // NOT follow the accent. `theme_color` is the browser and system chrome, which is the
+          // accent: oklch(58% 0.215 308) = #9e49d9. Keep theme_color in step with THEME_COLOR in
+          // src/features/settings/ThemeSync.tsx and the anti-FOUC script in each index.html.
           background_color: '#f5f5f5',
-          theme_color: '#0485f7',
+          theme_color: '#9e49d9',
           icons: [
             {
               src: 'icons/pwa-192x192.png',

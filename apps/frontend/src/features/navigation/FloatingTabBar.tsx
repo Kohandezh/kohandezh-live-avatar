@@ -111,7 +111,15 @@ export function FloatingTabBar({
         >
           <ul className="flex items-center gap-1">
             {items.map((item) => {
-              const isActive = guard.currentPath === item.to;
+              // A nested route still belongs to its tab: on
+              // `/settings/appearance` the Settings item stays the current
+              // one. This is `NavLink`'s own default behaviour, which the
+              // bar lost when it swapped `NavLink` for guarded buttons, so
+              // it has to be reproduced by hand. The trailing slash keeps a
+              // sibling like `/settings-export` from matching.
+              const isActive =
+                guard.currentPath === item.to ||
+                guard.currentPath.startsWith(`${item.to}/`);
               const isItemLive = liveRoute === item.to;
 
               return (

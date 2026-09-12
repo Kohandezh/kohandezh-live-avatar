@@ -177,8 +177,12 @@ export function AudioConversationPage() {
 
       {/* `dock-clear` here, not on the layout's `<main>`: this screen is full bleed to the
           bottom edge so the floating menu's glass has the page behind it, and this column
-          pays the clearance so the controls still stop above the menu. */}
-      <div className="stage-safe-top dock-clear mx-auto flex h-full w-full max-w-md flex-col gap-3 px-4">
+          pays the clearance so the controls still stop above the menu.
+
+          `safe-inline-gutter` replaces a plain `px-4`. It is the same 1rem gutter until the
+          device has a horizontal cutout, which in landscape is on one side, and then it grows
+          to clear it. The screen is full bleed, so nothing else protects this column. */}
+      <div className="stage-safe-top dock-clear safe-inline-gutter mx-auto flex h-full w-full max-w-md flex-col gap-3">
         <h1 className="sr-only">{t('conversation.audio.title')}</h1>
 
         <div className="flex items-center gap-2">

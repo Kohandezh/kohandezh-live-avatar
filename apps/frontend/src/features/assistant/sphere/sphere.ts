@@ -53,10 +53,142 @@ export interface SphereHues {
   agent: number;
 }
 
+/**
+ * Which theme the sphere is painted for.
+ *
+ * The app writes `class="dark"` and `data-theme="dark"` on `<html>`, and the `dark` CSS variant
+ * keys on exactly that (see `src/styles/globals.css`). The sphere reads the same thing, never
+ * `prefers-color-scheme`, or it would disagree with the screen around it: a user whose system is
+ * dark but who picked light in the app would get a dark-tuned sphere on a light page.
+ */
+export type SphereTheme = 'light' | 'dark';
+
+/** One colour stop, before the view's `saturation` and `alpha` multipliers are applied. */
+export interface SphereStop {
+  /** OKLCH lightness, 0 to 1. */
+  lightness: number;
+  /** OKLCH chroma. */
+  chroma: number;
+  /** Alpha, 0 to 1. */
+  alpha: number;
+}
+
+/**
+ * How the sphere is painted on one theme's ground.
+ *
+ * `sphereView` says what the sphere is *doing* (who holds the turn, how loud, how fast it
+ * spins). The palette says how that is painted so it survives the ground behind it. Keeping the
+ * two apart is why a theme switch needs no change to the behaviour code, and why the unit tests
+ * of `sphereView` do not care about the theme at all.
+ */
+export interface SpherePalette {
+  /**
+   * How the filaments and the rings are composited.
+   *
+   * `lighter` adds light, which is what a glowing object does on a near-black ground. On a light
+   * ground adding light only pushes the pixels toward white, so the strands disappear; there the
+   * sphere is painted as a solid object with `source-over` instead.
+   */
+  glowComposite: GlobalCompositeOperation;
+  /** Outer glow, from the centre outward. The last stop is always fully transparent. */
+  bloom: readonly [SphereStop, SphereStop, SphereStop];
+  /** The ball itself: highlight, body, rim. */
+  core: readonly [SphereStop, SphereStop, SphereStop];
+  /** The ten orbiting strands. Their alpha rises with the measured loudness. */
+  filament: {
+    lightness: number;
+    chroma: number;
+    /** Alpha at silence. */
+    alphaBase: number;
+    /** Added to the alpha at full loudness. */
+    alphaLevel: number;
+  };
+  /** The expanding rings of the avatar's turn. Alpha fades to 0 over the ring's life. */
+  ring: { lightness: number; chroma: number; alpha: number };
+}
+
 const TAU = Math.PI * 2;
 
-/** Fallback hues, used only if the CSS custom properties cannot be read. */
-export const DEFAULT_SPHERE_HUES: SphereHues = { user: 265, agent: 315 };
+/**
+ * Fallback hues, used only if the CSS custom properties cannot be read. Kept in step with
+ * `--sphere-hue-user` / `--sphere-hue-agent` in `src/styles/globals.css`, which bracket the app
+ * accent so the sphere and the buttons read as one product.
+ */
+export const DEFAULT_SPHERE_HUES: SphereHues = { user: 288, agent: 328 };
+
+/**
+ * The highest chroma any palette below uses. Only the `hsl` fallback needs it: that path has no
+ * chroma axis, so the value is mapped onto HSL saturation and this is what counts as 100%.
+ */
+const MAX_CHROMA = 0.22;
+
+/**
+ * The two looks, side by side.
+ *
+ * DARK is the reference image: a near-black page, a white-hot core inside a saturated violet
+ * body, strands and rings that add light on top of it, and a wide bloom bleeding outward.
+ *
+ * LIGHT is the same object under different light. Three things change, and all three are forced
+ * by the ground:
+ *
+ * 1. Compositing. `lighter` over a light page is invisible, so the strands and rings switch to
+ *    `source-over` and get darker than the ball instead of brighter.
+ * 2. Opacity. On black a 35% violet reads as glow; on #f5f5f5 it reads as nothing. The core is
+ *    close to opaque in light mode so it is a solid object, and the highlight stays lighter than
+ *    the body so the ball still looks round.
+ * 3. Lightness. Every light-mode colour sits below the page's lightness (0.97) rather than above
+ *    it. The bloom becomes a coloured halo, not a white one.
+ *
+ * The light bloom is also much weaker, and that is a shape problem rather than a taste one. The
+ * bloom is a radial gradient filled across the whole canvas rectangle, so it reaches the straight
+ * edges before it reaches the corners. On a dark ground a wide, strong glow hides that; on a light
+ * ground the same strength paints a visible tinted box around the ball. Rendered and checked at
+ * the avatar's turn, which is where the bloom is strongest.
+ *
+ * The hues are the same in both themes; only how they are laid down changes.
+ */
+export const SPHERE_PALETTES: Record<SphereTheme, SpherePalette> = {
+  dark: {
+    glowComposite: 'lighter',
+    bloom: [
+      { lightness: 0.78, chroma: 0.2, alpha: 0.62 },
+      { lightness: 0.66, chroma: 0.19, alpha: 0.3 },
+      { lightness: 0.52, chroma: 0.12, alpha: 0 },
+    ],
+    core: [
+      { lightness: 0.97, chroma: 0.05, alpha: 0.72 },
+      { lightness: 0.7, chroma: 0.22, alpha: 0.58 },
+      { lightness: 0.56, chroma: 0.21, alpha: 0.14 },
+    ],
+    filament: {
+      lightness: 0.82,
+      chroma: 0.17,
+      alphaBase: 0.1,
+      alphaLevel: 0.12,
+    },
+    ring: { lightness: 0.85, chroma: 0.16, alpha: 0.35 },
+  },
+  light: {
+    glowComposite: 'source-over',
+    bloom: [
+      { lightness: 0.72, chroma: 0.2, alpha: 0.22 },
+      { lightness: 0.66, chroma: 0.19, alpha: 0.07 },
+      { lightness: 0.6, chroma: 0.16, alpha: 0 },
+    ],
+    core: [
+      { lightness: 0.84, chroma: 0.13, alpha: 0.96 },
+      { lightness: 0.62, chroma: 0.21, alpha: 0.99 },
+      { lightness: 0.5, chroma: 0.2, alpha: 0.96 },
+    ],
+    filament: {
+      lightness: 0.52,
+      chroma: 0.2,
+      alphaBase: 0.26,
+      alphaLevel: 0.22,
+    },
+    ring: { lightness: 0.58, chroma: 0.2, alpha: 0.45 },
+  },
+};
 
 /** Ten filaments read as a globe and still cost one cheap path each per frame. */
 const FILAMENT_COUNT = 10;
@@ -85,6 +217,21 @@ const HUE_TAU_S = 0.042;
  */
 const LEVEL_ATTACK_S = 0.04;
 const LEVEL_RELEASE_S = 0.18;
+
+/**
+ * The hue the sphere rests at when nobody holds the turn: idle, connecting, muted, ended.
+ *
+ * Exactly half way between the two speaking hues, which is the app accent. `--sphere-hue-user`
+ * (288) and `--sphere-hue-agent` (328) bracket `--accent` (hue 308) on purpose, so a mix of 0.5
+ * lands on the accent itself. Measured, the resting sphere is then `oklch(62% 0.21 308)` =
+ * #a958e5, next door to the product reference (#b44ae6 measures hue 312.8).
+ *
+ * Resting at 0 instead, the user's own hue, was the visible half of defect D1: the sphere spent
+ * all of its idle life at 288 = #8567fa, which still reads as blue even after the hue tokens
+ * moved off HeroUI's default. Nobody holds the turn on an idle screen, so neither speaker's
+ * colour is the honest one to show.
+ */
+const RESTING_HUE_MIX = 0.5;
 
 function clamp01(value: number): number {
   if (Number.isNaN(value)) return 0;
@@ -203,7 +350,7 @@ export function sphereView(
         state,
         level: 0.12,
         radiusScale: 1 + 0.02 * breath,
-        hueMix: 0,
+        hueMix: RESTING_HUE_MIX,
         saturation: 0.25,
         alpha: 0.85,
         spin: 0.12,
@@ -217,7 +364,7 @@ export function sphereView(
         state,
         level: 0,
         radiusScale: 1,
-        hueMix: 0,
+        hueMix: RESTING_HUE_MIX,
         // Not red. The error message carries that meaning; colour alone never does.
         saturation: 0.15,
         alpha: 0.35,
@@ -237,7 +384,7 @@ export function sphereView(
         state,
         level: 0,
         radiusScale: 1 + 0.02 * breath,
-        hueMix: 0,
+        hueMix: RESTING_HUE_MIX,
         saturation: 0.8,
         alpha: 0.9,
         spin: 0.18,
@@ -316,6 +463,7 @@ export class SpherePainter {
   private width = 0;
   private height = 0;
   private hues: SphereHues = DEFAULT_SPHERE_HUES;
+  private palette: SpherePalette = SPHERE_PALETTES.dark;
   private hueMix = 0;
   private level = 0;
   private ringTimer = 0;
@@ -339,6 +487,16 @@ export class SpherePainter {
   /** The hues come from CSS, so the theme owns them and dark mode can change them. */
   setHues(hues: SphereHues): void {
     this.hues = hues;
+  }
+
+  /**
+   * Which ground the sphere is being painted on.
+   *
+   * The caller must set this before the first paint and again whenever the app theme changes.
+   * The default is the dark palette, so a caller that never sets it gets the reference look.
+   */
+  setTheme(theme: SphereTheme): void {
+    this.palette = SPHERE_PALETTES[theme];
   }
 
   /**
@@ -406,11 +564,32 @@ export class SpherePainter {
     this.drawCore(cx, cy, radius, hue, view);
 
     ctx.save();
-    // Overlapping light adds up, the way real light does.
-    ctx.globalCompositeOperation = 'lighter';
+    // On a dark ground this is `lighter`, so overlapping light adds up the way real light does.
+    // On a light ground it is `source-over`: see `SpherePalette.glowComposite`.
+    ctx.globalCompositeOperation = this.palette.glowComposite;
     this.drawFilaments(cx, cy, radius, hue, view);
     this.drawRings(cx, cy, radius, hue, view);
     ctx.restore();
+  }
+
+  /**
+   * One palette stop as a colour string, with the view's own multipliers applied.
+   *
+   * `saturation` drains the colour (the muted and ended states), `alpha` fades the whole sphere,
+   * and `alphaScale` is the per-part strength, such as the bloom.
+   */
+  private stopColor(
+    hue: number,
+    stop: SphereStop,
+    view: SphereView,
+    alphaScale = 1,
+  ): string {
+    return this.color(
+      hue,
+      stop.lightness,
+      stop.chroma * view.saturation,
+      stop.alpha * view.alpha * alphaScale,
+    );
   }
 
   private drawBloom(
@@ -421,6 +600,7 @@ export class SpherePainter {
     view: SphereView,
   ): void {
     const { ctx } = this;
+    const [inner, middle, edge] = this.palette.bloom;
     const outer = radius * (1.35 + view.bloom * 1.25);
     const gradient = ctx.createRadialGradient(
       cx,
@@ -430,16 +610,9 @@ export class SpherePainter {
       cy,
       outer,
     );
-    const strength = view.bloom * view.alpha;
-    gradient.addColorStop(
-      0,
-      this.color(hue, 0.8, 0.16 * view.saturation, 0.5 * strength),
-    );
-    gradient.addColorStop(
-      0.45,
-      this.color(hue, 0.65, 0.14 * view.saturation, 0.22 * strength),
-    );
-    gradient.addColorStop(1, this.color(hue, 0.5, 0.1 * view.saturation, 0));
+    gradient.addColorStop(0, this.stopColor(hue, inner, view, view.bloom));
+    gradient.addColorStop(0.45, this.stopColor(hue, middle, view, view.bloom));
+    gradient.addColorStop(1, this.stopColor(hue, edge, view, view.bloom));
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, this.width, this.height);
   }
@@ -452,6 +625,7 @@ export class SpherePainter {
     view: SphereView,
   ): void {
     const { ctx } = this;
+    const [highlight, body, rim] = this.palette.core;
     // Off-centre highlight: a light source above and to the start side gives the flat
     // circle its volume.
     const gradient = ctx.createRadialGradient(
@@ -462,18 +636,9 @@ export class SpherePainter {
       cy,
       radius,
     );
-    gradient.addColorStop(
-      0,
-      this.color(hue, 0.95, 0.06 * view.saturation, 0.75 * view.alpha),
-    );
-    gradient.addColorStop(
-      0.6,
-      this.color(hue, 0.72, 0.15 * view.saturation, 0.35 * view.alpha),
-    );
-    gradient.addColorStop(
-      1,
-      this.color(hue, 0.55, 0.16 * view.saturation, 0.05 * view.alpha),
-    );
+    gradient.addColorStop(0, this.stopColor(hue, highlight, view));
+    gradient.addColorStop(0.6, this.stopColor(hue, body, view));
+    gradient.addColorStop(1, this.stopColor(hue, rim, view));
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, TAU);
     ctx.fillStyle = gradient;
@@ -512,11 +677,12 @@ export class SpherePainter {
       }
 
       ctx.closePath();
+      const strand = this.palette.filament;
       ctx.strokeStyle = this.color(
         hue + filament.hueShift,
-        0.82,
-        0.15 * view.saturation,
-        (0.1 + 0.12 * this.level) * view.alpha,
+        strand.lightness,
+        strand.chroma * view.saturation,
+        (strand.alphaBase + strand.alphaLevel * this.level) * view.alpha,
       );
       ctx.stroke();
     }
@@ -530,6 +696,7 @@ export class SpherePainter {
     view: SphereView,
   ): void {
     const { ctx } = this;
+    const ripple = this.palette.ring;
     for (const ring of this.rings) {
       const progress = clamp01(ring.age / RING_LIFE_S);
       ctx.beginPath();
@@ -537,9 +704,9 @@ export class SpherePainter {
       ctx.lineWidth = Math.max(1, radius * 0.02 * (1 - progress));
       ctx.strokeStyle = this.color(
         hue,
-        0.85,
-        0.14 * view.saturation,
-        (1 - progress) * 0.35 * view.alpha,
+        ripple.lightness,
+        ripple.chroma * view.saturation,
+        (1 - progress) * ripple.alpha * view.alpha,
       );
       ctx.stroke();
     }
@@ -548,8 +715,8 @@ export class SpherePainter {
   /**
    * One colour string. `oklch` keeps the two hues perceptually even; the `hsl` fallback is
    * for canvas engines that predate CSS Color 4. The fallback is not the same colour, only
-   * a plausible one: chroma 0.16 is about as saturated as the sphere ever gets, so it maps
-   * to a full-saturation `hsl`.
+   * a plausible one: `MAX_CHROMA` is as saturated as any palette gets, so it maps to a
+   * full-saturation `hsl`.
    */
   private color(
     hue: number,
@@ -561,7 +728,7 @@ export class SpherePainter {
     if (this.supportsOklch) {
       return `oklch(${(lightness * 100).toFixed(1)}% ${chroma.toFixed(3)} ${hue.toFixed(1)} / ${a})`;
     }
-    const saturation = clamp01(chroma / 0.16) * 100;
+    const saturation = clamp01(chroma / MAX_CHROMA) * 100;
     return `hsl(${hue.toFixed(1)} ${saturation.toFixed(0)}% ${(lightness * 100).toFixed(0)}% / ${a})`;
   }
 }
