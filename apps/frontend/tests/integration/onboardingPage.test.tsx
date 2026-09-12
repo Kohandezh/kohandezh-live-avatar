@@ -63,6 +63,28 @@ async function fillName(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Last name'), 'Roshan');
 }
 
+/**
+ * Types a Jalali birthday into the segmented date field.
+ *
+ * The segments are React Aria spinbuttons, not text inputs, so this focuses the first one and
+ * types digits; React Aria advances to the next segment on its own. The order on screen follows
+ * the locale, so the segments are found by their `data-type` rather than by position.
+ */
+async function fillJalaliBirthDate(
+  user: ReturnType<typeof userEvent.setup>,
+  { year, month, day }: { year: number; month: number; day: number },
+) {
+  const segment = (type: string) =>
+    document.querySelector<HTMLElement>(`[data-type="${type}"][role="spinbutton"]`)!;
+
+  segment('month').focus();
+  await user.keyboard(String(month));
+  segment('day').focus();
+  await user.keyboard(String(day));
+  segment('year').focus();
+  await user.keyboard(String(year));
+}
+
 describe('OnboardingPage (requirements 10, 13)', () => {
   beforeEach(async () => {
     installMockApi(apiClient, { delayMs: 0 });
@@ -85,6 +107,59 @@ describe('OnboardingPage (requirements 10, 13)', () => {
     expect(screen.getByText('Enter your last name.')).toBeInTheDocument();
     // Step 1 is still on screen: no save happened.
     expect(screen.getByLabelText('First name')).toBeInTheDocument();
+  });
+
+  it('collects an optional Jalali birthday and saves it as a Gregorian day', async () => {
+    const putSpy = vi.spyOn(apiClient, 'put');
+    const user = userEvent.setup();
+    renderOnboarding();
+
+    await fillName(user);
+    // Khordad 31, 1372 in the Jalali calendar is 21 June 1993.
+    await fillJalaliBirthDate(user, { year: 1372, month: 3, day: 31 });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await screen.findByRole('heading', { name: 'Choose how the app looks' });
+    expect(putSpy).toHaveBeenCalledWith('/api/me/profile', {
+      firstName: 'Sina',
+      lastName: 'Roshan',
+      birthDate: '1993-06-21',
+    });
+    putSpy.mockRestore();
+  });
+
+  it('shows the birthday the user typed back in the Jalali calendar', async () => {
+    const user = userEvent.setup();
+    renderOnboarding();
+
+    await fillJalaliBirthDate(user, { year: 1372, month: 3, day: 31 });
+
+    // Read back off the field itself: a Gregorian 1993 here would mean the
+    // picker silently reinterpreted the typed year.
+    expect(
+      document.querySelector('[data-type="year"][role="spinbutton"]'),
+    ).toHaveTextContent('1372');
+    expect(
+      document.querySelector('[data-type="month"][role="spinbutton"]'),
+    ).toHaveAttribute('aria-valuetext', expect.stringContaining('Khordad'));
+  });
+
+  it('saves with no birthday when the field is left empty', async () => {
+    const putSpy = vi.spyOn(apiClient, 'put');
+    const user = userEvent.setup();
+    renderOnboarding();
+
+    await fillName(user);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await screen.findByRole('heading', { name: 'Choose how the app looks' });
+    // Null, not omitted: the endpoint is a full replace.
+    expect(putSpy).toHaveBeenCalledWith('/api/me/profile', {
+      firstName: 'Sina',
+      lastName: 'Roshan',
+      birthDate: null,
+    });
+    putSpy.mockRestore();
   });
 
   it('saves the name and moves to the appearance step', async () => {

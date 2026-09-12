@@ -3,7 +3,7 @@
 import json
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -103,6 +103,7 @@ class FakeDatabase:
             "first_name": "",
             "last_name": "",
             "email": None,
+            "birth_date": None,
             "role": role,
             "status": "active",
             "created_at": datetime.now(UTC),
@@ -123,11 +124,14 @@ class FakeDatabase:
             user["status"] = status
         return user
 
-    async def update_user_profile(self, user_id: UUID, *, first_name: str, last_name: str):
+    async def update_user_profile(
+        self, user_id: UUID, *, first_name: str, last_name: str, birth_date: date | None
+    ):
         user = await self.get_user(user_id)
         if user:
             user["first_name"] = first_name
             user["last_name"] = last_name
+            user["birth_date"] = birth_date
         return user
 
     async def list_users(self, *, search: str | None, page: int, page_size: int):

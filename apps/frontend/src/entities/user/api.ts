@@ -22,11 +22,14 @@ export async function getCurrentUser(): Promise<User | null> {
 export interface UpdateProfileInput {
   firstName: string;
   lastName: string;
+  /** Gregorian `YYYY-MM-DD`, or null to clear it. Always sent: see below. */
+  birthDate: string | null;
 }
 
 /**
  * Full replace, not a partial patch: the backend requires both names on every
- * call. Returns the whole updated user.
+ * call, and it clears `birthDate` when the field is missing. Every caller
+ * therefore sends all three fields. Returns the whole updated user.
  */
 export async function updateProfile(input: UpdateProfileInput): Promise<User> {
   const { data } = await apiClient.put('/api/me/profile', input);

@@ -84,12 +84,18 @@ Response: `User`. `401` when there is no session. The frontend treats `401` here
 
 ### PUT /api/me/profile
 
-Request: `{ "firstName": string, "lastName": string }`. Full replace, not a partial patch: both
-fields are required on every call.
+Request: `{ "firstName": string, "lastName": string, "birthDate": string | null }`. Full replace,
+not a partial patch. Both names are required on every call. `birthDate` is optional, but the
+replace covers it too: sending `null`, or leaving the field out, clears a birthday saved before.
+Clients send all three fields.
+
+`birthDate` is a Gregorian calendar day, `YYYY-MM-DD`, with no time and no time zone. The app
+collects and shows it in the Jalali (Solar Hijri) calendar and converts at the edge
+(`apps/frontend/src/features/profile/jalali.ts`); the wire format is always Gregorian.
 
 Response `200`: `User`. `401` when there is no session. `403 account_disabled` when the account
 was turned off. `422 validation_error` when a name is blank after trimming or longer than 100
-characters.
+characters, or when `birthDate` is not a real day between `1900-01-01` and today.
 
 The frontend uses the returned `firstName` to decide whether first-run onboarding is finished.
 There is no separate "new user" flag.

@@ -175,6 +175,38 @@ function readString(body: unknown, key: string): string {
   return '';
 }
 
+/**
+ * The optional birthday out of a request body.
+ *
+ * Mirrors `UpdateProfileBody.check_birth_date` in the backend: the field may be missing or null,
+ * and anything else must be a real Gregorian day between 1900-01-01 and today. Duplicated rather
+ * than imported because `data/mock` must not depend on `features` (ARCHITECTURE.md dependency
+ * direction), the same reason `normalizePhone` is duplicated above.
+ */
+function readBirthDate(body: unknown): string | null {
+  const raw =
+    body && typeof body === 'object'
+      ? (body as Record<string, unknown>)['birthDate']
+      : undefined;
+  if (raw === undefined || raw === null) return null;
+
+  const invalid = new MockHttpError(
+    422,
+    'validation_error',
+    'Birth date must be a real day between 1900 and today.',
+  );
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw invalid;
+
+  const parsed = new Date(`${raw}T00:00:00Z`);
+  // `new Date` rolls an impossible day over ("2024-02-31" becomes 2 March), so compare the
+  // round trip rather than only checking for NaN.
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== raw) {
+    throw invalid;
+  }
+  if (raw < '1900-01-01' || parsed.getTime() > Date.now()) throw invalid;
+  return raw;
+}
+
 function toInt(
   value: string | null,
   fallback: number,
@@ -241,6 +273,8 @@ export const routes: MockRoute[] = [
           firstName: '',
           lastName: '',
           email: null,
+          // A fresh account has no birthday, the same as a fresh `firstName`.
+          birthDate: null,
           role: 'user',
           status: 'active',
           createdAt: new Date().toISOString(),
@@ -283,6 +317,7 @@ export const routes: MockRoute[] = [
       const current = requireUser(request);
       const firstName = readString(request.body, 'firstName').trim();
       const lastName = readString(request.body, 'lastName').trim();
+      const birthDate = readBirthDate(request.body);
 
       if (!firstName || !lastName) {
         throw new MockHttpError(
@@ -302,6 +337,8 @@ export const routes: MockRoute[] = [
       }
       user.firstName = firstName;
       user.lastName = lastName;
+      // Full replace, like the real endpoint: a missing or null birthDate clears it.
+      user.birthDate = birthDate;
 
       return { body: user };
     },

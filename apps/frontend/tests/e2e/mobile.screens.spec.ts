@@ -68,7 +68,7 @@ test('02: onboarding, name step', async ({ page }) => {
   await fillPhoneAndSendCode(page, UNSEEDED_PHONE);
   await page.waitForURL('**/onboarding');
   await expect(
-    page.getByRole('heading', { name: 'What should we call you?' }),
+    page.getByRole('heading', { name: 'Tell us about yourself' }),
   ).toBeVisible();
 
   await page.screenshot({
@@ -140,12 +140,12 @@ test('06: appearance, dark', async ({ page }) => {
     page.getByRole('heading', { name: 'Appearance' }),
   ).toBeVisible();
 
-  // The custom-styled radio's own hit target sits under HeroUI's animated
-  // control graphic, which Playwright's actionability check treats as an
-  // interceptor mid-transition. `force` is safe here: this is a visual
-  // overlay race, not a real disabled/hidden state (already proven above by
-  // resolving the role and its accessible name).
-  await page.getByRole('radio', { name: 'Dark' }).click({ force: true });
+  // The theme is a list box now, not a radio group: the row itself is the
+  // press target, so no `force` and no overlay race.
+  await page
+    .getByRole('listbox', { name: 'Theme' })
+    .getByRole('option', { name: 'Dark' })
+    .click();
   // ThemeSync applies the class in a layout effect; wait for the real
   // effect instead of a timeout so the screenshot cannot race it.
   await expect(page.locator('html')).toHaveClass(/dark/);
@@ -186,9 +186,10 @@ async function switchToDark(page: Page): Promise<void> {
   await page.waitForURL('**/settings');
   await page.getByRole('link', { name: 'Appearance' }).click();
   await page.waitForURL('**/settings/appearance');
-  // See the note in test 06: the animated control graphic intercepts the
-  // press mid-transition, which is a visual race and not a real blocked state.
-  await page.getByRole('radio', { name: 'Dark' }).click({ force: true });
+  await page
+    .getByRole('listbox', { name: 'Theme' })
+    .getByRole('option', { name: 'Dark' })
+    .click();
   await expect(page.locator('html')).toHaveClass(/dark/);
 }
 

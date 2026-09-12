@@ -7,9 +7,9 @@ import { useNavigate } from 'react-router-dom';
 import { useUpdateProfile } from '@/entities/user';
 import { useLogout, useSession } from '@/features/authentication';
 import {
-  ProfileNameFields,
-  profileNameSchema,
-  type ProfileNameValues,
+  ProfileFields,
+  profileSchema,
+  type ProfileValues,
 } from '@/features/profile';
 import { isApiError } from '@/shared/api';
 import { useOnline } from '@/shared/hooks';
@@ -48,11 +48,12 @@ export function PersonalInfoPage() {
   // that. See `showSuccess` below.
   const [justSaved, setJustSaved] = useState(false);
 
-  const form = useForm<ProfileNameValues>({
-    resolver: zodResolver(profileNameSchema),
+  const form = useForm<ProfileValues>({
+    resolver: zodResolver(profileSchema),
     defaultValues: {
       firstName: user?.firstName ?? '',
       lastName: user?.lastName ?? '',
+      birthDate: user?.birthDate ?? null,
     },
   });
 
@@ -65,6 +66,7 @@ export function PersonalInfoPage() {
         form.reset({
           firstName: freshUser.firstName,
           lastName: freshUser.lastName,
+          birthDate: freshUser.birthDate,
         });
         setJustSaved(true);
       },
@@ -109,7 +111,7 @@ export function PersonalInfoPage() {
           </Card.Header>
           <Card.Content>
             <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-              <ProfileNameFields
+              <ProfileFields
                 control={form.control}
                 isDisabled={updateProfile.isPending}
               />

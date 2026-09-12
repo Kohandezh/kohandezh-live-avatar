@@ -15,9 +15,9 @@ import { useNavigate } from 'react-router-dom';
 import { useUpdateProfile } from '@/entities/user';
 import { useLogout, useSession } from '@/features/authentication';
 import {
-  ProfileNameFields,
-  profileNameSchema,
-  type ProfileNameValues,
+  ProfileFields,
+  profileSchema,
+  type ProfileValues,
 } from '@/features/profile';
 import {
   setMicPermissionAsked,
@@ -77,11 +77,14 @@ function toMicOutcome(state: MicPermissionState): MicOutcome {
 }
 
 /**
- * First run after login: name, appearance, microphone.
+ * First run after login: profile, appearance, microphone.
  *
  * Only step 1 is blocking. The name is the server-side "onboarding done"
  * flag that `RequireProfile` reads, so this route must stay outside that
- * guard or a user with no name would be redirected to itself forever.
+ * guard or a user with no name would be redirected to itself forever. The
+ * birthday sits on the same step but is optional: it is profile data, not an
+ * access condition, and nobody should be locked out of the product for
+ * declining to give it.
  *
  * Steps 2 and 3 are client-side only. Step 3 must be a real button press:
  * on iOS Safari and inside a standalone PWA, `getUserMedia` called outside a
@@ -103,11 +106,12 @@ export function OnboardingPage() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isFirstRender = useRef(true);
 
-  const nameForm = useForm<ProfileNameValues>({
-    resolver: zodResolver(profileNameSchema),
+  const profileForm = useForm<ProfileValues>({
+    resolver: zodResolver(profileSchema),
     defaultValues: {
       firstName: user?.firstName ?? '',
       lastName: user?.lastName ?? '',
+      birthDate: user?.birthDate ?? null,
     },
   });
 
@@ -121,7 +125,7 @@ export function OnboardingPage() {
     headingRef.current?.focus();
   }, [step]);
 
-  const submitName = nameForm.handleSubmit((values) => {
+  const submitProfile = profileForm.handleSubmit((values) => {
     updateProfile.mutate(values, {
       // The mutation writes the fresh user into the `me` cache, so
       // `RequireProfile` sees the new name with no refetch.
@@ -203,12 +207,12 @@ export function OnboardingPage() {
           <Card.Content>
             {step === 1 ? (
               <form
-                onSubmit={submitName}
+                onSubmit={submitProfile}
                 noValidate
                 className="flex flex-col gap-4"
               >
-                <ProfileNameFields
-                  control={nameForm.control}
+                <ProfileFields
+                  control={profileForm.control}
                   isDisabled={updateProfile.isPending}
                 />
 

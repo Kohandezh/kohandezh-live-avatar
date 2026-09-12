@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -217,13 +218,16 @@ class Database:
         )
 
     async def update_user_profile(
-        self, user_id: UUID, *, first_name: str, last_name: str
+        self, user_id: UUID, *, first_name: str, last_name: str, birth_date: date | None
     ) -> asyncpg.Record | None:
+        """Full replace. `birth_date=None` clears the column, it does not leave it untouched."""
         return await self._pool().fetchrow(
-            "UPDATE users SET first_name=$2, last_name=$3, updated_at=now() WHERE id=$1 RETURNING *",
+            "UPDATE users SET first_name=$2, last_name=$3, birth_date=$4, updated_at=now() "
+            "WHERE id=$1 RETURNING *",
             user_id,
             first_name,
             last_name,
+            birth_date,
         )
 
     async def list_users(

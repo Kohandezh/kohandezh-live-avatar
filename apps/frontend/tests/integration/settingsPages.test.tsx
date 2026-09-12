@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -133,6 +133,45 @@ describe('Settings (requirements 5, 15)', () => {
       expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     });
 
+    it('loads the stored birthday into the Jalali field', async () => {
+      mockSession.set('u-user');
+      renderSettings('/settings/personal');
+
+      // u-user was seeded with 1993-06-21, which is Khordad 31, 1372.
+      await screen.findByLabelText('First name');
+      expect(
+        document.querySelector('[data-type="year"][role="spinbutton"]'),
+      ).toHaveTextContent('1372');
+      expect(
+        document.querySelector('[data-type="day"][role="spinbutton"]'),
+      ).toHaveTextContent('31');
+    });
+
+    it('keeps the stored birthday when only the name is edited', async () => {
+      // `PUT /api/me/profile` is a full replace, so a screen that sent only the
+      // names would clear the birthday on every save. This is that regression.
+      const putSpy = vi.spyOn(apiClient, 'put');
+      mockSession.set('u-user');
+      const user = userEvent.setup();
+      renderSettings('/settings/personal');
+
+      // Not "Doe": the mock backend keeps edited users between tests in this
+      // file, and an earlier test already saved that value. An unchanged form
+      // is not dirty, so Save would stay disabled and this would pass for the
+      // wrong reason.
+      await user.clear(await screen.findByLabelText('Last name'));
+      await user.type(screen.getByLabelText('Last name'), 'Roshan');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      await screen.findByText('Your details were saved.');
+      expect(putSpy).toHaveBeenCalledWith('/api/me/profile', {
+        firstName: 'User',
+        lastName: 'Roshan',
+        birthDate: '1993-06-21',
+      });
+      putSpy.mockRestore();
+    });
+
     it('keeps the typed values on screen after a failed save', async () => {
       const putSpy = vi
         .spyOn(apiClient, 'put')
@@ -172,30 +211,89 @@ describe('Settings (requirements 5, 15)', () => {
       localStorage.clear();
     });
 
-    it('changes the theme and the reduce-transparency flag, and both persist to the settings key', async () => {
+    it('picks the theme from the list box and persists it to the settings key', async () => {
       mockSession.set('u-user');
       const user = userEvent.setup();
       renderSettings('/settings/appearance');
 
-      await user.click(await screen.findByRole('radio', { name: 'Dark' }));
+      const themeList = await screen.findByRole('listbox', { name: 'Theme' });
+      expect(
+        within(themeList).getByRole('option', { name: /System/ }),
+      ).toHaveAttribute('aria-selected', 'true');
+
+      await user.click(within(themeList).getByRole('option', { name: 'Dark' }));
+
       await waitFor(() =>
         expect(document.documentElement.dataset.theme).toBe('dark'),
       );
       expect(readPersistedSettings().theme).toBe('dark');
+      expect(
+        within(themeList).getByRole('option', { name: 'Dark' }),
+      ).toHaveAttribute('aria-selected', 'true');
+    });
 
-      // The switch's `<label>` wraps its own description text too, so match on
-      // the label part rather than the whole concatenated accessible name.
-      const reduceSwitch = screen.getByRole('switch', {
-        name: /Reduce transparency/,
+    it('offers exactly the three themes, with the system default explained', async () => {
+      mockSession.set('u-user');
+      renderSettings('/settings/appearance');
+
+      const themeList = await screen.findByRole('listbox', { name: 'Theme' });
+
+      expect(within(themeList).getAllByRole('option')).toHaveLength(3);
+      expect(
+        within(themeList).getByRole('option', { name: 'Light' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Follows your device setting.'),
+      ).toBeInTheDocument();
+    });
+
+    it('sets the reduce-transparency level with the slider, and the level reaches the CSS', async () => {
+      mockSession.set('u-user');
+      const user = userEvent.setup();
+      renderSettings('/settings/appearance');
+
+      const slider = await screen.findByRole('slider', {
+        name: 'Reduce transparency',
       });
-      expect(reduceSwitch).not.toBeChecked();
+      expect(slider).toHaveValue('0');
+      // 0 is the untouched glass, so the full-flat attribute must stay off.
+      expect(document.documentElement.dataset.reduceTransparency).toBe('false');
 
-      await user.click(reduceSwitch);
+      // Keyboard, not a drag: jsdom has no layout, so a pointer drag on a
+      // slider track cannot produce a value. The arrow keys move by `step`.
+      await user.tab();
+      slider.focus();
+      await user.keyboard('{ArrowRight}{ArrowRight}');
 
       await waitFor(() =>
-        expect(readPersistedSettings().reduceTransparency).toBe(true),
+        expect(readPersistedSettings().reduceTransparency).toBe(10),
+      );
+      // A level in the middle scales the glass through this custom property
+      // rather than switching it off.
+      expect(
+        document.documentElement.style.getPropertyValue('--glass-reduce'),
+      ).toBe('0.1');
+      expect(document.documentElement.dataset.reduceTransparency).toBe('false');
+    });
+
+    it('marks the top of the scale so the glass is dropped outright', async () => {
+      mockSession.set('u-user');
+      const user = userEvent.setup();
+      renderSettings('/settings/appearance');
+
+      const slider = await screen.findByRole('slider', {
+        name: 'Reduce transparency',
+      });
+      slider.focus();
+      await user.keyboard('{End}');
+
+      await waitFor(() =>
+        expect(readPersistedSettings().reduceTransparency).toBe(100),
       );
       expect(document.documentElement.dataset.reduceTransparency).toBe('true');
+      expect(
+        document.documentElement.style.getPropertyValue('--glass-reduce'),
+      ).toBe('1');
     });
   });
 });

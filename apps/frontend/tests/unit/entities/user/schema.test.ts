@@ -8,6 +8,7 @@ const validUser = {
   firstName: 'Sara',
   lastName: 'Ahmadi',
   email: 'sara@example.com',
+  birthDate: '1993-06-21',
   role: 'user',
   status: 'active',
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -40,6 +41,28 @@ describe('userSchema', () => {
     expect(userSchema.safeParse({ ...validUser, email: 42 }).success).toBe(
       false,
     );
+  });
+
+  it('accepts a null birthDate', () => {
+    expect(
+      userSchema.safeParse({ ...validUser, birthDate: null }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a birthDate that is not an ISO calendar day', () => {
+    // A timestamp, a Jalali-looking string with slashes, and a plain number
+    // are all things a broken backend could send.
+    for (const birthDate of [
+      '1993-06-21T00:00:00.000Z',
+      '1372/03/31',
+      '21-06-1993',
+      19930621,
+    ]) {
+      expect(
+        userSchema.safeParse({ ...validUser, birthDate }).success,
+        `birthDate ${String(birthDate)} should be rejected`,
+      ).toBe(false);
+    }
   });
 
   it('builds a full name', () => {
