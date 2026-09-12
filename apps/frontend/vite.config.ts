@@ -104,8 +104,15 @@ export default defineConfig(() => {
           dir: 'rtl',
           start_url: '/',
           display: 'standalone',
+          // `background_color` is the splash-screen ground behind the icon while the app boots.
+          // It stays #f5f5f5: that is the exact hex of HeroUI's light `--background`
+          // (oklch(97.02% 0 0)), which is what the app paints one frame later. Making the splash
+          // purple would flash a colour no screen of the app actually shows, so this one does
+          // NOT follow the accent. `theme_color` is the browser and system chrome, which is the
+          // accent: oklch(58% 0.215 308) = #9e49d9. Keep theme_color in step with THEME_COLOR in
+          // src/features/settings/ThemeSync.tsx and the anti-FOUC script in each index.html.
           background_color: '#f5f5f5',
-          theme_color: '#0485f7',
+          theme_color: '#9e49d9',
           icons: [
             {
               src: 'icons/pwa-192x192.png',
@@ -186,25 +193,31 @@ export default defineConfig(() => {
               output: {
                 // Split big libraries into their own chunks so they cache well
                 // and change less often than app code.
+                //
+                // ONE rule governs this function: a cycle must never cross a chunk
+                // boundary. Rollup orders modules within a chunk, but between chunks
+                // the import order is fixed, so a cycle that spans two chunks can
+                // evaluate a subclass before its base class exists. That crashes the
+                // app at load with "Cannot access 'X' before initialization", it only
+                // happens in a built bundle, and `vite build` reports nothing.
+                //
+                // That is exactly what a `react`-only chunk caused here: HeroUI's
+                // toast queue subclasses a React Stately class, and with React split
+                // off on its own the two ended up in different chunks. So everything
+                // in the React component ecosystem stays together.
                 manualChunks(id: string) {
                   if (!id.includes('node_modules')) return undefined;
-                  if (
-                    /[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(
-                      id,
-                    )
-                  ) {
-                    return 'react';
-                  }
                   // The assistant loads the SDK (and LiveKit with it) only when a conversation
-                  // starts, so keep both out of the chunk every page downloads.
+                  // starts, so keep both out of the chunk every page downloads. This split is
+                  // safe because it follows a real dynamic `import()` boundary in the code, so
+                  // nothing in it is evaluated until the whole graph above it already exists.
                   if (
                     /@heygen[\\/]liveavatar-web-sdk|livekit-client/.test(id)
                   ) {
                     return 'liveavatar';
                   }
-                  if (id.includes('@tanstack')) return 'query';
-                  if (id.includes('i18next')) return 'i18n';
-                  if (id.includes('zod')) return 'zod';
+                  // Everything else ships as one vendor chunk, on purpose. Splitting it by
+                  // library for nicer caching is what broke the build.
                   return 'vendor';
                 },
               },

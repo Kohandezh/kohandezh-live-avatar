@@ -31,6 +31,7 @@ contract between the two apps. Any backend that implements it works with this fr
 | POST   | `/api/auth/otp/verify`                | Public      | `features/authentication`     |
 | POST   | `/api/auth/logout`                    | Auth        | `features/authentication`     |
 | GET    | `/api/me`                             | Auth        | `entities/user` (session)     |
+| PUT    | `/api/me/profile`                     | Auth        | `entities/user` (onboarding)  |
 | GET    | `/api/admin/users`                    | Admin       | `entities/user` (admin table) |
 | GET    | `/api/admin/dashboard`                | Admin       | `entities/dashboard`          |
 | POST   | `/api/assistant/session`              | Auth or key | `entities/assistant-session`  |
@@ -80,6 +81,18 @@ Response `204`. Works with the cookie or with the bearer token. The token stops 
 
 Response: `User`. `401` when there is no session. The frontend treats `401` here as "anonymous", not as an error.
 `403 account_disabled` when the account was turned off after the session was created.
+
+### PUT /api/me/profile
+
+Request: `{ "firstName": string, "lastName": string }`. Full replace, not a partial patch: both
+fields are required on every call.
+
+Response `200`: `User`. `401` when there is no session. `403 account_disabled` when the account
+was turned off. `422 validation_error` when a name is blank after trimming or longer than 100
+characters.
+
+The frontend uses the returned `firstName` to decide whether first-run onboarding is finished.
+There is no separate "new user" flag.
 
 ### GET /api/admin/users
 

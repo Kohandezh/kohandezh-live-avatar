@@ -8,4 +8,9 @@ interface ImportMetaEnv {
   readonly VITE_API_MOCK?: string;
   /** Injected at build time by vite.config.ts. "test" under Vitest. */
   readonly VITE_APP_TARGET: 'mobile' | 'web' | 'admin' | 'widget' | 'test';
+  /**
+   * URL of the idle-preview video loop shown behind the video conversation's start button.
+   * Unset (the normal case today) falls back to the CSS-only `AmbientStage` animation.
+   */
+  readonly VITE_ASSISTANT_PREVIEW_VIDEO?: string;
 }

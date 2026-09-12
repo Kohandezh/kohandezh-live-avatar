@@ -1,10 +1,67 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!--
+      Anti-FOUC: applies the saved theme before the first paint. Must stay the very first
+      child of <head>, ahead of the theme-color meta and every stylesheet, because a classic
+      (non-module) inline script runs synchronously in document order while a stylesheet link
+      only blocks rendering, not script execution order.
+      This must agree byte for byte with `ThemeSync` (src/features/settings/ThemeSync.tsx) and
+      `settingsSlice.ts` on the shape of the 'settings' localStorage key, or the first paint
+      disagrees with React's first render.
+    -->
+    <script>
+      (function () {
+        var isDark = false;
+        try {
+          var raw = window.localStorage.getItem('settings');
+          var saved = raw ? JSON.parse(raw) : null;
+          var theme =
+            saved && typeof saved.theme === 'string' ? saved.theme : 'system';
+          isDark =
+            theme === 'dark' ||
+            (theme !== 'light' &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.remove('light', 'dark');
+          root.classList.add(isDark ? 'dark' : 'light');
+          root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+          root.style.colorScheme = isDark ? 'dark' : 'light';
+          if (saved && saved.reduceTransparency === true) {
+            root.setAttribute('data-reduce-transparency', 'true');
+          }
+        } catch (e) {
+          /* Never block first paint on a storage or parse failure. Falls back to light. */
+        }
+        /* #0b0b0e is a near-black that matches the app's dark ground (HeroUI's dark
+           --background is oklch(12% .005 285.823) = #060607; #0b0b0e is oklch(15.1% .0064
+           285.6), one step lighter, and is left as it is - only the light value changes); #9e49d9
+           is the hex of the light app accent, oklch(58% 0.215 308), declared in
+           src/styles/globals.css. These two strings must stay byte for byte identical to
+           THEME_COLOR in src/features/settings/ThemeSync.tsx, or the browser chrome flashes the
+           old colour on the first client render. Written outside the try block so a failure
+           above still leaves a theme-color meta in the page. document.write, not a static
+           <meta> tag updated afterwards: at this point in the parse that tag does not exist
+           yet for a query to find, and this keeps a single source of truth for the value. */
+        document.write(
+          '<meta name="theme-color" content="' +
+            (isDark ? '#0b0b0e' : '#9e49d9') +
+            '">',
+        );
+      })();
+    </script>
     <meta charset="UTF-8" />
+    <!--
+      No viewport-fit=cover here, on purpose. The mobile and web shells use it because they draw
+      full-bleed conversation screens under the status bar. The admin dashboard does not: it is a
+      desktop screen of tables and forms, it is never installed as a standalone app, and it has no
+      full-bleed media. Turning cover on would push the layout under the system bars and then
+      require every admin page to add safe-area padding to win the space back. Leaving it off is
+      the smaller, safer default.
+    -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="theme-color" content="#0485f7" />
     <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
     <title>Dr. Kohandezh Assistant · Admin</title>
   </head>

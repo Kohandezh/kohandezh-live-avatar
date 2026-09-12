@@ -1,100 +1,89 @@
-import { useTranslation } from 'react-i18next';
-import { NavLink, Outlet } from 'react-router-dom';
+import { Outlet, useMatch } from 'react-router-dom';
 import { useSession } from '@/features/authentication';
-import { LanguageSwitcher } from '@/features/settings';
+import {
+  ConversationLiveProvider,
+  FloatingTabBar,
+  useConversationLive,
+} from '@/features/navigation';
 import { OfflineBanner } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 
-function AssistantIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M21 12a8 8 0 1 1-3.2-6.4" />
-      <path d="M9 10v4" />
-      <path d="M12 8v8" />
-      <path d="M15 10v4" />
-    </svg>
-  );
-}
+/**
+ * Reads everything the shell needs to decide whether to draw the floating menu, and
+ * draws it. Split out from `MobileLayout` so it can sit inside `ConversationLiveProvider`
+ * and read `useConversationLive()` for the live dot.
+ */
+function MobileShell() {
+  const { user, isAuthenticated } = useSession();
+  const { liveRoute } = useConversationLive();
 
-function UserIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" />
-    </svg>
-  );
-}
+  // Every `useMatch` call runs unconditionally, in a fixed order, before any of them
+  // is combined into `showDock` below. A `&&` chain that only calls a hook once the
+  // user turns out to be authenticated changes the hook count between renders and
+  // crashes React ("Rendered more hooks than during the previous render") the moment
+  // the `me` query resolves.
+  const onboardingMatch = useMatch('/onboarding');
+  const videoMatch = useMatch('/video');
+  const audioMatch = useMatch('/audio');
+  const settingsMatch = useMatch('/settings/*');
 
-/** Mobile shell: locked viewport, fixed header, scrollable content, fixed tab bar. */
-export function MobileLayout() {
-  const { t } = useTranslation();
-  const { isAuthenticated } = useSession();
+  // The floating menu belongs to the product screens only: signed in, named (the
+  // server's `firstName`, never a local flag), not on `/onboarding`, and not on
+  // `/forbidden` or the `*` not-found catch-all either. Naming the product routes
+  // explicitly is what keeps a signed-in user's mistyped URL or a disabled account
+  // from showing chrome for a page that has none.
+  const isProductRoute = Boolean(videoMatch || audioMatch || settingsMatch);
 
-  const tabs = [
-    { to: '/assistant', label: t('nav.assistant'), icon: <AssistantIcon /> },
-    { to: '/profile', label: t('nav.profile'), icon: <UserIcon /> },
-  ];
+  // The conversation screens draw their own full-bleed stage, which has to run all the
+  // way to the bottom edge so the floating glass menu has the video behind it to blur
+  // (that is what `onVideo` / `data-glass="strong"` exist for). Paying `dock-clear` here
+  // would stop the stage above the menu and leave a flat band of page background under
+  // it. Those screens pay the clearance on their own chrome column instead, so their
+  // controls still sit above the menu. Every scrolling screen keeps it here.
+  const isFullBleedRoute = Boolean(videoMatch || audioMatch);
+  const showDock =
+    isAuthenticated &&
+    Boolean(user?.firstName.trim()) &&
+    !onboardingMatch &&
+    isProductRoute;
 
   return (
-    <div className="flex h-dvh w-screen flex-col overflow-hidden bg-background">
-      <header className="safe-top z-10 shrink-0 select-none border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="flex h-14 items-center justify-between px-4">
-          <span className="font-semibold tracking-tight text-foreground">
-            {t('app.shortName')}
-          </span>
-          <LanguageSwitcher />
-        </div>
-      </header>
-
+    <div className="relative flex h-dvh w-screen flex-col overflow-hidden bg-background">
       <div className="shrink-0">
         <OfflineBanner />
       </div>
 
-      <main className="flex-1 overflow-y-auto overscroll-y-contain pb-6">
+      <main
+        className={cn(
+          'flex-1 overflow-y-auto overscroll-y-contain',
+          !isFullBleedRoute && 'dock-clear',
+        )}
+      >
         <Outlet />
       </main>
 
-      {/* The landing and the login screen have nothing to switch between. */}
-      {isAuthenticated ? (
-        <nav
-          aria-label={t('nav.menu')}
-          className="safe-bottom shrink-0 select-none border-t border-border bg-surface"
-        >
-          <ul className="grid h-14 grid-cols-2">
-            {tabs.map((tab) => (
-              <li key={tab.to} className="h-full">
-                <NavLink
-                  to={tab.to}
-                  className={({ isActive }) =>
-                    cn(
-                      'flex h-full w-full flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors active:scale-95',
-                      isActive ? 'text-accent' : 'text-muted',
-                    )
-                  }
-                >
-                  {tab.icon}
-                  {tab.label}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
+      {showDock ? (
+        <FloatingTabBar liveRoute={liveRoute} onVideo={Boolean(videoMatch)} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Mobile shell: a locked viewport (`h-dvh overflow-hidden`) with a scrolling `<main>`
+ * and the floating glass menu, instead of the old fixed header and docked tab bar
+ * (requirements 2, 3, 4, 6 remove the header entirely; requirement 14 is the menu).
+ *
+ * `ConversationLiveProvider` wraps both the menu and the outlet: `/video` and `/audio`
+ * publish their live status into it from below (through `useConversationScreen`), and
+ * `FloatingTabBar`'s live dot plus the navigation guard both read it from here. Plain
+ * React context, not Redux — the value tracks a live session, which is server state and
+ * must not be duplicated into client-owned global state.
+ */
+export function MobileLayout() {
+  return (
+    <ConversationLiveProvider>
+      <MobileShell />
+    </ConversationLiveProvider>
   );
 }

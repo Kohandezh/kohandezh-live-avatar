@@ -2,9 +2,92 @@
 @import 'tailwindcss' source('../');
 @import '@heroui/styles';
 
+/*
+ * @heroui/styles@3.2.5 ships a broken media-query branch for its own `dark:` variant, and the
+ * app always writes both class="dark" and data-theme="dark" on <html> (never relies on
+ * prefers-color-scheme in app CSS). Redeclaring `dark` here, keyed on the class/attribute, also
+ * gives the right answer for a user whose OS is dark but who picked light in the app.
+ * Must come after both @import lines above, or HeroUI's own definition wins.
+ * `:is(...)`, not `:where(...)`: `:where()` has zero specificity, which would make every
+ * `dark:` utility lose to a plain (non-dark) utility of the same property.
+ */
+@custom-variant dark (&:is(.dark, .dark *, [data-theme='dark'], [data-theme='dark'] *));
+
 @theme {
   --font-sans:
     'Vazirmatn', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Liquid-glass material tuning. Referenced by the `glass`/`glass-fringe` utilities below, so
+     Tailwind keeps these (a @theme variable with no CSS reference gets pruned from the build).
+     The dark branch needs its own, higher tint: see the `glass` utility for the measurements. */
+  --glass-blur: 18px;
+  --glass-saturate: 180%;
+  --glass-brightness: 108%;
+  --glass-tint: 62%;
+  --glass-tint-dark: 82%;
+  --glass-tint-strong: 88%;
+  --glass-tint-strong-dark: 92%;
+  --glass-highlight: 16%;
+  --glass-highlight-dark: 4%;
+}
+
+/*
+ * The app accent.
+ *
+ * HeroUI derives its whole accent family from this one custom property: `--accent-soft`,
+ * `--accent-soft-foreground`, `--accent-hover` and `--accent-soft-hover` are all `color-mix()`
+ * expressions over `var(--accent)` (checked in @heroui/styles@3.2.5,
+ * node_modules/@heroui/styles/dist/heroui.min.css). HeroUI declares `--accent` once, on
+ * `:root,:host`, with no dark override. So overriding it here recolours every accent surface in
+ * the app - buttons, links, active tabs, focus rings, chips - in both themes.
+ *
+ * Value: the violet-purple of the product reference. Hue 308 sits between a pure violet and the
+ * magenta the reference sphere glows with, and it is the exact midpoint of the two sphere hues
+ * below, so the sphere and the buttons read as one product.
+ *
+ * Lightness is set by contrast, not by taste. `--accent-foreground` is `var(--snow)` (white) in
+ * both themes, so white body text on the accent must clear 4.5:1:
+ *   light  oklch(58% 0.215 308)   = #9e49d9  ->  4.65:1 against white
+ *   dark   oklch(58.5% 0.225 309) = #a245de  ->  4.59:1 against white
+ * Anything lighter fails: oklch(60% ...) measures 4.28:1. The dark branch therefore gains its
+ * punch from chroma (0.225) rather than lightness, which keeps it vivid on a near-black ground
+ * without dropping below the 4.5:1 floor.
+ *
+ * Keep the hex values in the three index.html shells, ThemeSync.tsx and the PWA manifest in
+ * vite.config.ts in step with these.
+ */
+:root,
+:host {
+  --accent: oklch(58% 0.215 308);
+}
+
+.dark,
+[data-theme='dark'],
+:host(.dark),
+:host([data-theme='dark']) {
+  --accent: oklch(58.5% 0.225 309);
+}
+
+/*
+ * Sphere hues for the audio conversation screen (AssistantSphere reads them at runtime with
+ * getComputedStyle, not through a generated Tailwind utility). A plain :root/.dark rule is never
+ * tree-shaken; the same variables declared in @theme instead would be silently dropped from the
+ * build because no generated utility class references them by name.
+ *
+ * Re-anchored on the accent: 288 and 328 bracket the accent hue 308, which is their midpoint.
+ * The sphere blends linearly from the user hue to the agent hue, so its whole travel stays inside
+ * the accent family. The 40 degree gap keeps the two turns apart by hue, not only by brightness:
+ * the user's turn is a blue-violet, the agent's turn is a magenta-violet.
+ */
+:root {
+  --sphere-hue-user: 288;
+  --sphere-hue-agent: 328;
+}
+
+.dark,
+[data-theme='dark'] {
+  --sphere-hue-user: 288;
+  --sphere-hue-agent: 328;
 }
 
 /* Safe-area padding for notched devices (Capacitor and standalone PWA). */
@@ -14,6 +97,297 @@
 
 @utility safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/*
+ * Horizontal safe area. In landscape on a notched iPhone, and on Android devices with a camera
+ * cutout, the cutout moves to one side and content slides under it. `safe-top`/`safe-bottom`
+ * never covered that.
+ *
+ * These use PHYSICAL `padding-left` / `padding-right`, and that is deliberate even though the app
+ * runs in Persian RTL. `env(safe-area-inset-left)` is a physical measurement: it is the inset on
+ * the left of the *device*, and it does not flip when the writing direction flips. Pairing it
+ * with a logical property (`padding-inline-start: env(safe-area-inset-left)`) would put the
+ * padding on the wrong side in RTL, which is the exact bug these utilities exist to prevent.
+ * Physical inset, physical property: correct in both directions, no `:dir()` selector needed.
+ *
+ * `safe-inline` adds only the inset. `safe-inline-gutter` keeps a 1rem floor, for a content
+ * column that already wants a gutter and must simply not lose to the cutout.
+ */
+@utility safe-inline {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+@utility safe-inline-gutter {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+/*
+ * Tailwind v4 only emits an `@utility` when a scanned source file mentions the class name, and it
+ * does not scan .css files. The two utilities above are new, so no component references them yet
+ * and they would be pruned from every build - a silent failure. `@source inline(...)` is the
+ * supported way to force a candidate into the output. Remove a name from this list once a real
+ * component uses the class.
+ */
+@source inline("safe-inline safe-inline-gutter");
+
+/*
+ * Full-bleed conversation chrome (video/audio screens) sits directly under the status bar with
+ * no other padding above it. The plain `env()` above is not enough on its own: the Capacitor
+ * Android WebView often reports 0 for the inset, which would pin the top row to the physical
+ * edge of the screen. The max() keeps a floor of comfortable padding either way.
+ */
+@utility stage-safe-top {
+  padding-top: max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));
+}
+
+/*
+ * Liquid glass. Decision: no `backdrop-filter: url(#svg-filter)` refraction lens — it is
+ * Chromium-only (WebKit bug 245510 is still open, Firefox has no support either), so it would
+ * light up on Android and stay flat on iOS, which is backwards for an effect copied from iOS.
+ * The chromatic fringe at the lens edge is faked instead with a masked conic-gradient ring
+ * (`glass-fringe`), which runs everywhere at zero filter cost.
+ *
+ * Performance budget: one glass element per screen, blur radius stays at 18-24px, glass area
+ * stays under ~15% of the viewport. Never animate `backdrop-filter` or `opacity` on a glass
+ * element (animate `transform` instead) and never move the glass element itself.
+ */
+@utility glass {
+  position: relative;
+  isolation: isolate;
+  background-color: color-mix(
+    in oklab,
+    var(--surface) var(--glass-tint),
+    transparent
+  );
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklab, white var(--glass-highlight), transparent),
+    transparent 42%
+  );
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))
+    brightness(var(--glass-brightness));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklab, white 22%, transparent),
+    0 8px 24px -8px color-mix(in oklab, var(--foreground) 25%, transparent);
+
+  /* Raised tint for chrome drawn over a live video, where labels must stay readable. */
+  &[data-glass='strong'] {
+    background-color: color-mix(
+      in oklab,
+      var(--surface) var(--glass-tint-strong),
+      transparent
+    );
+    backdrop-filter: blur(24px) saturate(var(--glass-saturate))
+      brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(24px) saturate(var(--glass-saturate))
+      brightness(var(--glass-brightness));
+  }
+
+  /*
+   * Dark theme, including the widget's shadow-tree host forms.
+   *
+   * The dark branch used to reuse `--glass-tint` (62%) and a white 8% top highlight. Measured,
+   * that made the menu labels unreadable. The label colour is `--muted`, oklch(70.5% .015 286)
+   * = #9f9fa9 in dark. Composited over the glass, contrast came out:
+   *
+   *   backdrop                 62% tint + 8% highlight   82% tint + 4% highlight
+   *   bright video frame       1.89:1 (1.60 at the top)  3.84:1 (3.41)   -> use `strong`, below
+   *   sphere glow #c44ef0      3.74:1 (3.00 at the top)  5.32:1 (4.73)
+   *   app dark background      7.16:1 (5.88 at the top)  6.95:1 (6.32)
+   *
+   * Note what the numbers actually say: a DARK video frame was never the problem (it measured
+   * 7.29:1 before the change). A BRIGHT frame is, because at 62% tint the frame shows straight
+   * through and drags the plain glass up to the label's own lightness. The white top highlight
+   * makes it worse, and it lands exactly on the top half of a 44px label, so the "top of the
+   * label" column above is the number that matters.
+   *
+   * Plain glass never sits over video - the video screen passes data-glass="strong" - so its
+   * worst realistic backdrop is the glowing sphere on /audio, now 4.73:1 at its worst point.
+   * `strong` is the one that has to survive a white video frame, so it goes to 92%, which
+   * measures 4.79:1 at the worst point. Both clear 4.5:1.
+   *
+   * The border also rises. Dark `--border` is oklch(28% .006 286) - nearly invisible against a
+   * bright frame - so the dark edge mixes in white and stays a visible hairline either way.
+   */
+  :is(.dark, [data-theme='dark'], :host(.dark), :host([data-theme='dark'])) & {
+    background-color: color-mix(
+      in oklab,
+      var(--surface) var(--glass-tint-dark),
+      transparent
+    );
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, white var(--glass-highlight-dark), transparent),
+      transparent 42%
+    );
+    /* `var(--border)` is written FIRST on purpose. Lightning CSS emits a no-color-mix fallback
+       for old engines by taking the first colour in the list; written the other way round
+       (`white 16%, var(--border)`) that fallback is a solid white border. */
+    border-color: color-mix(in oklab, var(--border) 84%, white);
+    box-shadow:
+      inset 0 1px 0 0 color-mix(in oklab, white 6%, transparent),
+      0 8px 24px -8px rgba(0, 0, 0, 0.45);
+  }
+
+  :is(.dark, [data-theme='dark'], :host(.dark), :host([data-theme='dark']))
+    &[data-glass='strong'] {
+    background-color: color-mix(
+      in oklab,
+      var(--surface) var(--glass-tint-strong-dark),
+      transparent
+    );
+  }
+
+  /* Accessibility fallbacks, last: an opaque surface beats a glass effect nobody can read. */
+  @media (prefers-reduced-transparency: reduce) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--surface);
+    background-image: none;
+    border-color: var(--border);
+    box-shadow: var(--overlay-shadow);
+  }
+
+  @media (prefers-contrast: more) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--surface);
+    background-image: none;
+    border-color: var(--border);
+    box-shadow: var(--overlay-shadow);
+  }
+
+  @media (forced-colors: active) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--surface);
+    background-image: none;
+    border-color: var(--border);
+    box-shadow: var(--overlay-shadow);
+  }
+
+  [data-reduce-transparency='true'] & {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--surface);
+    background-image: none;
+    border-color: var(--border);
+    box-shadow: var(--overlay-shadow);
+  }
+}
+
+/*
+ * The chromatic-fringe ring. The mask lives on ::after, never on the `glass` box itself: `mask`
+ * makes an element a Backdrop Root, which would silently blank the `backdrop-filter` on `glass`.
+ */
+@utility glass-fringe {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    padding: 1px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from 180deg,
+      oklch(88% 0.14 var(--sphere-hue-user) / 0.4),
+      transparent 22%,
+      transparent 50%,
+      oklch(88% 0.14 var(--sphere-hue-agent) / 0.4),
+      transparent 72%,
+      transparent 100%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    &::after {
+      display: none;
+    }
+  }
+
+  @media (prefers-contrast: more) {
+    &::after {
+      display: none;
+    }
+  }
+
+  @media (forced-colors: active) {
+    &::after {
+      display: none;
+    }
+  }
+
+  [data-reduce-transparency='true'] &::after {
+    display: none;
+  }
+}
+
+/*
+ * The floating dock (FloatingTabBar) and anything that needs to clear it. `--dock-clearance` is
+ * one shared measurement so the bar, the scroll padding and the "above the bar" offset never
+ * drift apart. The max() floor matches `stage-safe-top`: the Capacitor Android WebView often
+ * reports 0 for the safe-area inset.
+ */
+:root {
+  --dock-clearance: calc(
+    4.5rem + max(0.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem))
+  );
+}
+
+@utility dock-safe {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  padding-bottom: max(0.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem));
+  /*
+   * Horizontal insets, baked in rather than left to a separate class. In landscape the cutout
+   * moves to one side and the pill is centred in the full width, so a wide pill can run under
+   * it. Physical padding with the physical insets: see `safe-inline` for why this is not written
+   * with logical properties.
+   */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  /* The full-width wrapper must not eat taps beside the pill; the pill re-enables them. */
+  pointer-events: none;
+}
+
+@utility dock-clear {
+  padding-bottom: var(--dock-clearance);
+}
+
+@utility above-dock {
+  bottom: var(--dock-clearance);
+}
+
+/*
+ * The centred 16:9 safe area that holds the video screen's chrome. The stage behind it is
+ * full bleed; this column is the region a 16:9 frame would occupy, so the controls never sit
+ * outside it.
+ *
+ * The height in the ratio must be the column's OWN height, not `100dvh`. The column lives
+ * inside `<main>`, which carries `dock-clear`, so it is always `--dock-clearance` shorter
+ * than the viewport. Using raw `100dvh` overstates the width by about 150px and makes the
+ * column WIDER than 16:9 on a short wide window, which is the opposite of what it is for.
+ *
+ * `42rem` is the readable-column cap. It wins on any normal screen; the ratio wins once the
+ * window gets short enough that 16:9 of the remaining height is narrower than 42rem.
+ */
+@utility stage-16x9 {
+  max-width: min(42rem, calc((100dvh - var(--dock-clearance)) * 16 / 9));
 }
 
 html,

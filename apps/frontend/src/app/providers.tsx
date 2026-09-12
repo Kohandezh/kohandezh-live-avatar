@@ -1,9 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
-import { I18nProvider } from '@heroui/react';
-import { useLanguage } from '@/features/settings';
-import { LanguageSync } from '@/features/settings';
+import { I18nProvider, ToastProvider } from '@heroui/react';
+import { LanguageSync, ThemeSync, useLanguage } from '@/features/settings';
 import { queryClient as defaultQueryClient } from './queryClient';
 import { store as defaultStore, type AppStore } from './store';
 
@@ -35,6 +34,14 @@ export function Providers({
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
           <LanguageSync />
+          <ThemeSync />
+          {/*
+            One toast region for the whole app, placed at the top so a
+            blocked-navigation toast never sits under the floating tab bar.
+            `toast(...)` from `@heroui/react` can be called from anywhere;
+            no context or prop threading is needed.
+          */}
+          <ToastProvider placement="top" />
           {children}
         </LocaleProvider>
       </QueryClientProvider>

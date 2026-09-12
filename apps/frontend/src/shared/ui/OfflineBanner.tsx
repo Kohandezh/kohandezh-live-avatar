@@ -10,7 +10,9 @@ export function OfflineBanner() {
   if (online) return null;
 
   return (
-    <Alert status="warning" role="status" className="rounded-none">
+    // safe-top: the app header is gone (requirement 6), so this can now be
+    // the very top element of the screen and must clear the notch itself.
+    <Alert status="warning" role="status" className="safe-top rounded-none">
       <Alert.Content>
         <Alert.Description className="text-center text-sm">
           {t('states.offline')}

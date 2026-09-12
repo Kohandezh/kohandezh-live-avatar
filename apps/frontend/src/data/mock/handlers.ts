@@ -38,23 +38,25 @@ const TOKEN_PREFIX = 'mock-token-';
 
 /**
  * OTP verification can create a user that is not in the seed data (an unknown
- * phone number). Kept separate from `mockUsers` because that list is a fixed,
- * readonly fixture used by the pagination and search tests.
+ * phone number). Also holds a copy-on-write clone of a `mockUsers` entry once
+ * that user updates their profile. Kept separate from `mockUsers` because that
+ * list is a fixed, readonly fixture used by the pagination and search tests.
+ * Checked first so a clone shadows the fixture it was copied from.
  */
 const createdUsers: User[] = [];
 
 function findUserById(id: string | null | undefined): User | undefined {
   if (!id) return undefined;
   return (
-    mockUsers.find((user) => user.id === id) ??
-    createdUsers.find((user) => user.id === id)
+    createdUsers.find((user) => user.id === id) ??
+    mockUsers.find((user) => user.id === id)
   );
 }
 
 function findUserByPhone(phone: string): User | undefined {
   return (
-    mockUsers.find((user) => user.phone === phone) ??
-    createdUsers.find((user) => user.phone === phone)
+    createdUsers.find((user) => user.phone === phone) ??
+    mockUsers.find((user) => user.phone === phone)
   );
 }
 
@@ -272,6 +274,36 @@ export const routes: MockRoute[] = [
     path: /^\/api\/me$/,
     handle(request) {
       return { body: requireUser(request) };
+    },
+  },
+  {
+    method: 'put',
+    path: /^\/api\/me\/profile$/,
+    handle(request) {
+      const current = requireUser(request);
+      const firstName = readString(request.body, 'firstName').trim();
+      const lastName = readString(request.body, 'lastName').trim();
+
+      if (!firstName || !lastName) {
+        throw new MockHttpError(
+          422,
+          'validation_error',
+          'First name and last name are required.',
+        );
+      }
+
+      // `current` may be a `mockUsers` entry, a fixed fixture the pagination and
+      // search tests rely on. Copy it into `createdUsers` and mutate the copy,
+      // never the fixture itself.
+      let user = createdUsers.find((candidate) => candidate.id === current.id);
+      if (!user) {
+        user = { ...current };
+        createdUsers.push(user);
+      }
+      user.firstName = firstName;
+      user.lastName = lastName;
+
+      return { body: user };
     },
   },
   {

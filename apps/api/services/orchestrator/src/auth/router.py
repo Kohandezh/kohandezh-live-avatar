@@ -2,12 +2,14 @@ import logging
 
 from fastapi import APIRouter, Depends, Request, Response
 
+from ..errors import NotFoundError
 from ..schemas import (
     LoginResponse,
     OtpRequestBody,
     OtpRequestResponse,
     OtpVerifyBody,
     PublicUser,
+    UpdateProfileBody,
 )
 from .dependencies import UserRow, client_ip, get_current_user, session_token
 from .phone import mask_phone, normalize_phone
@@ -68,3 +70,18 @@ async def logout(request: Request) -> Response:
 @router.get("/me", response_model=PublicUser)
 async def me(user: UserRow = Depends(get_current_user)) -> PublicUser:
     return public_user(user)
+
+
+# Full replace, not a partial patch: both names are required on every call. An empty
+# firstName is how the frontend tells a fresh account from one that finished onboarding, so
+# there is no partial-update path that could leave a name half set.
+@router.put("/me/profile", response_model=PublicUser)
+async def update_me_profile(
+    payload: UpdateProfileBody, request: Request, user: UserRow = Depends(get_current_user)
+) -> PublicUser:
+    updated = await request.app.state.database.update_user_profile(
+        user["id"], first_name=payload.first_name, last_name=payload.last_name
+    )
+    if not updated:
+        raise NotFoundError("user")
+    return public_user(updated)

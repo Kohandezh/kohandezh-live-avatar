@@ -144,6 +144,21 @@ class OtpVerifyBody(BaseModel):
     code: str = Field(min_length=4, max_length=10)
 
 
+# CamelModel, not a plain BaseModel like the other request bodies above: firstName and
+# lastName are two-word fields, and docs/API.md mandates camelCase on the wire.
+class UpdateProfileBody(CamelModel):
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("name cannot be blank")
+        return normalized
+
+
 class PublicUser(CamelModel):
     """The allowlist of user fields that may leave the backend."""
 

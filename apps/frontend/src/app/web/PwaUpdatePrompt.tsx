@@ -30,7 +30,9 @@ export function PwaUpdatePrompt() {
   return (
     <div
       role="status"
-      className="fixed end-4 bottom-4 z-50 w-[calc(100%-2rem)] max-w-sm"
+      // `above-dock` (not `bottom-4`): the floating tab bar is also fixed,
+      // end-aligned, z-50 — without this the update card lands on top of it.
+      className="fixed end-4 above-dock z-50 w-[calc(100%-2rem)] max-w-sm"
     >
       <Card className="shadow-lg">
         <Card.Content>

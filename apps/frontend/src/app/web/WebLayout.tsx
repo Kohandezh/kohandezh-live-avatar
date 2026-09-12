@@ -1,103 +1,76 @@
-import { useTranslation } from 'react-i18next';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { hasRole, useLogout, useSession } from '@/features/authentication';
-import { LanguageSwitcher } from '@/features/settings';
-import { Button, OfflineBanner } from '@/shared/ui';
-import { cn } from '@/shared/utils';
+import { Outlet, useMatch } from 'react-router-dom';
+import { useSession } from '@/features/authentication';
+import {
+  ConversationLiveProvider,
+  FloatingTabBar,
+  useConversationLive,
+} from '@/features/navigation';
+import { OfflineBanner } from '@/shared/ui';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 
-/** Web shell: top navigation, content container, footer. */
-export function WebLayout() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
+/**
+ * Reads everything the shell needs to decide whether to draw the floating menu, and
+ * draws it. Split out from `WebLayout` so it can sit inside `ConversationLiveProvider`
+ * and read `useConversationLive()` for the live dot.
+ */
+function WebShell() {
   const { user, isAuthenticated } = useSession();
-  const logout = useLogout();
+  const { liveRoute } = useConversationLive();
 
-  // The workbench stays reachable at /avatar, but only staff need the link.
-  const links = isAuthenticated
-    ? [
-        { to: '/assistant', label: t('nav.assistant') },
-        ...(hasRole(user, ['admin'])
-          ? [{ to: '/avatar', label: t('nav.session') }]
-          : []),
-        { to: '/profile', label: t('nav.profile') },
-      ]
-    : [];
+  // See MobileLayout for why every `useMatch` runs unconditionally before `showDock`
+  // combines them: a `&&` chain that skips a hook call while anonymous changes the
+  // hook count the moment the `me` query resolves and crashes React.
+  const onboardingMatch = useMatch('/onboarding');
+  const videoMatch = useMatch('/video');
+  const audioMatch = useMatch('/audio');
+  const settingsMatch = useMatch('/settings/*');
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-      isActive
-        ? 'bg-default text-foreground'
-        : 'text-muted hover:text-foreground',
-    );
+  // Named product routes only, so a mistyped URL, `/forbidden`, or the Phase 1
+  // workbench at `/avatar` never show chrome that belongs to a page it isn't.
+  const isProductRoute = Boolean(videoMatch || audioMatch || settingsMatch);
+  const showDock =
+    isAuthenticated &&
+    Boolean(user?.firstName.trim()) &&
+    !onboardingMatch &&
+    isProductRoute;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      <header className="border-b border-separator">
-        {/* Wraps instead of overflowing: the PWA also runs at phone width. */}
-        <div className="mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
-          <Link
-            to="/"
-            className="font-semibold tracking-tight text-foreground"
-          >
-            {t('app.name')}
-          </Link>
+    <div className="relative flex h-dvh w-screen flex-col overflow-hidden bg-background">
+      <div className="shrink-0">
+        <OfflineBanner />
+      </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {links.length > 0 ? (
-              <nav
-                aria-label={t('nav.menu')}
-                className="flex items-center gap-1"
-              >
-                {links.map((link) => (
-                  <NavLink
-                    key={link.to}
-                    to={link.to}
-                    className={navLinkClass}
-                  >
-                    {link.label}
-                  </NavLink>
-                ))}
-              </nav>
-            ) : null}
-
-            <LanguageSwitcher />
-
-            {isAuthenticated ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                isPending={logout.isPending}
-                onPress={() =>
-                  logout.mutate(undefined, { onSettled: () => navigate('/') })
-                }
-              >
-                {t('nav.logout')}
-              </Button>
-            ) : (
-              <Link
-                to="/login"
-                className="rounded-lg px-3 py-1.5 text-sm font-medium text-foreground hover:text-accent"
-              >
-                {t('nav.login')}
-              </Link>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <OfflineBanner />
-
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4">
+      <main className="dock-clear mx-auto w-full max-w-5xl flex-1 overflow-y-auto overscroll-y-contain px-4">
         <Outlet />
       </main>
 
-      <footer className="border-t border-separator py-6 text-center text-xs text-muted">
-        {t('app.copyright', { year: new Date().getFullYear() })}
-      </footer>
+      {showDock ? (
+        <FloatingTabBar liveRoute={liveRoute} onVideo={Boolean(videoMatch)} />
+      ) : null}
 
       <PwaUpdatePrompt />
     </div>
+  );
+}
+
+/**
+ * Web shell: the same locked shape as the mobile shell, `h-dvh overflow-hidden` with a
+ * scrolling `<main>`, instead of the old `flex min-h-dvh flex-col` document that scrolled
+ * as a whole. That old shape is why a floating dock could not work here: an absolutely
+ * positioned element anchors to the nearest positioned ancestor, and a document that
+ * scrolls takes the dock's `relative` root along with it, so the dock would drift to the
+ * bottom of the page instead of staying pinned to the viewport.
+ *
+ * Requirements 6 and 9 remove the header and the footer entirely. What is left beyond
+ * the mobile shell is `PwaUpdatePrompt` and the wider `max-w-5xl` content container.
+ *
+ * `ConversationLiveProvider` wraps both the menu and the outlet, same as on mobile: see
+ * `MobileLayout` for why this is a React context and not Redux.
+ */
+export function WebLayout() {
+  return (
+    <ConversationLiveProvider>
+      <WebShell />
+    </ConversationLiveProvider>
   );
 }
