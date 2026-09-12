@@ -71,6 +71,43 @@ export interface SphereStop {
   chroma: number;
   /** Alpha, 0 to 1. */
   alpha: number;
+  /**
+   * Degrees away from the sphere's own hue. Optional, and 0 when left out.
+   *
+   * This is a render property, not a brand colour, which is why it lives here and not in CSS: the
+   * sphere's hue still comes from `--sphere-hue-user` / `--sphere-hue-agent` and this only says
+   * how one stop leans away from it. The filaments already work the same way (`Filament.hueShift`).
+   *
+   * It is what stops the light-mode ball reading as paint. On a light page the sRGB gamut runs out
+   * of chroma above lightness 0.88, so a bright centre can only be a chalky near-white, and a
+   * chalky near-white on a coloured ball is a plastic sheen. Real light is not one hue: the hot
+   * part runs toward magenta and the shaded part toward blue. Leaning the stops apart buys the
+   * centre its heat back without asking the gamut for chroma it does not have.
+   */
+  hueShift?: number;
+}
+
+/** A colour stop that knows where it sits in its gradient. */
+export interface SphereGradientStop extends SphereStop {
+  /**
+   * Where the stop sits.
+   *
+   * For every gradient except the bloom this is a plain gradient offset, 0 to 1. The bloom is
+   * the exception: see `SpherePalette.bloomAnchor`.
+   */
+  at: number;
+}
+
+/** One stroked pass over a filament path. */
+export interface SphereStrand {
+  lightness: number;
+  chroma: number;
+  /** Alpha at silence. */
+  alphaBase: number;
+  /** Added to the alpha at full loudness. */
+  alphaLevel: number;
+  /** Line width as a fraction of the sphere radius. */
+  width: number;
 }
 
 /**
@@ -80,31 +117,83 @@ export interface SphereStop {
  * spins). The palette says how that is painted so it survives the ground behind it. Keeping the
  * two apart is why a theme switch needs no change to the behaviour code, and why the unit tests
  * of `sphereView` do not care about the theme at all.
+ *
+ * Four layers are optional (`shadow`, `occlusion`, `relight`, `specular`). A theme that does not
+ * need one sets it to `null` and the matching draw method returns at once.
  */
 export interface SpherePalette {
   /**
-   * How the filaments and the rings are composited.
+   * How the wide filament band is composited.
    *
    * `lighter` adds light, which is what a glowing object does on a near-black ground. On a light
-   * ground adding light only pushes the pixels toward white, so the strands disappear; there the
-   * sphere is painted as a solid object with `source-over` instead.
+   * page every pixel is already near white, so adding light only clips to white and the strands
+   * vanish. There the band is `multiply`, which darkens, and a second thin `source-over` thread
+   * is drawn down the middle of it (`filamentCore`) so the strand still reads as lit.
    */
-  glowComposite: GlobalCompositeOperation;
-  /** Outer glow, from the centre outward. The last stop is always fully transparent. */
-  bloom: readonly [SphereStop, SphereStop, SphereStop];
-  /** The ball itself: highlight, body, rim. */
-  core: readonly [SphereStop, SphereStop, SphereStop];
+  filamentComposite: GlobalCompositeOperation;
+  /** How the expanding rings are composited. Same reasoning as `filamentComposite`. */
+  ringComposite: GlobalCompositeOperation;
+  /**
+   * What the bloom stops' `at` values mean.
+   *
+   * `offset` is a plain gradient offset, 0 to 1. `radius` is a multiple of the sphere radius,
+   * converted to an offset every frame.
+   *
+   * The two exist because the two themes need different things. Dark mode is the reference look
+   * and must stay byte identical, so it keeps fixed offsets. Light mode needs its strongest stop
+   * to land on the silhouette, and the silhouette moves in offset space whenever `view.bloom` or
+   * `view.radiusScale` changes. A fixed offset would slide the peak under the ball exactly when
+   * the user speaks loudest, which is the state the halo matters most in.
+   */
+  bloomAnchor: 'offset' | 'radius';
+  /** The bloom gradient's inner circle, as a multiple of the sphere radius. */
+  bloomInner: number;
+  /** Outer bloom reach: `radius * (base + gain * view.bloom)`. */
+  bloomRadius: { base: number; gain: number };
+  /** Bloom strength floor, so a quiet sphere still has a halo: `floor + (1 - floor) * bloom`. */
+  bloomFloor: number;
+  /** The halo. `source-over` in both themes, because only a plain paint can tint the page. */
+  bloom: readonly SphereGradientStop[];
+  /** The ball itself. Painted opaque, before anything that blends. */
+  core: readonly SphereGradientStop[];
+  /**
+   * Floor under `view.alpha` for the solid layers: `floor + (1 - floor) * view.alpha`.
+   *
+   * The ended state drops `view.alpha` to 0.35. On a dark page that is still a visible glow. On a
+   * light page it leaves the ball a hair darker than the paper, which is close to invisible, so
+   * light mode keeps a floor under the layers that carry the silhouette. The halo, the shadow,
+   * the filaments and the rings still fade on the raw value, so the sphere does read as finished.
+   */
+  coreAlphaFloor: number;
   /** The ten orbiting strands. Their alpha rises with the measured loudness. */
-  filament: {
-    lightness: number;
-    chroma: number;
-    /** Alpha at silence. */
-    alphaBase: number;
-    /** Added to the alpha at full loudness. */
-    alphaLevel: number;
-  };
+  filament: SphereStrand;
+  /** The thin bright thread down the middle of each strand, or `null` for one stroke only. */
+  filamentCore: SphereStrand | null;
+  /**
+   * Clip the strands to the ball's disc.
+   *
+   * The ripple pushes a strand out to 1.12R. Outside the ball the canvas is near transparent, and
+   * a `multiply` stroke over transparency degenerates to a plain paint, so an unclipped light-mode
+   * strand paints dark hairs lying on the pale halo. One clip per frame covers all ten.
+   */
+  clipFilaments: boolean;
+  /** Contact shadow under the ball, or `null`. Gives it somewhere to sit. */
+  shadow: readonly SphereGradientStop[] | null;
+  /** Ambient occlusion just outside the silhouette, or `null`. Multiply. */
+  occlusion: readonly SphereGradientStop[] | null;
+  /** The inner lamp, painted after the strands, or `null`. */
+  relight: readonly SphereGradientStop[] | null;
+  /** The small specular highlight, or `null`. */
+  specular: readonly SphereGradientStop[] | null;
   /** The expanding rings of the avatar's turn. Alpha fades to 0 over the ring's life. */
-  ring: { lightness: number; chroma: number; alpha: number };
+  ring: SphereStop;
+  /**
+   * How the ring's alpha falls over its life: `(1 - progress) ** fadePower`.
+   *
+   * 1 on dark. 2 on light, because a linear fade on a light page leaves a thin hard circle far
+   * from the ball, and a thin hard circle reads as a drawn outline rather than as light.
+   */
+  ringFadePower: number;
 }
 
 const TAU = Math.PI * 2;
@@ -125,68 +214,161 @@ const MAX_CHROMA = 0.22;
 /**
  * The two looks, side by side.
  *
- * DARK is the reference image: a near-black page, a white-hot core inside a saturated violet
- * body, strands and rings that add light on top of it, and a wide bloom bleeding outward.
+ * DARK is the reference image and is not up for discussion: a near-black page, a white-hot core
+ * inside a saturated violet body, strands and rings that add light on top of it, and a wide bloom
+ * bleeding outward. Every number in the dark palette below is the number that shipped.
  *
- * LIGHT is the same object under different light. Three things change, and all three are forced
- * by the ground:
+ * LIGHT is not the same recipe with different numbers. It is a different physical model, and it
+ * has to be, because additive light does not exist on paper. Add light to a pixel that is already
+ * at 0.97 lightness and it clips to white: the strands disappear, the halo disappears, and what
+ * survives is the flat base fill. That flat base fill was the plain purple ball.
  *
- * 1. Compositing. `lighter` over a light page is invisible, so the strands and rings switch to
- *    `source-over` and get darker than the ball instead of brighter.
- * 2. Opacity. On black a 35% violet reads as glow; on #f5f5f5 it reads as nothing. The core is
- *    close to opaque in light mode so it is a solid object, and the highlight stays lighter than
- *    the body so the ball still looks round.
- * 3. Lightness. Every light-mode colour sits below the page's lightness (0.97) rather than above
- *    it. The bloom becomes a coloured halo, not a white one.
+ * So on a light ground the sphere is lit the way a real object on a white table is lit:
  *
- * The light bloom is also much weaker, and that is a shape problem rather than a taste one. The
- * bloom is a radial gradient filled across the whole canvas rectangle, so it reaches the straight
- * edges before it reaches the corners. On a dark ground a wide, strong glow hides that; on a light
- * ground the same strength paints a visible tinted box around the ball. Rendered and checked at
- * the avatar's turn, which is where the bloom is strongest.
+ * 1. The body is DARKER than the page. That is what gives it presence. A glowing object on paper
+ *    is read from its silhouette first, not from its brightness.
+ * 2. Luminosity comes from a bright inner core and high chroma, not from adding light. The core
+ *    gradient runs light in the middle, saturated through the body, darkest at the rim.
+ * 3. The halo is a coloured tint of the hue, never a white bloom. White on white is nothing.
+ * 4. The strands DARKEN (`multiply`) a wide band and then lay a thin bright thread down the
+ *    middle of it. A dark band with a bright centre is what a lit strand looks like from outside.
+ * 5. A contact shadow and an occlusion seam put the ball in a space instead of on top of one.
  *
- * The hues are the same in both themes; only how they are laid down changes.
+ * A canvas blend mode can never reach the page behind the canvas; `multiply` only blends against
+ * pixels this canvas has already painted. That is why the halo and the contact shadow are plain
+ * `source-over` paints (a tint is the only tool available against the page), and why the opaque
+ * core has to be down before anything that blends.
+ *
+ * Every light-mode chroma below is at the sRGB gamut limit for the hue range the sphere travels,
+ * not at a value picked by eye. See `tests/unit/features/assistant/sphere.palette.test.ts`. A
+ * chroma above the limit does not throw: it quietly desaturates and drags the hue, which would
+ * stop the user hue (288) and the agent hue (328) reading as an even pair.
  */
 export const SPHERE_PALETTES: Record<SphereTheme, SpherePalette> = {
   dark: {
-    glowComposite: 'lighter',
+    filamentComposite: 'lighter',
+    ringComposite: 'lighter',
+    bloomAnchor: 'offset',
+    bloomInner: 0.2,
+    bloomRadius: { base: 1.35, gain: 1.25 },
+    bloomFloor: 0,
     bloom: [
-      { lightness: 0.78, chroma: 0.2, alpha: 0.62 },
-      { lightness: 0.66, chroma: 0.19, alpha: 0.3 },
-      { lightness: 0.52, chroma: 0.12, alpha: 0 },
+      { at: 0, lightness: 0.78, chroma: 0.2, alpha: 0.62 },
+      { at: 0.45, lightness: 0.66, chroma: 0.19, alpha: 0.3 },
+      { at: 1, lightness: 0.52, chroma: 0.12, alpha: 0 },
     ],
     core: [
-      { lightness: 0.97, chroma: 0.05, alpha: 0.72 },
-      { lightness: 0.7, chroma: 0.22, alpha: 0.58 },
-      { lightness: 0.56, chroma: 0.21, alpha: 0.14 },
+      { at: 0, lightness: 0.97, chroma: 0.05, alpha: 0.72 },
+      { at: 0.6, lightness: 0.7, chroma: 0.22, alpha: 0.58 },
+      { at: 1, lightness: 0.56, chroma: 0.21, alpha: 0.14 },
     ],
+    coreAlphaFloor: 0,
     filament: {
       lightness: 0.82,
       chroma: 0.17,
       alphaBase: 0.1,
       alphaLevel: 0.12,
+      width: 0.012,
     },
+    filamentCore: null,
+    clipFilaments: false,
+    shadow: null,
+    occlusion: null,
+    relight: null,
+    specular: null,
     ring: { lightness: 0.85, chroma: 0.16, alpha: 0.35 },
+    ringFadePower: 1,
   },
+
   light: {
-    glowComposite: 'source-over',
+    filamentComposite: 'multiply',
+    ringComposite: 'multiply',
+    bloomAnchor: 'radius',
+    bloomInner: 0.55,
+    bloomRadius: { base: 1.2, gain: 1.1 },
+    // A halo that switches off in the quiet states is a ball with no light in it. Almost half the
+    // light-mode halo is always on; the rest follows the voice.
+    bloomFloor: 0.45,
+    /*
+      Radius multiples, not offsets. The peak sits at 1.03, a hair outside the silhouette, because
+      light spills at the edge of an object and not out of its middle, and a peak parked exactly on
+      1.00 is hidden behind the ball's own last pixel. The 9.99 stop is past every reachable radius,
+      so it always clamps onto offset 1 and closes the disc at alpha 0.
+    */
     bloom: [
-      { lightness: 0.72, chroma: 0.2, alpha: 0.22 },
-      { lightness: 0.66, chroma: 0.19, alpha: 0.07 },
-      { lightness: 0.6, chroma: 0.16, alpha: 0 },
+      { at: 0.55, lightness: 0.7, chroma: 0.17, alpha: 0.3, hueShift: 6 },
+      { at: 1.03, lightness: 0.66, chroma: 0.205, alpha: 0.9, hueShift: 10 },
+      { at: 1.18, lightness: 0.74, chroma: 0.145, alpha: 0.42, hueShift: 4 },
+      { at: 9.99, lightness: 0.86, chroma: 0.07, alpha: 0, hueShift: -8 },
     ],
+    /*
+      The six-stop profile, and this is the whole read:
+
+        0.00  a lamp seen through frosted glass
+        0.26  the light falling off
+        0.56  the saturated body, at the lightness where the gamut holds the most chroma
+        0.82  a dip: more glass on the sight line near the edge
+        0.93  a lift: the caustic ring, light gathered by the curve of the edge
+        1.00  the rim, the darkest thing on the ball, in the last seven percent
+
+      Dip, lift, drop. Take that pattern out and the ball is flat again. If a stop has to move for
+      gamut reasons, move its chroma and never its lightness. The pattern is pinned by
+      `tests/unit/features/assistant/sphere.palette.test.ts`.
+
+      The `hueShift` on each stop leans the hot part toward magenta and the shaded part toward
+      blue. See `SphereStop.hueShift`: above lightness 0.88 the sRGB gamut has almost no chroma
+      left, so heat has to come from hue rather than from saturation.
+    */
     core: [
-      { lightness: 0.84, chroma: 0.13, alpha: 0.96 },
-      { lightness: 0.62, chroma: 0.21, alpha: 0.99 },
-      { lightness: 0.5, chroma: 0.2, alpha: 0.96 },
+      { at: 0.0, lightness: 0.84, chroma: 0.098, alpha: 0.98, hueShift: 18 },
+      { at: 0.26, lightness: 0.75, chroma: 0.148, alpha: 1, hueShift: 12 },
+      { at: 0.56, lightness: 0.56, chroma: 0.248, alpha: 1, hueShift: 2 },
+      { at: 0.82, lightness: 0.47, chroma: 0.21, alpha: 1, hueShift: -8 },
+      { at: 0.93, lightness: 0.63, chroma: 0.215, alpha: 1, hueShift: 6 },
+      { at: 1.0, lightness: 0.41, chroma: 0.19, alpha: 1, hueShift: -12 },
     ],
+    coreAlphaFloor: 0.35,
+    // The wide dark band. Its lightness (0.46) is below the body's (0.56), so it darkens even if
+    // the engine refuses `multiply` and the stroke falls back to a plain paint.
     filament: {
-      lightness: 0.52,
-      chroma: 0.2,
-      alphaBase: 0.26,
-      alphaLevel: 0.22,
+      lightness: 0.46,
+      chroma: 0.195,
+      alphaBase: 0.14,
+      alphaLevel: 0.16,
+      width: 0.042,
     },
-    ring: { lightness: 0.58, chroma: 0.2, alpha: 0.45 },
+    // The thin thread down the middle. Above the body's lightness (0.56), below the page's (0.97),
+    // so it reads as light on the shaded parts of the ball and washes out inside the lamp.
+    filamentCore: {
+      lightness: 0.82,
+      chroma: 0.089,
+      alphaBase: 0.17,
+      alphaLevel: 0.22,
+      width: 0.017,
+    },
+    clipFilaments: true,
+    shadow: [
+      { at: 0, lightness: 0.48, chroma: 0.1, alpha: 0.26 },
+      { at: 0.6, lightness: 0.62, chroma: 0.11, alpha: 0.09 },
+      { at: 1, lightness: 0.72, chroma: 0.08, alpha: 0 },
+    ],
+    occlusion: [
+      { at: 0, lightness: 0.66, chroma: 0.13, alpha: 0.05 },
+      { at: 0.22, lightness: 0.62, chroma: 0.15, alpha: 0.08 },
+      { at: 1, lightness: 0.78, chroma: 0.09, alpha: 0 },
+    ],
+    relight: [
+      { at: 0, lightness: 0.89, chroma: 0.062, alpha: 0.86, hueShift: 28 },
+      { at: 0.3, lightness: 0.84, chroma: 0.1, alpha: 0.5, hueShift: 22 },
+      { at: 0.65, lightness: 0.76, chroma: 0.14, alpha: 0.24, hueShift: 12 },
+      { at: 1, lightness: 0.7, chroma: 0.165, alpha: 0 },
+    ],
+    specular: [
+      { at: 0, lightness: 0.96, chroma: 0.018, alpha: 0.34, hueShift: 24 },
+      { at: 1, lightness: 0.96, chroma: 0.018, alpha: 0, hueShift: 24 },
+    ],
+    ring: { lightness: 0.52, chroma: 0.22, alpha: 0.5 },
+    ringFadePower: 2,
   },
 };
 
@@ -232,6 +414,22 @@ const LEVEL_RELEASE_S = 0.18;
  * colour is the honest one to show.
  */
 const RESTING_HUE_MIX = 0.5;
+
+/** Where the ball's light comes from, as a fraction of the radius. Up and toward the start side. */
+const FOCUS_X = -0.25;
+const FOCUS_Y = -0.3;
+
+/**
+ * Where the inner lamp sits, as a fraction of the radius.
+ *
+ * Closer to the middle than the core's focus, and that is the whole difference between a lit ball
+ * and a glowing one. A bright patch parked near the edge of a disc is what a reflection looks
+ * like; a bright patch near the middle is what a source inside the object looks like. The core
+ * keeps the off-centre focus, because that is what gives the ball its volume, and only the lamp
+ * moves in.
+ */
+const LAMP_X = -0.13;
+const LAMP_Y = -0.16;
 
 function clamp01(value: number): number {
   if (Number.isNaN(value)) return 0;
@@ -443,6 +641,30 @@ function canvasSupportsOklch(ctx: CanvasRenderingContext2D): boolean {
 }
 
 /**
+ * Does this canvas understand this blend mode?
+ *
+ * Setting `globalCompositeOperation` to a value the engine does not know is silently ignored, so
+ * an unsupported `multiply` would leave the strokes on whatever mode happened to be set last.
+ * Probe once per theme change and fall back to `source-over`, which still darkens in light mode
+ * because the band's lightness sits below the body's. The strands lose depth; they do not vanish.
+ */
+function canvasSupportsComposite(
+  ctx: CanvasRenderingContext2D,
+  mode: GlobalCompositeOperation,
+): boolean {
+  const previous = ctx.globalCompositeOperation;
+  try {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = mode;
+    return ctx.globalCompositeOperation === mode;
+  } catch {
+    return false;
+  } finally {
+    ctx.globalCompositeOperation = previous;
+  }
+}
+
+/**
  * Paints the sphere on a 2D canvas.
  *
  * Not SVG: rebuilding ten path `d` attributes plus a blur filter every frame is the
@@ -452,7 +674,7 @@ function canvasSupportsOklch(ctx: CanvasRenderingContext2D): boolean {
  * pixels.
  *
  * The outer glow is a radial gradient, never `ctx.filter = 'blur(...)'`. A radial gradient
- * is what a blurred point light looks like, so one `fillRect` replaces a whole filter pass.
+ * is what a blurred point light looks like, so one filled disc replaces a whole filter pass.
  */
 export class SpherePainter {
   private readonly ctx: CanvasRenderingContext2D;
@@ -464,6 +686,9 @@ export class SpherePainter {
   private height = 0;
   private hues: SphereHues = DEFAULT_SPHERE_HUES;
   private palette: SpherePalette = SPHERE_PALETTES.dark;
+  /** `palette.filamentComposite`, or `source-over` if this engine does not know it. */
+  private filamentComposite: GlobalCompositeOperation = 'lighter';
+  private ringComposite: GlobalCompositeOperation = 'lighter';
   private hueMix = 0;
   private level = 0;
   private ringTimer = 0;
@@ -471,6 +696,7 @@ export class SpherePainter {
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
     this.supportsOklch = canvasSupportsOklch(ctx);
+    this.setTheme('dark');
   }
 
   /**
@@ -496,7 +722,20 @@ export class SpherePainter {
    * The default is the dark palette, so a caller that never sets it gets the reference look.
    */
   setTheme(theme: SphereTheme): void {
-    this.palette = SPHERE_PALETTES[theme];
+    const palette = SPHERE_PALETTES[theme];
+    this.palette = palette;
+    this.filamentComposite = canvasSupportsComposite(
+      this.ctx,
+      palette.filamentComposite,
+    )
+      ? palette.filamentComposite
+      : 'source-over';
+    this.ringComposite = canvasSupportsComposite(
+      this.ctx,
+      palette.ringComposite,
+    )
+      ? palette.ringComposite
+      : 'source-over';
   }
 
   /**
@@ -549,6 +788,14 @@ export class SpherePainter {
     }
   }
 
+  /**
+   * The draw order, and it is fixed rather than data driven.
+   *
+   * The opaque core has to be painted before anything that blends against it. `multiply` blends
+   * with the pixels this canvas has already painted, so a multiply stroke over a transparent
+   * canvas silently degenerates into a plain paint: no error, no crash, and the flat ball is
+   * back. A layer a theme does not use sets its palette entry to `null` and returns at once.
+   */
   private draw(view: SphereView): void {
     const { ctx, width, height } = this;
     if (width <= 0 || height <= 0) return;
@@ -560,16 +807,14 @@ export class SpherePainter {
       this.hues.user + (this.hues.agent - this.hues.user) * this.hueMix;
 
     ctx.clearRect(0, 0, width, height);
+    this.drawShadow(cx, cy, radius, hue, view);
     this.drawBloom(cx, cy, radius, hue, view);
+    this.drawOcclusion(cx, cy, radius, hue, view);
     this.drawCore(cx, cy, radius, hue, view);
-
-    ctx.save();
-    // On a dark ground this is `lighter`, so overlapping light adds up the way real light does.
-    // On a light ground it is `source-over`: see `SpherePalette.glowComposite`.
-    ctx.globalCompositeOperation = this.palette.glowComposite;
     this.drawFilaments(cx, cy, radius, hue, view);
+    this.drawRelight(cx, cy, radius, hue, view);
+    this.drawSpecular(cx, cy, radius, hue, view);
     this.drawRings(cx, cy, radius, hue, view);
-    ctx.restore();
   }
 
   /**
@@ -585,13 +830,45 @@ export class SpherePainter {
     alphaScale = 1,
   ): string {
     return this.color(
-      hue,
+      hue + (stop.hueShift ?? 0),
       stop.lightness,
       stop.chroma * view.saturation,
       stop.alpha * view.alpha * alphaScale,
     );
   }
 
+  /**
+   * `view.alpha` with the palette's floor under it, for the layers that carry the silhouette.
+   *
+   * See `SpherePalette.coreAlphaFloor`. Dark passes a floor of 0, so this is the identity there.
+   */
+  private solidAlpha(view: SphereView): number {
+    const floor = this.palette.coreAlphaFloor;
+    return floor + (1 - floor) * view.alpha;
+  }
+
+  /** Adds a list of stops to a gradient, in order, with the view's multipliers applied. */
+  private addStops(
+    gradient: CanvasGradient,
+    stops: readonly SphereGradientStop[],
+    hue: number,
+    view: SphereView,
+    alphaScale = 1,
+  ): void {
+    for (const stop of stops) {
+      gradient.addColorStop(
+        clamp01(stop.at),
+        this.stopColor(hue, stop, view, alphaScale),
+      );
+    }
+  }
+
+  /**
+   * The halo.
+   *
+   * `source-over` in both themes. A blend mode cannot reach the page behind the canvas, so a
+   * plain tint is the only thing that can colour the ground around the ball.
+   */
   private drawBloom(
     cx: number,
     cy: number,
@@ -599,24 +876,57 @@ export class SpherePainter {
     hue: number,
     view: SphereView,
   ): void {
-    const { ctx } = this;
-    const [inner, middle, edge] = this.palette.bloom;
-    const outer = radius * (1.35 + view.bloom * 1.25);
-    const gradient = ctx.createRadialGradient(
-      cx,
-      cy,
-      radius * 0.2,
-      cx,
-      cy,
-      outer,
-    );
-    gradient.addColorStop(0, this.stopColor(hue, inner, view, view.bloom));
-    gradient.addColorStop(0.45, this.stopColor(hue, middle, view, view.bloom));
-    gradient.addColorStop(1, this.stopColor(hue, edge, view, view.bloom));
+    const { ctx, palette } = this;
+    const { base, gain } = palette.bloomRadius;
+    const inner = radius * palette.bloomInner;
+
+    /*
+      The cap keeps the halo disc inside the canvas. Past the canvas edge the disc is sliced flat
+      by the element's own bounds while its alpha is still above zero, which paints a straight
+      tinted edge across a round object. It only applies to the radius-anchored (light) bloom:
+      the offset-anchored dark bloom ends at alpha 0 on its last stop, so nothing is ever cut
+      there, and capping it would squeeze the reference falloff.
+    */
+    const inradius = Math.min(this.width, this.height) * 0.5;
+    const wanted = radius * (base + gain * view.bloom);
+    const outer =
+      palette.bloomAnchor === 'radius' ? Math.min(wanted, inradius) : wanted;
+    if (outer <= inner) return;
+
+    const strength = palette.bloomFloor + (1 - palette.bloomFloor) * view.bloom;
+    const gradient = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+
+    let last = 0;
+    if (palette.bloomAnchor === 'radius') {
+      // `at` is a multiple of the sphere radius. The offset that lands on the silhouette moves
+      // with both `view.bloom` and `view.radiusScale`, so it is computed per frame, never fixed.
+      const outerRatio = outer / radius;
+      const span = Math.max(1e-4, outerRatio - palette.bloomInner);
+      for (const stop of palette.bloom) {
+        // Clamping a rising list keeps it non-decreasing, so `addColorStop` stays legal even
+        // when two stops collapse onto 1.
+        last = clamp01((stop.at - palette.bloomInner) / span);
+        gradient.addColorStop(last, this.stopColor(hue, stop, view, strength));
+      }
+    } else {
+      this.addStops(gradient, palette.bloom, hue, view, strength);
+      last = clamp01(palette.bloom[palette.bloom.length - 1]?.at ?? 1);
+    }
+    // Nothing may be cut at the disc edge.
+    if (last < 1) gradient.addColorStop(1, this.color(hue, 0.5, 0, 0));
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, TAU);
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.fill();
   }
 
+  /**
+   * The ball.
+   *
+   * Opaque, and painted before every blending layer. The off-centre focus is what turns a flat
+   * disc into a volume: the light source sits above and toward the start side.
+   */
   private drawCore(
     cx: number,
     cy: number,
@@ -625,24 +935,86 @@ export class SpherePainter {
     view: SphereView,
   ): void {
     const { ctx } = this;
-    const [highlight, body, rim] = this.palette.core;
-    // Off-centre highlight: a light source above and to the start side gives the flat
-    // circle its volume.
     const gradient = ctx.createRadialGradient(
-      cx - radius * 0.25,
-      cy - radius * 0.3,
+      cx + radius * FOCUS_X,
+      cy + radius * FOCUS_Y,
       radius * 0.05,
       cx,
       cy,
       radius,
     );
-    gradient.addColorStop(0, this.stopColor(hue, highlight, view));
-    gradient.addColorStop(0.6, this.stopColor(hue, body, view));
-    gradient.addColorStop(1, this.stopColor(hue, rim, view));
+    const solid = { ...view, alpha: this.solidAlpha(view) };
+    this.addStops(gradient, this.palette.core, hue, solid);
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, TAU);
     ctx.fillStyle = gradient;
     ctx.fill();
+  }
+
+  /**
+   * The contact shadow the ball sits on. Light mode only.
+   *
+   * Not scaled by `view.bloom`: a shadow is cast by the object, not by how loud it is.
+   */
+  private drawShadow(
+    cx: number,
+    cy: number,
+    radius: number,
+    hue: number,
+    view: SphereView,
+  ): void {
+    const stops = this.palette.shadow;
+    if (!stops) return;
+    const { ctx } = this;
+    const reach = radius * 0.86;
+
+    ctx.save();
+    ctx.translate(cx, cy + radius * 1.06);
+    ctx.scale(1, 0.2);
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
+    this.addStops(gradient, stops, hue, view);
+    ctx.beginPath();
+    ctx.arc(0, 0, reach, 0, TAU);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /**
+   * The seam where the ball meets its own halo. Light mode only.
+   *
+   * Tuned as a tint, not as a blend. Canvas blending is weighted by the backdrop's alpha, and the
+   * halo only carries about 0.10 to 0.15 alpha out here, so most of this layer lands as a plain
+   * paint whatever the blend mode says.
+   */
+  private drawOcclusion(
+    cx: number,
+    cy: number,
+    radius: number,
+    hue: number,
+    view: SphereView,
+  ): void {
+    const stops = this.palette.occlusion;
+    if (!stops) return;
+    const { ctx } = this;
+    const outer = radius * 1.2;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    const gradient = ctx.createRadialGradient(
+      cx,
+      cy,
+      radius * 0.96,
+      cx,
+      cy,
+      outer,
+    );
+    this.addStops(gradient, stops, hue, view);
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, TAU);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawFilaments(
@@ -652,8 +1024,14 @@ export class SpherePainter {
     hue: number,
     view: SphereView,
   ): void {
-    const { ctx } = this;
-    ctx.lineWidth = Math.max(1, radius * 0.012);
+    const { ctx, palette } = this;
+
+    ctx.save();
+    if (palette.clipFilaments) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, TAU);
+      ctx.clip();
+    }
 
     for (const filament of this.filaments) {
       const cos = Math.cos(filament.tilt);
@@ -675,17 +1053,120 @@ export class SpherePainter {
         if (sample === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
-
       ctx.closePath();
-      const strand = this.palette.filament;
-      ctx.strokeStyle = this.color(
-        hue + filament.hueShift,
-        strand.lightness,
-        strand.chroma * view.saturation,
-        (strand.alphaBase + strand.alphaLevel * this.level) * view.alpha,
-      );
-      ctx.stroke();
+
+      const strandHue = hue + filament.hueShift;
+      // The wide band. Adds light on dark, takes it away on light.
+      ctx.globalCompositeOperation = this.filamentComposite;
+      this.strokeStrand(palette.filament, strandHue, radius, view);
+
+      // The thin thread down the middle of the band. `stroke()` keeps the path, so this is one
+      // extra stroke and not one extra path build. A dark band with a bright core is what a lit
+      // strand looks like from outside, which is how light mode stays continuous with dark.
+      if (palette.filamentCore) {
+        ctx.globalCompositeOperation = 'source-over';
+        this.strokeStrand(palette.filamentCore, strandHue, radius, view);
+      }
     }
+
+    ctx.restore();
+  }
+
+  private strokeStrand(
+    strand: SphereStrand,
+    hue: number,
+    radius: number,
+    view: SphereView,
+  ): void {
+    const { ctx } = this;
+    ctx.lineWidth = Math.max(1, radius * strand.width);
+    ctx.strokeStyle = this.color(
+      hue,
+      strand.lightness,
+      strand.chroma * view.saturation,
+      (strand.alphaBase + strand.alphaLevel * this.level) * view.alpha,
+    );
+    ctx.stroke();
+  }
+
+  /**
+   * The lamp inside the ball. Light mode only, `source-over`, never `lighter`.
+   *
+   * It is painted AFTER the filaments on purpose. A strand that crosses the lamp is washed out by
+   * the lamp, which is what a strand near a bright source really does, and it is what keeps the
+   * multiply strands from muddying the hot centre.
+   */
+  private drawRelight(
+    cx: number,
+    cy: number,
+    radius: number,
+    hue: number,
+    view: SphereView,
+  ): void {
+    const stops = this.palette.relight;
+    if (!stops) return;
+    const { ctx } = this;
+    // 0.21R of lamp offset plus 0.42R of reach is 0.63R, so the lamp never touches the rim.
+    const gradient = ctx.createRadialGradient(
+      cx + radius * LAMP_X,
+      cy + radius * LAMP_Y,
+      0,
+      cx + radius * LAMP_X,
+      cy + radius * LAMP_Y,
+      radius * 0.42,
+    );
+    this.addStops(gradient, stops, hue, {
+      ...view,
+      alpha: this.solidAlpha(view),
+    });
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, TAU);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+
+  /**
+   * The small specular highlight. Light mode only.
+   *
+   * Driven by `view.alpha` and the solid floor, never by `view.saturation`: a muted microphone
+   * drains the colour out of the glass, it does not make the glass less shiny.
+   */
+  private drawSpecular(
+    cx: number,
+    cy: number,
+    radius: number,
+    hue: number,
+    view: SphereView,
+  ): void {
+    const stops = this.palette.specular;
+    if (!stops) return;
+    const { ctx } = this;
+    const reach = radius * 0.15;
+    const alpha = this.solidAlpha(view);
+
+    ctx.save();
+    ctx.translate(cx - radius * 0.44, cy - radius * 0.5);
+    ctx.rotate(-0.5);
+    ctx.scale(1, 0.62);
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
+    for (const stop of stops) {
+      gradient.addColorStop(
+        clamp01(stop.at),
+        // The mixed sphere hue, not 0. At this chroma the error is small, but a red-tinted
+        // highlight on a violet ball is still wrong.
+        this.color(
+          hue + (stop.hueShift ?? 0),
+          stop.lightness,
+          stop.chroma,
+          stop.alpha * alpha,
+        ),
+      );
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, reach, 0, TAU);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawRings(
@@ -695,10 +1176,15 @@ export class SpherePainter {
     hue: number,
     view: SphereView,
   ): void {
-    const { ctx } = this;
-    const ripple = this.palette.ring;
+    const { ctx, palette } = this;
+    if (this.rings.length === 0) return;
+    const ripple = palette.ring;
+
+    ctx.save();
+    ctx.globalCompositeOperation = this.ringComposite;
     for (const ring of this.rings) {
       const progress = clamp01(ring.age / RING_LIFE_S);
+      const fade = (1 - progress) ** palette.ringFadePower;
       ctx.beginPath();
       ctx.arc(cx, cy, radius * (1 + progress * 0.9), 0, TAU);
       ctx.lineWidth = Math.max(1, radius * 0.02 * (1 - progress));
@@ -706,10 +1192,11 @@ export class SpherePainter {
         hue,
         ripple.lightness,
         ripple.chroma * view.saturation,
-        (1 - progress) * ripple.alpha * view.alpha,
+        fade * ripple.alpha * view.alpha,
       );
       ctx.stroke();
     }
+    ctx.restore();
   }
 
   /**
