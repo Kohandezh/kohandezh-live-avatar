@@ -101,7 +101,11 @@ export function SettingsIndexPage() {
                 description={t('settings.appearance.description')}
               />
               <SettingsControlRow>
-                <LanguageSwitcher showLabel />
+                {/* `w-full` here, not in the component: the switcher also sits
+                    on the login screen, where a narrow, centred control is
+                    right. On a settings row it is one of the screen's action
+                    controls and matches the full-width buttons. */}
+                <LanguageSwitcher showLabel className="w-full" />
                 <p className="text-xs text-muted">
                   {t('settings.language.description')}
                 </p>

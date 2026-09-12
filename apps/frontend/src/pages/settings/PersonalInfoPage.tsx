@@ -130,11 +130,14 @@ export function PersonalInfoPage() {
                 </InlineAlert>
               ) : null}
 
+              {/* Full width, like every action button on the settings screens:
+                  a phone-width column reads as one stack, and a button that
+                  fills it is the easiest target for a thumb. */}
               <Button
                 type="submit"
                 isPending={updateProfile.isPending}
                 isDisabled={!isOnline || !form.formState.isDirty}
-                className="min-h-11 self-start"
+                className="min-h-11 w-full"
               >
                 {t('settings.personal.save')}
               </Button>
@@ -188,7 +191,7 @@ export function PersonalInfoPage() {
           variant="danger"
           isPending={logout.isPending}
           onPress={handleLogout}
-          className="min-h-11 self-start"
+          className="min-h-11 w-full"
         >
           {t('nav.logout')}
         </Button>
