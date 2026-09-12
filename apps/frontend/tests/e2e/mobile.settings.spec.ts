@@ -108,13 +108,68 @@ test('appearance changes the theme (requirement 15)', async ({ page }) => {
   await loginSeeded(page);
   await page.goto('/settings/appearance');
 
-  // Not `getByRole('radio')`: see mobile.onboarding.spec.ts for why the real
-  // input's own bounding box is the wrong click target for HeroUI's Radio.
-  await page.getByText('Dark', { exact: true }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  const themeList = page.getByRole('listbox', { name: 'Theme' });
 
-  await page.getByText('Light', { exact: true }).click();
+  await themeList.getByRole('option', { name: 'Dark' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(themeList.getByRole('option', { name: 'Dark' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+
+  await themeList.getByRole('option', { name: 'Light' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  // A single-select list box must never end up with nothing chosen.
+  await expect(themeList.locator('[aria-selected="true"]')).toHaveCount(1);
+});
+
+test('the transparency slider dials the glass down by degrees (requirement 15)', async ({
+  page,
+}) => {
+  await loginSeeded(page);
+  await page.goto('/settings/appearance');
+
+  // React Aria backs the slider with a real <input type="range">, so the value
+  // is the input's own value, not an aria-valuenow attribute.
+  const slider = page.getByRole('slider', { name: 'Reduce transparency' });
+  await expect(slider).toHaveValue('0');
+
+  // A real drag on the track, not just keys: this is how the control is used.
+  const track = page.locator('[data-slot="slider-track"]').first();
+  const box = (await track.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  const middle = Number(await slider.inputValue());
+  expect(middle).toBeGreaterThan(0);
+  expect(middle).toBeLessThan(100);
+
+  // A level in between scales the glass rather than switching it off, so the
+  // custom property moves while the full-flat attribute stays off.
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-reduce-transparency',
+    'false',
+  );
+  const factor = await page.evaluate(() =>
+    document.documentElement.style.getPropertyValue('--glass-reduce'),
+  );
+  expect(Number(factor)).toBeCloseTo(middle / 100, 5);
+
+  // The top of the scale drops the backdrop filter outright.
+  await slider.press('End');
+  await expect(slider).toHaveValue('100');
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-reduce-transparency',
+    'true',
+  );
+  const barFilter = await page
+    .getByRole('navigation', { name: 'Menu' })
+    .evaluate((el) => {
+      const glass = el.querySelector('.glass') ?? el;
+      return getComputedStyle(glass).backdropFilter;
+    });
+  expect(barFilter).toBe('none');
 });
 
 test('log out lives on the personal info page and works (requirement 15)', async ({

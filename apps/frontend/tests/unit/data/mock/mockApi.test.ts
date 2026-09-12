@@ -165,6 +165,45 @@ describe('mock API', () => {
     );
   });
 
+  it('stores an optional birthday and clears it when the field is null', async () => {
+    mockSession.set('u-user');
+    const client = createClient();
+
+    const saved = await client.put('/api/me/profile', {
+      firstName: 'Sina',
+      lastName: 'Roshan',
+      birthDate: '1993-06-21',
+    });
+    expect(saved.data.birthDate).toBe('1993-06-21');
+    expect((await client.get('/api/me')).data.birthDate).toBe('1993-06-21');
+
+    // Full replace: null clears it, exactly like the real endpoint.
+    const cleared = await client.put('/api/me/profile', {
+      firstName: 'Sina',
+      lastName: 'Roshan',
+      birthDate: null,
+    });
+    expect(cleared.data.birthDate).toBe(null);
+  });
+
+  it.each([
+    ['a day in the future', '2999-01-01'],
+    ['a year before 1900', '1899-12-31'],
+    ['a day that does not exist', '2023-02-30'],
+    ['a Jalali year sent by mistake', '1372-03-31'],
+    ['something that is not a date', '21 June 1993'],
+  ])('rejects %s as a birthday', async (_label, birthDate) => {
+    mockSession.set('u-user');
+    await expectStatus(
+      createClient().put('/api/me/profile', {
+        firstName: 'Sina',
+        lastName: 'Roshan',
+        birthDate,
+      }),
+      422,
+    );
+  });
+
   it('replaces the profile with PUT /api/me/profile and leaves the shared fixture untouched', async () => {
     mockSession.set('u-user');
     const client = createClient();

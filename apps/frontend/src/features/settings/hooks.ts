@@ -42,12 +42,13 @@ export function useTheme(): [ThemeMode, (theme: ThemeMode) => void] {
   return [theme, change];
 }
 
-export function useReduceTransparency(): [boolean, (value: boolean) => void] {
+/** The reduce-transparency level, 0 to 100. See `SettingsState.reduceTransparency`. */
+export function useReduceTransparency(): [number, (value: number) => void] {
   const reduceTransparency = useSelector(selectReduceTransparency);
   const dispatch = useDispatch();
 
   const change = useCallback(
-    (next: boolean) => {
+    (next: number) => {
       dispatch(setReduceTransparency(next));
     },
     [dispatch],

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID
@@ -144,11 +144,19 @@ class OtpVerifyBody(BaseModel):
     code: str = Field(min_length=4, max_length=10)
 
 
+# Floor for a birthday. Mirrors EARLIEST_BIRTH_YEAR in
+# apps/frontend/src/features/profile/jalali.ts; change both together.
+EARLIEST_BIRTH_DATE = date(1900, 1, 1)
+
+
 # CamelModel, not a plain BaseModel like the other request bodies above: firstName and
 # lastName are two-word fields, and docs/API.md mandates camelCase on the wire.
 class UpdateProfileBody(CamelModel):
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
+    # Optional, and part of the full replace: sending null clears a birthday that was set
+    # before. The client always sends the field, so "absent" and "cleared" cannot be confused.
+    birth_date: date | None = None
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -157,6 +165,23 @@ class UpdateProfileBody(CamelModel):
         if not normalized:
             raise ValueError("name cannot be blank")
         return normalized
+
+    @field_validator("birth_date")
+    @classmethod
+    def check_birth_date(cls, value: date | None) -> date | None:
+        """Reject dates a living person cannot have been born on.
+
+        The bounds are deliberately wide. They exist to catch a typo or a broken client, not to
+        guess a real age. EARLIEST_BIRTH_DATE is also the floor the date picker uses, so the two
+        ends of the wire agree.
+        """
+        if value is None:
+            return None
+        if value > date.today():
+            raise ValueError("birth date cannot be in the future")
+        if value < EARLIEST_BIRTH_DATE:
+            raise ValueError("birth date is too far in the past")
+        return value
 
 
 class PublicUser(CamelModel):
@@ -167,6 +192,7 @@ class PublicUser(CamelModel):
     first_name: str
     last_name: str
     email: str | None
+    birth_date: date | None
     role: Literal["user", "admin"]
     status: Literal["active", "disabled"]
     created_at: datetime

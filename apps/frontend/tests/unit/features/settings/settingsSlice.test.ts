@@ -17,7 +17,7 @@ import {
 const baseState: SettingsState = {
   language: 'en',
   theme: 'system',
-  reduceTransparency: false,
+  reduceTransparency: 0,
   micPermissionAsked: false,
 };
 
@@ -62,29 +62,57 @@ describe('settingsSlice', () => {
     expect(loadInitialSettings().theme).toBe('system');
   });
 
-  it('defaults reduceTransparency to false', () => {
-    expect(loadInitialSettings().reduceTransparency).toBe(false);
+  it('defaults reduceTransparency to 0, the untouched glass', () => {
+    expect(loadInitialSettings().reduceTransparency).toBe(0);
   });
 
-  it('changes reduceTransparency', () => {
-    const state = settingsReducer(baseState, setReduceTransparency(true));
+  it('changes reduceTransparency to a level in between', () => {
+    const state = settingsReducer(baseState, setReduceTransparency(40));
 
-    expect(selectReduceTransparency({ settings: state })).toBe(true);
+    expect(selectReduceTransparency({ settings: state })).toBe(40);
   });
 
-  it('restores a saved reduceTransparency flag', () => {
-    persistSettings({ ...baseState, reduceTransparency: true });
-
-    expect(loadInitialSettings().reduceTransparency).toBe(true);
+  it('clamps a level outside the scale', () => {
+    expect(
+      settingsReducer(baseState, setReduceTransparency(140))
+        .reduceTransparency,
+    ).toBe(100);
+    expect(
+      settingsReducer(baseState, setReduceTransparency(-20)).reduceTransparency,
+    ).toBe(0);
   });
 
-  it('ignores a non-boolean saved reduceTransparency value', () => {
+  it('restores a saved reduceTransparency level', () => {
+    persistSettings({ ...baseState, reduceTransparency: 65 });
+
+    expect(loadInitialSettings().reduceTransparency).toBe(65);
+  });
+
+  /**
+   * The setting used to be a boolean. A user who turned it on before the change has `true` on
+   * disk and must land at the top of the scale, not back at 0.
+   */
+  it('reads a saved boolean from before the setting became a level', () => {
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({ reduceTransparency: true }),
+    );
+    expect(loadInitialSettings().reduceTransparency).toBe(100);
+
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({ reduceTransparency: false }),
+    );
+    expect(loadInitialSettings().reduceTransparency).toBe(0);
+  });
+
+  it('ignores a saved reduceTransparency value that is neither a number nor a boolean', () => {
     localStorage.setItem(
       'settings',
       JSON.stringify({ reduceTransparency: 'yes' }),
     );
 
-    expect(loadInitialSettings().reduceTransparency).toBe(false);
+    expect(loadInitialSettings().reduceTransparency).toBe(0);
   });
 
   it('defaults micPermissionAsked to false', () => {

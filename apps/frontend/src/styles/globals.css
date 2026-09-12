@@ -32,6 +32,39 @@
 }
 
 /*
+ * The reduce-transparency level, as a 0-to-1 factor.
+ *
+ * `ThemeSync` writes it on <html> from the settings slider (0 to 100). Every glass value below
+ * is interpolated between "the tuned look" at 0 and "a flat opaque surface" at 1, so the slider
+ * dials the effect down instead of only switching it off.
+ *
+ * Declared here as well so the effect is correct before the first client render, and so a
+ * target that never mounts ThemeSync (the widget) still gets the tuned look.
+ *
+ * Direction matters for the contrast work documented on the `glass` utility: every one of these
+ * moves toward opaque as the factor rises, so the measured worst-case contrast at factor 0 is
+ * the worst case at any factor. Raising the slider can only make text easier to read.
+ */
+:root,
+:host {
+  --glass-reduce: 0;
+
+  /* Blur, saturation and brightness fade out; the tint and the border fade in. */
+  --glass-blur-now: calc(var(--glass-blur) * (1 - var(--glass-reduce)));
+  --glass-blur-now-strong: calc(24px * (1 - var(--glass-reduce)));
+  --glass-saturate-now: calc(
+    100% + (var(--glass-saturate) - 100%) * (1 - var(--glass-reduce))
+  );
+  --glass-brightness-now: calc(
+    100% + (var(--glass-brightness) - 100%) * (1 - var(--glass-reduce))
+  );
+  --glass-highlight-now: calc(var(--glass-highlight) * (1 - var(--glass-reduce)));
+  --glass-highlight-dark-now: calc(
+    var(--glass-highlight-dark) * (1 - var(--glass-reduce))
+  );
+}
+
+/*
  * The app accent.
  *
  * HeroUI derives its whole accent family from this one custom property: `--accent-soft`,
@@ -157,21 +190,29 @@
 @utility glass {
   position: relative;
   isolation: isolate;
+  /* The `*-now` values and the tint expression fold in the reduce-transparency level; at
+     level 0 they evaluate to exactly the tuned numbers in @theme. */
   background-color: color-mix(
     in oklab,
-    var(--surface) var(--glass-tint),
+    var(--surface)
+      calc(var(--glass-tint) + (100% - var(--glass-tint)) * var(--glass-reduce)),
     transparent
   );
   background-image: linear-gradient(
     to bottom,
-    color-mix(in oklab, white var(--glass-highlight), transparent),
+    color-mix(in oklab, white var(--glass-highlight-now), transparent),
     transparent 42%
   );
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))
-    brightness(var(--glass-brightness));
-  -webkit-backdrop-filter: blur(var(--glass-blur))
-    saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
-  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  backdrop-filter: blur(var(--glass-blur-now))
+    saturate(var(--glass-saturate-now)) brightness(var(--glass-brightness-now));
+  -webkit-backdrop-filter: blur(var(--glass-blur-now))
+    saturate(var(--glass-saturate-now)) brightness(var(--glass-brightness-now));
+  border: 1px solid
+    color-mix(
+      in oklab,
+      var(--border) calc(70% + 30% * var(--glass-reduce)),
+      transparent
+    );
   box-shadow:
     inset 0 1px 0 0 color-mix(in oklab, white 22%, transparent),
     0 8px 24px -8px color-mix(in oklab, var(--foreground) 25%, transparent);
@@ -180,13 +221,19 @@
   &[data-glass='strong'] {
     background-color: color-mix(
       in oklab,
-      var(--surface) var(--glass-tint-strong),
+      var(--surface)
+        calc(
+          var(--glass-tint-strong) + (100% - var(--glass-tint-strong)) *
+            var(--glass-reduce)
+        ),
       transparent
     );
-    backdrop-filter: blur(24px) saturate(var(--glass-saturate))
-      brightness(var(--glass-brightness));
-    -webkit-backdrop-filter: blur(24px) saturate(var(--glass-saturate))
-      brightness(var(--glass-brightness));
+    backdrop-filter: blur(var(--glass-blur-now-strong))
+      saturate(var(--glass-saturate-now))
+      brightness(var(--glass-brightness-now));
+    -webkit-backdrop-filter: blur(var(--glass-blur-now-strong))
+      saturate(var(--glass-saturate-now))
+      brightness(var(--glass-brightness-now));
   }
 
   /*
@@ -218,12 +265,16 @@
   :is(.dark, [data-theme='dark'], :host(.dark), :host([data-theme='dark'])) & {
     background-color: color-mix(
       in oklab,
-      var(--surface) var(--glass-tint-dark),
+      var(--surface)
+        calc(
+          var(--glass-tint-dark) + (100% - var(--glass-tint-dark)) *
+            var(--glass-reduce)
+        ),
       transparent
     );
     background-image: linear-gradient(
       to bottom,
-      color-mix(in oklab, white var(--glass-highlight-dark), transparent),
+      color-mix(in oklab, white var(--glass-highlight-dark-now), transparent),
       transparent 42%
     );
     /* `var(--border)` is written FIRST on purpose. Lightning CSS emits a no-color-mix fallback
@@ -239,7 +290,11 @@
     &[data-glass='strong'] {
     background-color: color-mix(
       in oklab,
-      var(--surface) var(--glass-tint-strong-dark),
+      var(--surface)
+        calc(
+          var(--glass-tint-strong-dark) + (100% - var(--glass-tint-strong-dark)) *
+            var(--glass-reduce)
+        ),
       transparent
     );
   }
@@ -272,6 +327,11 @@
     box-shadow: var(--overlay-shadow);
   }
 
+  /*
+   * The top of the reduce-transparency scale (level 100). The interpolated values above already
+   * land on an opaque surface there; this block exists to drop `backdrop-filter` outright,
+   * because a `blur(0px)` still promotes every glass element to its own compositing layer.
+   */
   [data-reduce-transparency='true'] & {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -280,6 +340,25 @@
     border-color: var(--border);
     box-shadow: var(--overlay-shadow);
   }
+}
+
+/*
+ * HeroUI v3.2.5 Slider, right-to-left fix.
+ *
+ * `Slider.Fill` is positioned with a PHYSICAL inline `left: 0%; width: <value>%`. The thumb is
+ * placed correctly for the writing direction (`left: 80%` for a value of 20 in RTL), but the
+ * fill is not: in Persian it paints a detached block at the far left, the 100% end, while the
+ * thumb sits near the right. The bar reads as broken.
+ *
+ * `!important` is needed because the wrong value is an inline style; an author declaration only
+ * beats it that way. `right` is not set inline at all, so a normal declaration is enough there.
+ * The width keeps coming from HeroUI, so this only moves which end the fill grows from.
+ *
+ * Remove this when HeroUI positions the fill with logical properties.
+ */
+[dir='rtl'] .slider__fill {
+  left: auto !important;
+  right: 0;
 }
 
 /*
@@ -311,6 +390,10 @@
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
+    /* Fades out with the reduce-transparency level. This ring is decoration on a lens edge, so
+       it has to go as the lens flattens. `opacity` on ::after, never on the glass box itself:
+       an opacity below 1 on that box would blank its own backdrop-filter. */
+    opacity: calc(1 - var(--glass-reduce));
   }
 
   @media (prefers-reduced-transparency: reduce) {
@@ -331,6 +414,7 @@
     }
   }
 
+  /* Top of the scale: gone for good, not merely transparent. */
   [data-reduce-transparency='true'] &::after {
     display: none;
   }

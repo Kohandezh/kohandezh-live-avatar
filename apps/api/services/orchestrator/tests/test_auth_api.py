@@ -1,4 +1,5 @@
 import logging
+from datetime import date, timedelta
 
 import pytest
 from fastapi import Response
@@ -162,6 +163,7 @@ async def test_web_login_puts_the_session_in_a_cookie_and_not_in_the_body(api):
         "firstName",
         "lastName",
         "email",
+        "birthDate",
         "role",
         "status",
         "createdAt",
@@ -280,6 +282,104 @@ async def test_updating_the_profile_changes_the_name_seen_on_me(api):
     me = await api.client.get("/me")
     assert me.json()["firstName"] == "Sara"
     assert me.json()["lastName"] == "Ahmadi"
+
+
+@pytest.mark.asyncio
+async def test_a_new_account_has_no_birth_date(api):
+    await api.login(PHONE)
+
+    me = await api.client.get("/me")
+
+    assert me.status_code == 200
+    assert me.json()["birthDate"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_birth_date_is_stored_and_returned_as_an_iso_day(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile",
+        json={"firstName": "Sara", "lastName": "Ahmadi", "birthDate": "1993-06-21"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["birthDate"] == "1993-06-21"
+
+    me = await api.client.get("/me")
+    assert me.json()["birthDate"] == "1993-06-21"
+
+
+@pytest.mark.asyncio
+async def test_the_birth_date_is_optional(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile", json={"firstName": "Sara", "lastName": "Ahmadi"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["birthDate"] is None
+
+
+@pytest.mark.asyncio
+async def test_sending_a_null_birth_date_clears_a_stored_one(api):
+    """The endpoint is a full replace, so a cleared field has to reach the database."""
+    await api.login(PHONE)
+    await api.client.put(
+        "/me/profile",
+        json={"firstName": "Sara", "lastName": "Ahmadi", "birthDate": "1993-06-21"},
+    )
+
+    response = await api.client.put(
+        "/me/profile",
+        json={"firstName": "Sara", "lastName": "Ahmadi", "birthDate": None},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["birthDate"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_birth_date_in_the_future_is_refused(api):
+    await api.login(PHONE)
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+    response = await api.client.put(
+        "/me/profile",
+        json={"firstName": "Sara", "lastName": "Ahmadi", "birthDate": tomorrow},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
+async def test_a_birth_date_before_nineteen_hundred_is_refused(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile",
+        json={"firstName": "Sara", "lastName": "Ahmadi", "birthDate": "1899-12-31"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
+async def test_a_birth_date_that_is_not_a_date_is_refused(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile",
+        json={"firstName": "Sara", "lastName": "Ahmadi", "birthDate": "1372-03-31"},
+    )
+
+    # 1372 is a Jalali year. The wire format is Gregorian, so the backend sees a year that is
+    # inside no living person's lifetime and refuses it.
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 @pytest.mark.asyncio

@@ -19,9 +19,15 @@ backend returned at account creation.
 | `firstName` | string                     | Empty until the user completes onboarding.      |
 | `lastName`  | string                     | Empty until the user completes onboarding.      |
 | `email`     | string \| null             | Optional. `getFullName` falls back to `phone`.  |
+| `birthDate` | string \| null             | Optional. Gregorian `YYYY-MM-DD`, shown as Jalali. |
 | `role`      | `"user"` \| `"admin"`      | Backend decides. UI reads only.                 |
 | `status`    | `"active"` \| `"disabled"` |                                                  |
 | `createdAt` | string (ISO 8601)          | Formatted with `Intl` in the UI.                |
+
+`birthDate` is collected on onboarding step 1, next to the name, and stays editable on
+`/settings/personal`. It is optional: a user who declines it still finishes onboarding. The
+field is stored and sent as a Gregorian day; the Jalali calendar exists only in the UI, and
+`src/features/profile/jalali.ts` is the single place that converts between the two.
 
 An empty `firstName` is the signal that onboarding is not done. There is no separate "new user"
 flag: `firstName === ''` is true for every fresh account by construction, and `PUT /api/me/profile`
@@ -48,13 +54,16 @@ only credential.
 | `phone`                   | text        | unique, E.164 (`+989123456789`)                       |
 | `first_name`, `last_name` | text        | empty strings until the user completes onboarding    |
 | `email`                   | text (null) | not collected at login                                |
+| `birth_date`              | date (null) | optional. `DATE`, not a timestamp: a birthday is a day |
 | `role`                    | text        | `user` or `admin`. `ADMIN_PHONES` promotes at login.  |
 | `status`                  | text        | `active` or `disabled`. Disabled blocks login and API. |
 | `created_at`, `updated_at`| timestamptz |                                                       |
 
+`birth_date` is added by `migrations/003_birth_date.sql`.
+
 The API returns an explicit allowlist of these columns as `User`
-(`id`, `phone`, `firstName`, `lastName`, `email`, `role`, `status`, `createdAt`). Nothing else
-leaves the backend.
+(`id`, `phone`, `firstName`, `lastName`, `email`, `birthDate`, `role`, `status`, `createdAt`).
+Nothing else leaves the backend.
 
 ## DashboardSummary (`src/entities/dashboard`)
 
