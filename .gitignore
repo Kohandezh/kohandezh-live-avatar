@@ -35,3 +35,6 @@ apps/frontend/playwright-report/
 
 # HeroUI docs downloaded by `npx heroui-cli agents-md`
 .heroui-docs/
+
+# Turborepo
+.turbo/
