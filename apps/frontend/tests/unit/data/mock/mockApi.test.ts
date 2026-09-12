@@ -144,6 +144,56 @@ describe('mock API', () => {
     expect(search.data.items[0].id).toBe('u-admin');
   });
 
+  it('requires a session to update the profile', async () => {
+    await expectStatus(
+      createClient().put('/api/me/profile', {
+        firstName: 'Sina',
+        lastName: 'Roshan',
+      }),
+      401,
+    );
+  });
+
+  it('rejects a profile update missing a name', async () => {
+    mockSession.set('u-user');
+    await expectStatus(
+      createClient().put('/api/me/profile', {
+        firstName: 'Sina',
+        lastName: '  ',
+      }),
+      422,
+    );
+  });
+
+  it('replaces the profile with PUT /api/me/profile and leaves the shared fixture untouched', async () => {
+    mockSession.set('u-user');
+    const client = createClient();
+
+    const updated = await client.put('/api/me/profile', {
+      firstName: 'Sina',
+      lastName: 'Roshan',
+    });
+    expect(updated.data).toMatchObject({
+      id: 'u-user',
+      firstName: 'Sina',
+      lastName: 'Roshan',
+    });
+
+    // `/api/me` reflects the write straight away.
+    const me = await client.get('/api/me');
+    expect(me.data.firstName).toBe('Sina');
+
+    // The write went to a copy, never to the `mockUsers` fixture the admin
+    // search and pagination tests rely on: the seed data still has the old name.
+    mockSession.set('u-admin');
+    const search = await client.get('/api/admin/users', {
+      params: { q: 'user@example' },
+    });
+    expect(search.data.items).toEqual([
+      expect.objectContaining({ id: 'u-user', firstName: 'User' }),
+    ]);
+  });
+
   it('returns 404 for unknown routes', async () => {
     await expectStatus(createClient().get('/api/does-not-exist'), 404);
   });

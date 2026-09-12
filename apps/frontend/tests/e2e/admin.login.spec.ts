@@ -1,11 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 
+/**
+ * The admin app shares `PhoneLoginForm` with the product targets, so it gets
+ * the same HeroUI `input-otp` and the same auto-submit (requirements 11, 12):
+ * filling the six digits logs in on its own, with no Verify click.
+ */
 async function login(page: Page, phone: string) {
   await page.goto('/login');
   await page.getByLabel('Phone number').fill(phone);
   await page.getByRole('button', { name: 'Send code' }).click();
   await page.getByLabel('One-time code').fill('123456');
-  await page.getByRole('button', { name: 'Verify' }).click();
 }
 
 test('anonymous visitors are sent to the login page', async ({ page }) => {

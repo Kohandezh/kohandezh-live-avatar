@@ -14,6 +14,18 @@ const isCI = Boolean(process.env.CI);
 // so they do not need a backend.
 const mockEnv = { VITE_API_MOCK: 'true' };
 
+/**
+ * Requirement 10 needs a real `getUserMedia` call to succeed with nobody at
+ * the keyboard to click the native permission dialog. `fake-ui` auto-accepts
+ * that dialog and `fake-device` gives it a fake mic to grant, so the call
+ * resolves instead of hanging the test. Chromium only, which is what both
+ * the `mobile` (Pixel 7) and `web` (Desktop Chrome) projects already use.
+ */
+const fakeMediaArgs = [
+  '--use-fake-ui-for-media-stream',
+  '--use-fake-device-for-media-stream',
+];
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -30,6 +42,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         baseURL: `http://localhost:${ports.web}`,
+        launchOptions: { args: fakeMediaArgs },
       },
     },
     {
@@ -38,6 +51,7 @@ export default defineConfig({
       use: {
         ...devices['Pixel 7'],
         baseURL: `http://localhost:${ports.mobile}`,
+        launchOptions: { args: fakeMediaArgs },
       },
     },
     {

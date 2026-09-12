@@ -216,6 +216,16 @@ class Database:
             status,
         )
 
+    async def update_user_profile(
+        self, user_id: UUID, *, first_name: str, last_name: str
+    ) -> asyncpg.Record | None:
+        return await self._pool().fetchrow(
+            "UPDATE users SET first_name=$2, last_name=$3, updated_at=now() WHERE id=$1 RETURNING *",
+            user_id,
+            first_name,
+            last_name,
+        )
+
     async def list_users(
         self, *, search: str | None, page: int, page_size: int
     ) -> tuple[list[asyncpg.Record], int]:

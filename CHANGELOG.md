@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added `PUT /api/me/profile` so a signed-in user can set their first and last name. It is a
+  full replace: both fields are required, and the response is the whole updated user. No
+  migration was needed; the `users` table already had `first_name` and `last_name` columns.
+  The frontend treats an empty `firstName` as the signal that onboarding is not finished; there
+  is no separate "new user" flag.
 - Turned the MVP into the product "Dr. Kohandezh Assistant" (Persian: دستیار دکتر کهن‌دژ). Every
   starter string ("Cross-Platform App", "One codebase for mobile, web, and admin", the Phase 1
   status text) is gone from the four targets, the HTML titles, the PWA manifest, and the

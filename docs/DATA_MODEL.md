@@ -9,27 +9,32 @@ Each model has a Zod schema in `apps/frontend/src/entities/<name>/types.ts`; the
 ## User (`src/entities/user`)
 
 Login identity is the phone number (E.164, for example `+989121234567`), not email. Email is
-optional profile data and is `null` until the user sets one; there is no profile feature yet, so
-today it is only ever the value the backend returned at account creation.
+optional profile data and is `null` until the user sets one; today it is only ever the value the
+backend returned at account creation.
 
 | Field       | Type                       | Notes                                          |
 | ----------- | -------------------------- | ----------------------------------------------- |
 | `id`        | string                     |                                                  |
 | `phone`     | string                     | E.164. The login identity.                      |
-| `firstName` | string                     | Empty string until a profile feature exists.    |
-| `lastName`  | string                     | Empty string until a profile feature exists.    |
+| `firstName` | string                     | Empty until the user completes onboarding.      |
+| `lastName`  | string                     | Empty until the user completes onboarding.      |
 | `email`     | string \| null             | Optional. `getFullName` falls back to `phone`.  |
 | `role`      | `"user"` \| `"admin"`      | Backend decides. UI reads only.                 |
 | `status`    | `"active"` \| `"disabled"` |                                                  |
 | `createdAt` | string (ISO 8601)          | Formatted with `Intl` in the UI.                |
 
-- Endpoints: `GET /api/me`, `GET /api/admin/users`, `POST /api/auth/otp/request`,
-  `POST /api/auth/otp/verify` (see `docs/API.md`)
+An empty `firstName` is the signal that onboarding is not done. There is no separate "new user"
+flag: `firstName === ''` is true for every fresh account by construction, and `PUT /api/me/profile`
+requires both names, so it is false from then on.
+
+- Endpoints: `GET /api/me`, `PUT /api/me/profile`, `GET /api/admin/users`,
+  `POST /api/auth/otp/request`, `POST /api/auth/otp/verify` (see `docs/API.md`)
 - Query keys: `['user', 'me']`, `['user', 'list', params]`
-- Hooks: `useCurrentUser()`, `useUsers(params)`, `useRequestOtp()`, `useVerifyOtp()` (both in
-  `src/features/authentication`)
-- Mutations that touch it: OTP verify (`setQueryData` on `me`), logout (clears the cache)
-- Permissions: `me` needs a session; the list needs the admin role
+- Hooks: `useCurrentUser()`, `useUpdateProfile()`, `useUsers(params)`, `useRequestOtp()`,
+  `useVerifyOtp()` (the last two in `src/features/authentication`)
+- Mutations that touch it: OTP verify and profile update (`setQueryData` on `me`), logout (clears
+  the cache)
+- Permissions: `me` and `me/profile` need a session; the list needs the admin role
 
 ### User in the backend (`users` table)
 
@@ -41,7 +46,7 @@ only credential.
 | ------------------------- | ----------- | ---------------------------------------------------- |
 | `id`                      | uuid        | primary key                                           |
 | `phone`                   | text        | unique, E.164 (`+989123456789`)                       |
-| `first_name`, `last_name` | text        | empty strings until a profile feature exists          |
+| `first_name`, `last_name` | text        | empty strings until the user completes onboarding    |
 | `email`                   | text (null) | not collected at login                                |
 | `role`                    | text        | `user` or `admin`. `ADMIN_PHONES` promotes at login.  |
 | `status`                  | text        | `active` or `disabled`. Disabled blocks login and API. |

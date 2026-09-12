@@ -1,6 +1,11 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { PaginationParams } from '@/shared/api';
-import { getCurrentUser, listUsers } from './api';
+import { getCurrentUser, listUsers, updateProfile } from './api';
 
 export const userKeys = {
   all: ['user'] as const,
@@ -14,6 +19,22 @@ export function useCurrentUser() {
     queryKey: userKeys.me(),
     queryFn: getCurrentUser,
     staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Writes the response straight into the `me` cache instead of invalidating it:
+ * the mutation returns the whole fresh user, so a refetch would be a wasted
+ * round trip. Matches `useVerifyOtp`.
+ */
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateProfile,
+    onSuccess: (user) => {
+      queryClient.setQueryData(userKeys.me(), user);
+    },
   });
 }
 

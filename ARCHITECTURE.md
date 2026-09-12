@@ -144,6 +144,8 @@ Token access must be abstracted behind `getAccessToken`, `setAccessToken`, and `
 
 Session state is the `me` query (`GET /api/me`) in TanStack Query. `RequireAuth` and `RequireRole` (`src/features/authentication/guards.tsx`) protect routes. They improve UX only. The backend must check the role on every request.
 
+`PUT /api/me/profile` is a full replace of the user's name (both fields required, response is the whole `User`). The mutation writes its response straight into the `me` cache instead of invalidating it. An empty `firstName` is how the frontend tells a fresh account from one that finished onboarding; there is no separate flag for it.
+
 ## Real-time Assistant
 
 `POST /api/assistant/session` mints a LiveAvatar session token with the backend's own provider

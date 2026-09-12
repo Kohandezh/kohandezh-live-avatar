@@ -6,8 +6,11 @@ const ARABIC_INDIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 /**
  * Converts Persian and Arabic-Indic digits to ASCII.
  * Users on a Persian keyboard often type numbers this way.
+ * Exported so the OTP input can normalize each keystroke: `InputOTP`'s
+ * `pattern` is ASCII-only, so a Persian digit would otherwise be swallowed
+ * silently instead of being converted.
  */
-function toAsciiDigits(value: string): string {
+export function toAsciiDigits(value: string): string {
   return value.replace(/[۰-۹٠-٩]/g, (char) => {
     const persianIndex = PERSIAN_DIGITS.indexOf(char);
     if (persianIndex !== -1) return String(persianIndex);

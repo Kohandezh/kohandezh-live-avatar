@@ -123,6 +123,13 @@ class FakeDatabase:
             user["status"] = status
         return user
 
+    async def update_user_profile(self, user_id: UUID, *, first_name: str, last_name: str):
+        user = await self.get_user(user_id)
+        if user:
+            user["first_name"] = first_name
+            user["last_name"] = last_name
+        return user
+
     async def list_users(self, *, search: str | None, page: int, page_size: int):
         rows = self.users
         if search and search.strip():

@@ -18,5 +18,6 @@ export function isNative(): boolean {
 export type { CameraService } from './camera';
 export type { DeepLinkService } from './deepLink';
 export type { HapticsService } from './haptics';
+export * from './microphone';
 export type { NotificationService } from './notifications';
 export type { ShareService } from './share';

@@ -266,6 +266,69 @@ async def test_a_disabled_account_loses_access(api):
 
 
 @pytest.mark.asyncio
+async def test_updating_the_profile_changes_the_name_seen_on_me(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile", json={"firstName": "Sara", "lastName": "Ahmadi"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["firstName"] == "Sara"
+    assert response.json()["lastName"] == "Ahmadi"
+
+    me = await api.client.get("/me")
+    assert me.json()["firstName"] == "Sara"
+    assert me.json()["lastName"] == "Ahmadi"
+
+
+@pytest.mark.asyncio
+async def test_updating_the_profile_needs_a_session(api):
+    response = await api.client.put(
+        "/me/profile", json={"firstName": "Sara", "lastName": "Ahmadi"}
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_blank_name_is_refused(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile", json={"firstName": "   ", "lastName": "Ahmadi"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
+async def test_a_name_over_a_hundred_characters_is_refused(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile", json={"firstName": "a" * 101, "lastName": "Ahmadi"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
+async def test_a_persian_name_is_accepted_and_returned_unchanged(api):
+    await api.login(PHONE)
+
+    response = await api.client.put(
+        "/me/profile", json={"firstName": "سارا", "lastName": "احمدی"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["firstName"] == "سارا"
+    assert response.json()["lastName"] == "احمدی"
+
+
+@pytest.mark.asyncio
 async def test_admin_endpoints_are_closed_to_a_normal_user(api):
     await api.login(PHONE)
 
