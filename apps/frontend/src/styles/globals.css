@@ -65,6 +65,29 @@
 }
 
 /*
+ * `--surface-edge`: a new app token, proposed because HeroUI has no token for this role.
+ *
+ * HeroUI draws the edge of a card and of a form field with a drop shadow only. In dark it sets
+ * that shadow to nothing (`--surface-shadow` and `--field-shadow` are both
+ * `0 0 0 0 transparent inset`, variables.css lines 255-257) and supplies no replacement, because
+ * `--field-border-width` is `0px` and `--field-border` is `transparent` in BOTH themes. So a card
+ * measured 1.12:1 against the page and an input measured 1.00:1 against the card it sits on:
+ * the boxes were invisible until focused. WCAG 1.4.11 wants 3:1 for a control boundary.
+ *
+ * `--border` could not do the job. It is the hairline for dividers and secondary-button outlines,
+ * where 3:1 would be far too loud, so the edge gets its own value, derived from the two tokens it
+ * sits between rather than from a hex:
+ *
+ *   light  mix(--surface 54%, --foreground 46%) = #8b8b8d  3.41:1 on a card, 3.13:1 on the page
+ *   dark   mix(--surface 62%, --foreground 38%) = #656567  3.04:1 on a card, 3.48:1 on the page
+ *
+ * It feeds four things: `--field-border` (every input, textarea, OTP box, checkbox and radio),
+ * the dark `--surface-shadow` ring (every Card), the switch track, and the border of the `glass`
+ * utility further down. HeroUI derives `--field-border-hover` and `--field-border-focus` from
+ * `--field-border` on its own, so those states rise with it.
+ *
+ * ---
+ *
  * The app accent.
  *
  * HeroUI derives its whole accent family from this one custom property: `--accent-soft`,
@@ -86,12 +109,62 @@
  * punch from chroma (0.225) rather than lightness, which keeps it vivid on a near-black ground
  * without dropping below the 4.5:1 floor.
  *
+ * `--accent-hover` has to be declared with it. HeroUI computes hover as
+ * `color-mix(in oklab, var(--accent) 90%, var(--accent-foreground) 10%)`, and the foreground is
+ * white, so its hover always moves the fill TOWARDS the white label: measured 3.87:1 light and
+ * 3.82:1 dark. Because the accent above is tuned to land at 4.6:1, no accent value can survive
+ * that formula. Mixing 8% black instead moves the fill away from the label, so hover ends up
+ * more readable than rest, not less: #8d40c2 = 5.61:1 light, #913dc6 = 5.54:1 dark.
+ * `--danger-hover` has the same formula and the same fix.
+ *
+ * `--danger` is tuned the same way, and for the same reason it could not stay at stock. White on
+ * stock danger measured 3.48:1 light and 4.35:1 dark, and the red field label and field error
+ * text (HeroUI paints both with plain `--danger`) measured 3.3:1 light and 4.0:1 dark.
+ *   light  oklch(56% 0.21 25.74)  = #d4222a  ->  5.05:1 under white, 4.75:1 as text on the page
+ *   dark   oklch(57% 0.20 24.63)  = #d42f35  ->  4.82:1 under white
+ * In dark those two roles pull apart and one value cannot serve both: a fill that carries white
+ * text must be dark, and red text on a near-black card must be light. The rule further down
+ * points the two text roles at `--danger-soft-foreground`, which is the token HeroUI already
+ * means for danger as a readable foreground.
+ *
+ * `--success` gets the same treatment, for the green "Live" chip on /video. HeroUI declares it
+ * once, on `:root,:host`, with no dark override, and the chip is a soft one: the label is
+ * `--success-soft-foreground` on a 15% `--success` wash. At stock oklch(73.29%) that measured
+ * 4.49:1 in light - a fail, by a hair. oklch(66%) darkens the label without meaningfully
+ * darkening the 15% wash, so the pair measures about 5.2:1. Dark was already comfortable and
+ * stays so at 6.9:1, and dark text on a solid success fill still measures 6.25:1, so one shared
+ * value serves both themes.
+ *
+ * `--muted` is the token for secondary text. Its stock light value, #71717a, measured 4.43:1 on
+ * the page ground - it passes on a white card and fails off it, which is where the login
+ * subtitle, the onboarding intro and the 404 and /forbidden descriptions all live. oklch(53.5%)
+ * = #6c6c75 measures 4.76:1 on the page and 5.18:1 on a card. Dark was already fine at 6.8:1.
+ *
  * Keep the hex values in the three index.html shells, ThemeSync.tsx and the PWA manifest in
  * vite.config.ts in step with these.
  */
 :root,
 :host {
   --accent: oklch(58% 0.215 308);
+  --accent-hover: color-mix(in oklab, var(--accent) 92%, black);
+  --danger: oklch(56% 0.21 25.74);
+  --danger-hover: color-mix(in oklab, var(--danger) 92%, black);
+  --success: oklch(66% 0.1935 150.81);
+  --surface-edge: color-mix(in oklab, var(--surface) 54%, var(--foreground) 46%);
+  --field-border: var(--surface-edge);
+  --field-border-width: 1px;
+}
+
+/*
+ * Dark keeps HeroUI's `--muted`, which already measures 6.8:1, so this one is light-only. The
+ * `:not()` guard is what makes that possible. Everything in this file is unlayered and HeroUI's
+ * variables are imported into the `theme` layer, so a plain `:root { --muted: ... }` here would
+ * beat HeroUI's `.dark { --muted: ... }` on the same `<html>` element and leak the light value
+ * into dark. Guarding the selector is cheaper than restating an upstream value we do not own.
+ */
+:root:not(.dark):not([data-theme='dark']),
+:host(:not(.dark):not([data-theme='dark'])) {
+  --muted: oklch(53.5% 0.0138 285.94);
 }
 
 .dark,
@@ -99,6 +172,63 @@
 :host(.dark),
 :host([data-theme='dark']) {
   --accent: oklch(58.5% 0.225 309);
+  --accent-hover: color-mix(in oklab, var(--accent) 92%, black);
+  --danger: oklch(57% 0.2 24.63);
+  --danger-hover: color-mix(in oklab, var(--danger) 92%, black);
+  --surface-edge: color-mix(in oklab, var(--surface) 62%, var(--foreground) 38%);
+  --field-border: var(--surface-edge);
+  /*
+   * The card edge. Light keeps HeroUI's drop shadow, which reads well enough on a light ground.
+   * Dark has no shadow at all, so the 1px ring does the whole job and a soft drop shadow under
+   * it restores the sense of a raised surface.
+   */
+  --surface-shadow:
+    0 0 0 1px var(--surface-edge), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+}
+
+/*
+ * Two text roles HeroUI paints with the danger FILL colour.
+ *
+ * `.field-error` and the invalid `.label` both use `@apply text-danger`
+ * (node_modules/@heroui/styles/dist/components/field-error.css:3, label.css:27). In dark that is
+ * the value tuned to carry white text, so as text on a near-black card it measured 4.0:1.
+ * `--danger-soft-foreground` is HeroUI's own "danger as a foreground" value and measures 5.87:1
+ * on a card, 6.73:1 on the page ground. Light does not need this: the light danger is already
+ * dark enough to read as text (4.75:1 on the page, 5.18:1 on a card) and keeps its alarm colour.
+ *
+ * Unlayered on purpose. HeroUI's component CSS is imported into the `components` cascade layer,
+ * and an unlayered rule beats every layer, so this wins without a specificity fight.
+ */
+.dark,
+[data-theme='dark'] {
+  & .field-error,
+  & .label--invalid,
+  & [data-invalid='true'] .label,
+  & [aria-invalid='true'] .label {
+    color: var(--danger-soft-foreground);
+  }
+}
+
+/*
+ * The switch track in its OFF state.
+ *
+ * HeroUI sets `--switch-control-bg: var(--default)`
+ * (node_modules/@heroui/styles/dist/components/switch.css:9). `--default` is the neutral button
+ * fill, which sits almost exactly on the surface behind it: the OFF track measured 1.4:1 against
+ * the card in dark and 1.1:1 in light, so only the white thumb suggested a control was there.
+ * The edge token gives the track the same 3:1 boundary every other control now has, and it also
+ * fixes the direction: the OFF track used to be the BRIGHTER of the two states in dark, because
+ * the thumb is white either way. Hover moves further from the surface, so the hover state is
+ * more visible than rest rather than less. `--default` itself is left alone; raising it would
+ * repaint every neutral button and chip.
+ */
+.switch {
+  --switch-control-bg: var(--surface-edge);
+  --switch-control-bg-hover: color-mix(
+    in oklab,
+    var(--surface-edge) 86%,
+    var(--foreground)
+  );
 }
 
 /*
@@ -158,13 +288,66 @@
 }
 
 /*
+ * Physically anchored conversation controls (/audio).
+ *
+ * A deliberate exception to the logical-property rule in AGENTS.md, decided by the product owner:
+ * the conversation controls "stay in their own place" and do not mirror with the writing
+ * direction. End is at the physical top left in Persian and in English, the way the buttons on a
+ * phone call screen are learned by position rather than by reading order.
+ *
+ * Same reasoning as `safe-inline` above. A physical anchor written with a logical property lands
+ * on the wrong side in one of the two languages, which is the bug these utilities exist to
+ * prevent. Physical position, physical property.
+ *
+ * The exception covers POSITION ONLY, and only for these four controls. Text, the status caption,
+ * the transcript, both drawers and the floating menu all still mirror. So does any glyph that
+ * points somewhere. See docs/DECISIONS/0013-physical-anchoring-for-conversation-controls.md, and
+ * tests/unit/styles/logical-properties.test.ts, which fails the build on a bare `left-4` in a
+ * component and allows only these four names.
+ *
+ * The inline insets match `safe-inline-gutter` (1rem floor, grows for a landscape cutout) and the
+ * top matches `stage-safe-top`. The bottom pair uses `--dock-clearance`, the same single
+ * measurement the floating menu uses, so the controls follow the menu instead of drifting from a
+ * second hard-coded number.
+ */
+@utility control-anchor-top-left {
+  position: absolute;
+  top: max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+@utility control-anchor-top-right {
+  position: absolute;
+  top: max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+@utility control-anchor-bottom-left {
+  position: absolute;
+  bottom: var(--dock-clearance);
+  left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+@utility control-anchor-bottom-right {
+  position: absolute;
+  bottom: var(--dock-clearance);
+  right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+/*
  * Tailwind v4 only emits an `@utility` when a scanned source file mentions the class name, and it
- * does not scan .css files. The two utilities above are new, so no component references them yet
+ * does not scan .css files. The utilities above are new, so no component references them yet
  * and they would be pruned from every build - a silent failure. `@source inline(...)` is the
  * supported way to force a candidate into the output. Remove a name from this list once a real
  * component uses the class.
+ *
+ * The `control-anchor-*` names must also be written out in full at the use site, never composed
+ * as `control-anchor-${row}-${side}`. Tailwind scans for literal strings, so a template would
+ * prune all four again with no error and drop every control into the top left corner.
  */
-@source inline("safe-inline safe-inline-gutter");
+@source inline(
+  "safe-inline safe-inline-gutter control-anchor-top-left control-anchor-top-right control-anchor-bottom-left control-anchor-bottom-right"
+);
 
 /*
  * Full-bleed conversation chrome (video/audio screens) sits directly under the status bar with
@@ -207,12 +390,17 @@
     saturate(var(--glass-saturate-now)) brightness(var(--glass-brightness-now));
   -webkit-backdrop-filter: blur(var(--glass-blur-now))
     saturate(var(--glass-saturate-now)) brightness(var(--glass-brightness-now));
-  border: 1px solid
-    color-mix(
-      in oklab,
-      var(--border) calc(70% + 30% * var(--glass-reduce)),
-      transparent
-    );
+  /*
+   * `--surface-edge`, not `--border`. The panel fill is translucent by definition, so it can
+   * never carry its own boundary: measured against the ground just outside it, the panel is
+   * 1.02:1 over /settings in light and 1.17:1 over /video in dark. The 1px border is the only
+   * thing that separates the dock from the page, so it uses the token that is tuned to 3:1.
+   *
+   * Solid, and not interpolated with `--glass-reduce` the way the filters above are. This
+   * value already sits at the 3:1 boundary minimum, and reduce-transparency only ever moves
+   * toward opaque, so holding it solid keeps the worst case at the tuned number.
+   */
+  border: 1px solid var(--surface-edge);
   box-shadow:
     inset 0 1px 0 0 color-mix(in oklab, white 22%, transparent),
     0 8px 24px -8px color-mix(in oklab, var(--foreground) 25%, transparent);
@@ -259,8 +447,10 @@
    * `strong` is the one that has to survive a white video frame, so it goes to 92%, which
    * measures 4.79:1 at the worst point. Both clear 4.5:1.
    *
-   * The border also rises. Dark `--border` is oklch(28% .006 286) - nearly invisible against a
-   * bright frame - so the dark edge mixes in white and stays a visible hairline either way.
+   * The border needs no dark branch any more. It used to mix white into `--border`, because dark
+   * `--border` is oklch(28% .006 286) and disappeared against a bright frame. `--surface-edge` is
+   * a mid grey in both themes (#8b8b8d light, #656567 dark), which is the one value that stays
+   * visible over a white video frame and over the near-black page alike.
    */
   :is(.dark, [data-theme='dark'], :host(.dark), :host([data-theme='dark'])) & {
     background-color: color-mix(
@@ -277,10 +467,6 @@
       color-mix(in oklab, white var(--glass-highlight-dark-now), transparent),
       transparent 42%
     );
-    /* `var(--border)` is written FIRST on purpose. Lightning CSS emits a no-color-mix fallback
-       for old engines by taking the first colour in the list; written the other way round
-       (`white 16%, var(--border)`) that fallback is a solid white border. */
-    border-color: color-mix(in oklab, var(--border) 84%, white);
     box-shadow:
       inset 0 1px 0 0 color-mix(in oklab, white 6%, transparent),
       0 8px 24px -8px rgba(0, 0, 0, 0.45);
@@ -305,7 +491,7 @@
     -webkit-backdrop-filter: none;
     background-color: var(--surface);
     background-image: none;
-    border-color: var(--border);
+    border-color: var(--surface-edge);
     box-shadow: var(--overlay-shadow);
   }
 
@@ -314,7 +500,7 @@
     -webkit-backdrop-filter: none;
     background-color: var(--surface);
     background-image: none;
-    border-color: var(--border);
+    border-color: var(--surface-edge);
     box-shadow: var(--overlay-shadow);
   }
 
@@ -323,7 +509,7 @@
     -webkit-backdrop-filter: none;
     background-color: var(--surface);
     background-image: none;
-    border-color: var(--border);
+    border-color: var(--surface-edge);
     box-shadow: var(--overlay-shadow);
   }
 
@@ -337,7 +523,7 @@
     -webkit-backdrop-filter: none;
     background-color: var(--surface);
     background-image: none;
-    border-color: var(--border);
+    border-color: var(--surface-edge);
     box-shadow: var(--overlay-shadow);
   }
 }

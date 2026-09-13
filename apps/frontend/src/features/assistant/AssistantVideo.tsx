@@ -5,10 +5,8 @@ import { Chip, Spinner } from '@heroui/react';
 import { Button } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import { AssistantStatusChip } from './AssistantStatusChip';
+import { WARNING_SECONDS } from './state';
 import type { AssistantController } from './useAssistantSession';
-
-/** Seconds left when the countdown starts to warn the user. */
-const WARNING_SECONDS = 15;
 
 /**
  * The avatar video plus every non-streaming state as an overlay.

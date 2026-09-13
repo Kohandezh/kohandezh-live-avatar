@@ -254,8 +254,10 @@
   "assistant": {
     "title": "Conversation with Dr. Kohandezh",
     "subtitle": "Press start, allow the microphone, and ask your question out loud.",
+    "name": "Dr. Kohandezh",
     "sandbox": "Trial mode",
     "agentLanguage": "Speaks {{language}}",
+    "sessionLength": "{{minutes}} min",
     "start": "Start the conversation",
     "restart": "Start again",
     "end": "End",
@@ -275,6 +277,13 @@
       "label": "View",
       "voice": "Voice",
       "video": "Video"
+    },
+    "controls": {
+      "reasons": {
+        "notConnected": "Available once the connection is ready",
+        "avatarNotSpeaking": "Only while Dr. Kohandezh is speaking",
+        "offline": "No internet connection"
+      }
     },
     "status": {
       "idle": "Not started",
@@ -304,6 +313,8 @@
       "listening": "Listening to you…",
       "speaking": "Dr. Kohandezh is speaking…",
       "muted": "Your microphone is off.",
+      "audioBlockedHint": "Tap the circle to hear it.",
+      "timeWarning": "Less than {{seconds}} seconds left.",
       "ending": "Ending the conversation…",
       "ended": "The conversation is over.",
       "error": "The conversation could not start."

@@ -19,7 +19,7 @@ export function AvatarSessionPanel({ text, recordingActive }: Props) {
   return (
     <Card>
       <div className="mb-4 flex flex-row flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">{t('session.title')}</h2>
+        <h2 className="text-base font-semibold text-foreground">{t('session.title')}</h2>
         {session && (
           <Chip color={session.sandbox ? 'accent' : 'warning'} variant="soft" size="sm">
             {session.sandbox ? t('session.sandbox') : t('session.live')}
@@ -39,7 +39,7 @@ export function AvatarSessionPanel({ text, recordingActive }: Props) {
             ]}
           />
         ) : (
-          <p className="text-sm text-slate-500">{t('session.noSession')}</p>
+          <p className="text-sm text-muted">{t('session.noSession')}</p>
         )}
       </div>
     </Card>

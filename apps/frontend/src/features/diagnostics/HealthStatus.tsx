@@ -45,7 +45,7 @@ export function HealthStatusCard() {
   return (
     <Card>
       <div className="mb-4 flex flex-row flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">{t('health.title')}</h2>
+        <h2 className="text-base font-semibold text-foreground">{t('health.title')}</h2>
         <div className="flex items-center gap-2">
           <Chip color={TONE[level]} variant="soft" size="sm">{levelLabel(level, t)}</Chip>
           <Button
@@ -71,7 +71,7 @@ export function HealthStatusCard() {
         )}
         {health && (
           <table className="w-full text-sm">
-            <thead className="text-slate-500">
+            <thead className="text-muted">
               <tr>
                 <th className="py-1 text-start font-medium">{t('health.dependency')}</th>
                 <th className="py-1 text-start font-medium">{t('health.status')}</th>

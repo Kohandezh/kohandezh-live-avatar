@@ -1,0 +1,252 @@
+import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import {
+  CONTROL_REASONS,
+  ControlButton,
+  ConversationControlLayer,
+} from '@/features/assistant/controls';
+import { i18n } from '@/i18n';
+import { renderWithProviders } from '../../../utils/renderWithProviders';
+
+/**
+ * The four physically anchored controls of `/audio`.
+ *
+ * These tests guard the three promises that are easy to break by accident and impossible to
+ * see in a diff: every circle has a name, a refused circle still explains itself instead of
+ * eating the tap, and the controls do not mirror in Persian while the tab order does.
+ */
+
+function renderLayer(
+  props: Partial<
+    React.ComponentProps<typeof ConversationControlLayer>
+  > = {},
+  locale: 'en' | 'fa' = 'en',
+) {
+  const onBlocked = vi.fn();
+  const handlers = {
+    onEnd: vi.fn(),
+    onToggleMic: vi.fn(),
+    onInterrupt: vi.fn(),
+    onType: vi.fn(),
+    onBlocked,
+  };
+
+  renderWithProviders(
+    <ConversationControlLayer
+      isEndPending={false}
+      isMicMuted={false}
+      micReason={null}
+      interruptReason={null}
+      typeReason={null}
+      {...handlers}
+      {...props}
+    />,
+    {
+      locale,
+      // Redux owns the language, and `LanguageSync` pushes it back into i18next on mount. A
+      // `locale` alone would be overwritten by the store's default the moment it renders.
+      preloadedState: {
+        settings: {
+          language: locale,
+          theme: 'system',
+          reduceTransparency: 0,
+          micPermissionAsked: false,
+        },
+      },
+    },
+  );
+
+  return handlers;
+}
+
+// The RTL case below changes the shared i18n instance, so put it back for anything after it.
+afterAll(async () => {
+  await i18n.changeLanguage('en');
+});
+
+describe('the /audio control layer', () => {
+  it('gives every circle an accessible name', () => {
+    renderLayer();
+
+    // End is named by its own visible word, so there is no second announcement and voice
+    // control can reach it. The other three are icon-only and carry an aria-label.
+    for (const name of [
+      'End',
+      'Type instead',
+      'Interrupt',
+      'Mute the microphone',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('keeps End pressable while the conversation is ending', async () => {
+    // The shared Button forces `isDisabled` whenever it is pending, which also sets the real
+    // `disabled` attribute and drops the element out of the tab order. The way out of a call
+    // must stay reachable, which is why these four are a native button instead.
+    const user = userEvent.setup();
+    const { onEnd } = renderLayer({ isEndPending: true });
+
+    const end = screen.getByRole('button', { name: 'End' });
+    expect(end).toBeEnabled();
+
+    await user.click(end);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a blocked control without swallowing the press', async () => {
+    const user = userEvent.setup();
+    const { onInterrupt, onBlocked } = renderLayer({
+      interruptReason: CONTROL_REASONS.avatarNotSpeaking,
+    });
+
+    const interrupt = screen.getByRole('button', { name: 'Interrupt' });
+    expect(interrupt).toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(interrupt);
+
+    // The action did not run, but the press was not silently dropped either: it reports the
+    // reason, which the notice line then shows. A dead button teaches the user nothing.
+    expect(onInterrupt).not.toHaveBeenCalled();
+    expect(onBlocked).toHaveBeenCalledWith(CONTROL_REASONS.avatarNotSpeaking);
+  });
+
+  it('names the microphone by what the press will do, with no aria-pressed', () => {
+    renderLayer({ isMicMuted: true });
+
+    const mic = screen.getByRole('button', {
+      name: 'Turn the microphone on',
+    });
+    // A changing action name plus `aria-pressed` makes a screen reader say "unmute, pressed".
+    expect(mic).not.toHaveAttribute('aria-pressed');
+  });
+
+  it('keeps the four corners physical in Persian and mirrors only the tab order', async () => {
+    // The position is a class name, not a computed style: jsdom lays nothing out, and the
+    // class is what carries the physical anchor. The e2e suite checks real geometry.
+    const anchors = () =>
+      screen
+        .getAllByRole('button')
+        .map((button) => button.className.match(/control-anchor-\S+/)?.[0]);
+
+    renderLayer();
+
+    expect(screen.getByRole('button', { name: 'End' })).toHaveClass(
+      'control-anchor-top-left',
+    );
+    // English reading order: End first, then the typing control.
+    expect(anchors()).toEqual([
+      'control-anchor-top-left',
+      'control-anchor-top-right',
+      'control-anchor-bottom-left',
+      'control-anchor-bottom-right',
+    ]);
+
+    cleanup();
+    // Awaited, not handed to `renderWithProviders`: that helper fires the change without
+    // waiting for it, so the first render would still be in English.
+    await i18n.changeLanguage('fa');
+    renderLayer({}, 'fa');
+
+    // Same physical corner. End is at the top left in Persian too.
+    expect(screen.getByRole('button', { name: 'پایان' })).toHaveClass(
+      'control-anchor-top-left',
+    );
+
+    // Only the DOM order flipped, so Tab and a screen reader still run start to end.
+    expect(anchors()).toEqual([
+      'control-anchor-top-right',
+      'control-anchor-top-left',
+      'control-anchor-bottom-right',
+      'control-anchor-bottom-left',
+    ]);
+  });
+});
+
+/**
+ * The colour of the glyph inside a circle.
+ *
+ * `cn()` is a plain `join(' ')`, not tailwind-merge, so the ORDER OF ITS ARGUMENTS DECIDES
+ * NOTHING. Two classes that set the same property both land in the attribute and the
+ * stylesheet picks the winner. That is how End shipped grey: the circle carried
+ * `text-foreground` and `text-danger` at once, `.text-danger` is emitted first, and
+ * `.text-foreground` won on source order.
+ *
+ * jsdom loads no stylesheet, so a computed colour would answer nothing here. What these tests
+ * can prove, and what the bug actually was, is that only ONE colour ever reaches the element.
+ */
+const COLOR_CLASS = /^text-(?:danger|foreground|muted|accent-foreground)$/;
+
+/** The circle is the button's first child. The label and the reason follow it. */
+function circleOf(button: HTMLElement): HTMLElement {
+  const circle = button.firstElementChild;
+  if (!(circle instanceof HTMLElement)) throw new Error('no circle');
+  return circle;
+}
+
+function colorsOf(button: HTMLElement): string[] {
+  return [...circleOf(button).classList].filter((name) =>
+    COLOR_CLASS.test(name),
+  );
+}
+
+describe('the colour of a control icon', () => {
+  it('paints End with the danger token, and with nothing else', () => {
+    renderLayer();
+
+    expect(colorsOf(screen.getByRole('button', { name: 'End' }))).toEqual([
+      'text-danger',
+    ]);
+  });
+
+  it('paints the live microphone against its own fill', () => {
+    renderLayer();
+
+    const mic = screen.getByRole('button', { name: 'Mute the microphone' });
+    expect(colorsOf(mic)).toEqual(['text-accent-foreground']);
+    expect(circleOf(mic)).toHaveClass('bg-accent');
+  });
+
+  it('dims a refused control with a colour instead of raw opacity', () => {
+    // `opacity: 0.4` on the glyph measured 2.58:1 against its own circle in light, under the
+    // 3:1 a non-text element needs. `--muted` is the secondary-text token and clears it in
+    // both themes, in the reduced-transparency fallback, and in forced colours.
+    renderLayer({ interruptReason: CONTROL_REASONS.avatarNotSpeaking });
+
+    const interrupt = screen.getByRole('button', { name: 'Interrupt' });
+    expect(colorsOf(interrupt)).toEqual(['text-muted']);
+    expect(interrupt.innerHTML).not.toContain('opacity-40');
+    // Not the press dim either. 70% of an already dimmed glyph measures 2.85:1 in light, so
+    // the refused press answers in the notice line instead of in the glyph.
+    expect(interrupt.innerHTML).not.toContain('group-active:opacity-70');
+
+    // A control that can be pressed still dims under the finger.
+    expect(
+      screen.getByRole('button', { name: 'Type instead' }).innerHTML,
+    ).toContain('group-active:opacity-70');
+  });
+
+  it('never leaves a blocked control looking solid', () => {
+    // A filled circle with a dimmed glyph reads as on and off at the same time, and the dim
+    // is a colour tuned against the glass. The component decides this, so the two can never
+    // disagree with the call site.
+    renderWithProviders(
+      <ControlButton
+        anchorClassName="control-anchor-bottom-right"
+        label="Mute"
+        icon={<svg />}
+        isFilled
+        isBlocked
+        blockedReason="not yet"
+        onPress={vi.fn()}
+        onBlockedPress={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: 'Mute' });
+    expect(colorsOf(button)).toEqual(['text-muted']);
+    expect(circleOf(button)).not.toHaveClass('bg-accent');
+    expect(circleOf(button)).toHaveClass('glass');
+  });
+});

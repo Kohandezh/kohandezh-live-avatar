@@ -3,13 +3,11 @@ import { Chip } from '@heroui/react';
 import {
   AssistantStatusChip,
   useConversationScreen,
+  WARNING_SECONDS,
 } from '@/features/assistant';
 import { formatNumber } from '@/i18n';
 import { Button, ErrorState, InlineAlert } from '@/shared/ui';
 import { ConversationStage } from './ConversationStage';
-
-/** Seconds left when the countdown starts to warn the user. */
-const WARNING_SECONDS = 15;
 
 /** Touch targets must be at least 44 px. */
 const TOUCH_TARGET = 'min-h-11';

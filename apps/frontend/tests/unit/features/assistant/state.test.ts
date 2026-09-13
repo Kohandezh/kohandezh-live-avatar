@@ -105,6 +105,20 @@ describe('assistantReducer', () => {
     expect(state.isAvatarSpeaking).toBe(false);
   });
 
+  it('ends a conversation the user cancelled while it was still starting', () => {
+    // The user presses End on the "preparing" screen. Before `requesting` was a live
+    // status the reducer dropped both actions and the screen stayed on `requesting`
+    // for ever, with `canStart` false and no way out.
+    const state = reduce([
+      { type: 'requesting' },
+      { type: 'ending' },
+      { type: 'ended', reason: 'user' },
+    ]);
+
+    expect(state.status).toBe('ended');
+    expect(state.endReason).toBe('user');
+  });
+
   it('does not replace a failed start with an "ended" message', () => {
     const state = reduce([
       { type: 'requesting' },

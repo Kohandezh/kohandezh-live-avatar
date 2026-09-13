@@ -40,6 +40,13 @@ function MobileShell() {
   // would stop the stage above the menu and leave a flat band of page background under
   // it. Those screens pay the clearance on their own chrome column instead, so their
   // controls still sit above the menu. Every scrolling screen keeps it here.
+  //
+  // The same flag also decides the offline banner below. `/video` and `/audio` already
+  // show their own offline message inside the page, so the shell banner would just be a
+  // second copy there. It also sits above `<main>` in normal flow, so it pushes the
+  // whole page down the moment the network drops. The `/audio` screen anchors its four
+  // control buttons to the physical screen corners, so that push would move the End
+  // button right when the user reaches for it.
   const isFullBleedRoute = Boolean(videoMatch || audioMatch);
   const showDock =
     isAuthenticated &&
@@ -49,9 +56,11 @@ function MobileShell() {
 
   return (
     <div className="relative flex h-dvh w-screen flex-col overflow-hidden bg-background">
-      <div className="shrink-0">
-        <OfflineBanner />
-      </div>
+      {!isFullBleedRoute && (
+        <div className="shrink-0">
+          <OfflineBanner />
+        </div>
+      )}
 
       <main
         className={cn(

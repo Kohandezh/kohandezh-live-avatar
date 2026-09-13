@@ -46,8 +46,16 @@ export type AssistantAction =
   | { type: 'audioBlocked'; isBlocked: boolean }
   | { type: 'qualityChanged'; quality: AssistantConnectionQuality };
 
-/** Statuses where a provider or SDK event can still change the conversation. */
+/**
+ * Statuses where a provider or SDK event can still change the conversation.
+ *
+ * `requesting` is in the set because a start can be cancelled while it runs: the user
+ * presses End on the "preparing" screen before anything has connected. Without it the
+ * reducer drops the `ending` and `ended` that `stop()` dispatches, and the screen stays
+ * on `requesting` for ever with no way out. See the cancel flag in `useAssistantSession`.
+ */
 const LIVE_STATUSES: ReadonlySet<AssistantState['status']> = new Set([
+  'requesting',
   'connecting',
   'connected',
   'ending',
@@ -217,6 +225,16 @@ export function isAssistantBusy(status: AssistantState['status']): boolean {
     status === 'ending'
   );
 }
+
+/**
+ * Seconds left when the countdown starts to warn the user.
+ *
+ * One shared constant on purpose. It used to be copy-pasted at 15 in four files, so changing
+ * one screen made the same session warn at a different moment on another screen and in the
+ * embedded widget. 30 rather than 15: fifteen seconds is not long enough to finish a medical
+ * question.
+ */
+export const WARNING_SECONDS = 30;
 
 /** Seconds left before the provider stops the session. Null when no limit is known. */
 export function remainingSeconds(

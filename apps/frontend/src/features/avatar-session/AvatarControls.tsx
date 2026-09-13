@@ -57,7 +57,7 @@ export function AvatarControls({ controller, text, recordingActive }: Props) {
       </div>
 
       {session !== null && recordingActive && (
-        <p className="text-xs text-slate-500">{t('session.closeBlocked')}</p>
+        <p className="text-xs text-muted">{t('session.closeBlocked')}</p>
       )}
       {!online && <InlineAlert status="warning">{t('app.offline')}</InlineAlert>}
 
