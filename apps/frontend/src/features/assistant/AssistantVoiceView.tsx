@@ -4,9 +4,8 @@ import { Card, Chip } from '@heroui/react';
 import { LoadingState } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import { AssistantStatusChip } from './AssistantStatusChip';
+import { WARNING_SECONDS } from './state';
 import type { AssistantController } from './useAssistantSession';
-
-const WARNING_SECONDS = 15;
 
 function WaveIcon({ active }: { active: boolean }) {
   return (

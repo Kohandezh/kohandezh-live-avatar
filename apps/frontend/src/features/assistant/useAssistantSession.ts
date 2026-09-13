@@ -71,6 +71,22 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const keepAliveRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  /**
+   * Which start attempt is the current one.
+   *
+   * `start()` is a chain of awaits: the backend POST, the SDK import, then `session.start()`.
+   * Without this, a `stop()` in the middle closes the backend row and nulls the refs, and then
+   * the still-running `start()` assigns `sessionRef.current` again and connects a provider
+   * session whose backend row is already closed. Nothing is left to close it, and the status
+   * never leaves `requesting`.
+   *
+   * A counter, not a boolean. Each `start()` takes the next number and keeps it; `stop()` and
+   * any later `start()` move the counter on, which abandons every attempt still parked on an
+   * await. A boolean broke on End then Restart: the second start reset the shared flag to
+   * false, so the first start woke up believing it was still wanted and connected a second
+   * paid session that nothing would ever close.
+   */
+  const startGenerationRef = useRef(0);
 
   // Read during callbacks, so it must hold the status of the current render, not of the
   // render that created the callback.
@@ -248,20 +264,45 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       return;
     }
 
+    // This attempt's number, taken once and held. Anything that moves the counter on after
+    // this point (an End, or another Start) makes every check below fail.
+    const generation = ++startGenerationRef.current;
     dispatch({ type: 'requesting' });
+
+    /** True once this attempt was superseded, or the screen went away, during an await. */
+    const abandoned = () =>
+      generation !== startGenerationRef.current || !mountedRef.current;
+
+    /**
+     * Tears down a start nobody is waiting for any more.
+     *
+     * `releaseSession()` reads the refs, and `stop()` may already have nulled them, so the
+     * session goes back under its ref first. Otherwise the session this call owns stays
+     * connected with nothing left to close it.
+     */
+    const abandon = async (session?: LiveAvatarSession) => {
+      if (session && !sessionRef.current) sessionRef.current = session;
+      await releaseSession();
+    };
 
     try {
       const created = await createAssistantSession(
         language ? { language } : {},
       );
       backendIdRef.current = created.id;
-      if (!mountedRef.current) {
-        await releaseSession();
+      if (abandoned()) {
+        await abandon();
         return;
       }
       dispatch({ type: 'created', session: toAssistantSessionInfo(created) });
 
       const sdk = await import('@heygen/liveavatar-web-sdk');
+      // Checked before the session is constructed: connecting one we are about to throw
+      // away is what left an orphan session running.
+      if (abandoned()) {
+        await abandon();
+        return;
+      }
       sdkRef.current = sdk;
       // The token carries the agent type, so the SDK picks the class, not our own field.
       const config = { voiceChat: { defaultMuted: false } };
@@ -286,8 +327,8 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       dispatch({ type: 'connecting' });
       await session.start();
 
-      if (!mountedRef.current) {
-        await releaseSession();
+      if (abandoned()) {
+        await abandon(session);
         return;
       }
 
@@ -316,14 +357,29 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       // The backend row exists even when the SDK never connected. Close it here so the
       // provider session is not left running.
       await releaseSession();
-      if (mountedRef.current) {
+      // A start that was cancelled or replaced is not a failure. `stop()` has already moved
+      // the status to `ended`, and the throw is usually the released session tearing down
+      // mid-connect. Without this guard the error card would replace the ended screen after
+      // End, or an abandoned first attempt would fail the restart that replaced it.
+      if (!abandoned()) {
         dispatch({ type: 'failed', error: classifyAssistantError(error) });
       }
     }
   }, [language, playAttachedMedia, releaseSession, subscribe]);
 
   const stop = useCallback(async () => {
-    if (!sessionRef.current && !backendIdRef.current) return;
+    // Always first, so a start that is mid-await sees the counter move at its next check even
+    // when there is nothing to release yet.
+    startGenerationRef.current += 1;
+    // `requesting` has neither ref set for as long as the backend POST is in flight, which
+    // is exactly when End used to do nothing at all.
+    if (
+      !sessionRef.current &&
+      !backendIdRef.current &&
+      statusRef.current !== 'requesting'
+    ) {
+      return;
+    }
     dispatch({ type: 'ending' });
     await releaseSession();
     if (mountedRef.current) dispatch({ type: 'ended', reason: 'user' });

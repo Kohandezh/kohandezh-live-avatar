@@ -1,6 +1,7 @@
 export { AssistantPanel, type AssistantPanelProps } from './AssistantPanel';
 export { AmbientStage } from './AmbientStage';
 export { AssistantStatusChip } from './AssistantStatusChip';
+export { WARNING_SECONDS } from './state';
 export { Transcript } from './Transcript';
 export {
   useAssistantSession,

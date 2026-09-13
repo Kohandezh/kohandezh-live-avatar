@@ -6,6 +6,7 @@ import {
   useConversationLive,
 } from '@/features/navigation';
 import { OfflineBanner } from '@/shared/ui';
+import { cn } from '@/shared/utils';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 
 /**
@@ -28,6 +29,15 @@ function WebShell() {
   // Named product routes only, so a mistyped URL, `/forbidden`, or the Phase 1
   // workbench at `/avatar` never show chrome that belongs to a page it isn't.
   const isProductRoute = Boolean(videoMatch || audioMatch || settingsMatch);
+
+  // Same routes as MobileLayout's `isFullBleedRoute`, and the same reason: `/video` and
+  // `/audio` already show their own offline message, so the shell banner below would be
+  // a duplicate there, and it sits above `<main>` in normal flow, so it pushes the page
+  // down the moment the network drops. It also decides `dock-clear` on `<main>` further
+  // down: the conversation pages already pay that clearance on their own column, so
+  // paying it again here would push anything anchored to the bottom about 84px too high.
+  // See MobileLayout for the full reasoning.
+  const isFullBleedRoute = Boolean(videoMatch || audioMatch);
   const showDock =
     isAuthenticated &&
     Boolean(user?.firstName.trim()) &&
@@ -36,11 +46,18 @@ function WebShell() {
 
   return (
     <div className="relative flex h-dvh w-screen flex-col overflow-hidden bg-background">
-      <div className="shrink-0">
-        <OfflineBanner />
-      </div>
+      {!isFullBleedRoute && (
+        <div className="shrink-0">
+          <OfflineBanner />
+        </div>
+      )}
 
-      <main className="dock-clear mx-auto w-full max-w-5xl flex-1 overflow-y-auto overscroll-y-contain px-4">
+      <main
+        className={cn(
+          'mx-auto w-full max-w-5xl flex-1 overflow-y-auto overscroll-y-contain px-4',
+          !isFullBleedRoute && 'dock-clear',
+        )}
+      >
         <Outlet />
       </main>
 

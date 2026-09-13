@@ -21,7 +21,7 @@ export function TtsComposer() {
   return (
     <Card>
       <div className="mb-4">
-        <h2 className="text-base font-semibold text-slate-900">{t('tts.title')}</h2>
+        <h2 className="text-base font-semibold text-foreground">{t('tts.title')}</h2>
       </div>
       <div className="flex flex-col gap-4">
         <TextField isDisabled={tts.isPending} fullWidth>
@@ -75,7 +75,7 @@ export function TtsComposer() {
         {tts.asset ? (
           <AudioPreview asset={tts.asset} />
         ) : (
-          !tts.isPending && !tts.error && <p className="text-sm text-slate-500">{t('tts.empty')}</p>
+          !tts.isPending && !tts.error && <p className="text-sm text-muted">{t('tts.empty')}</p>
         )}
       </div>
     </Card>

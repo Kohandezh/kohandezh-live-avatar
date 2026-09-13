@@ -92,7 +92,14 @@ export function AvatarVideo({ controller }: { controller: AvatarSessionControlle
       )}
 
       <div className="absolute top-2 start-2 flex gap-1">
-        <Chip color={STATUS_TONE[status]} variant="soft" size="sm">{t(`session.status.${status}`)}</Chip>
+        {/*
+         * Solid, not soft. A soft chip is half transparent, so over this black video frame the
+         * "idle" label measured 3.9:1 in both themes. A solid fill keeps the chip opaque and its
+         * label readable whatever the frame behind it is doing.
+         */}
+        <Chip color={STATUS_TONE[status]} variant="primary" size="sm">
+          {t(`session.status.${status}`)}
+        </Chip>
       </div>
     </div>
   );

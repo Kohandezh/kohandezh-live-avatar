@@ -39,7 +39,7 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
   return (
     <Card>
       <div className="mb-4 flex flex-row flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">{t('recording.title')}</h2>
+        <h2 className="text-base font-semibold text-foreground">{t('recording.title')}</h2>
         <Chip color={TONE[rec.status]} variant="soft" size="sm">{t(`recording.status.${rec.status}`)}</Chip>
       </div>
       <div className="flex flex-col gap-3">
@@ -73,7 +73,7 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
           sessionId === null &&
           !rec.isActive &&
           rec.status !== 'done' && (
-            <p className="text-sm text-slate-500">{t('recording.needsSession')}</p>
+            <p className="text-sm text-muted">{t('recording.needsSession')}</p>
           )
         )}
         {rec.status === 'recording' && rec.active && (
@@ -148,7 +148,7 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
           </InlineAlert>
         )}
         {rec.status === 'idle' && sessionId !== null && !unsupported && (
-          <p className="text-sm text-slate-500">{t('recording.idle')}</p>
+          <p className="text-sm text-muted">{t('recording.idle')}</p>
         )}
       </div>
     </Card>
