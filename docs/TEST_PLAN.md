@@ -38,7 +38,7 @@ agent, English from the persona.
 ```bash
 pnpm lint
 pnpm build
-pnpm test --run
+pnpm test
 pnpm test:e2e
 docker compose run --rm orchestrator pytest -q
 ```

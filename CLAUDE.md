@@ -239,7 +239,7 @@ Before considering a change complete:
 ```bash
 pnpm lint
 pnpm build
-pnpm test --run
+pnpm test
 ```
 
 `pnpm build` type-checks and builds all four targets. Run `pnpm test:e2e` when the change affects a user flow (needs `pnpm --filter @app/frontend exec playwright install` once).
