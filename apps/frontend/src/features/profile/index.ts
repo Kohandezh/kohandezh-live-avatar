@@ -1,2 +1,3 @@
-export * from './ProfileNameFields';
+export * from './jalali';
+export * from './ProfileFields';
 export * from './schemas';

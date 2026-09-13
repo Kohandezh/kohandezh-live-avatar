@@ -74,13 +74,18 @@ async def me(user: UserRow = Depends(get_current_user)) -> PublicUser:
 
 # Full replace, not a partial patch: both names are required on every call. An empty
 # firstName is how the frontend tells a fresh account from one that finished onboarding, so
-# there is no partial-update path that could leave a name half set.
+# there is no partial-update path that could leave a name half set. birthDate is optional but
+# still part of the replace: omitting it clears the stored birthday, so the client sends the
+# field on every call.
 @router.put("/me/profile", response_model=PublicUser)
 async def update_me_profile(
     payload: UpdateProfileBody, request: Request, user: UserRow = Depends(get_current_user)
 ) -> PublicUser:
     updated = await request.app.state.database.update_user_profile(
-        user["id"], first_name=payload.first_name, last_name=payload.last_name
+        user["id"],
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        birth_date=payload.birth_date,
     )
     if not updated:
         raise NotFoundError("user")

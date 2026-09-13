@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- The documented test command works again. Since the Turborepo migration, `pnpm test --run` was
+  parsed by `turbo` as one of its own options: it printed a usage dump, ran zero tests, and looked
+  like a test failure. `@app/frontend`'s `test` script is now `vitest run`, so the command is plain
+  `pnpm test` everywhere (docs, CI). Watch mode moved to
+  `pnpm --filter @app/frontend test:watch`.
+- Added an optional date of birth. Onboarding step 1 now collects it next to the name, and it
+  stays editable on `/settings/personal`. The field is a Jalali (Solar Hijri) date: the user
+  types Persian years and months, and the app stores a Gregorian `YYYY-MM-DD`. The calendar is
+  forced to Persian in both interface languages, so the birthday reads the same in `fa` and in
+  `en`. `users.birth_date` (migration `003_birth_date.sql`) holds it, `PUT /api/me/profile`
+  accepts and clears it, and `GET /api/me` returns it. Conversion lives in one file,
+  `src/features/profile/jalali.ts`, built on `@internationalized/date`, the calendar engine
+  React Aria already uses. Leaving the field empty is fine and does not block onboarding.
+  The shared name fields grew into `ProfileFields`, used by both screens: the endpoint is a
+  full replace, so a screen that left the birthday out would clear it on every save.
+- The theme picker on `/settings/appearance` is a HeroUI `ListBox` instead of a radio group.
+  The rows are full-width press targets and the list cannot end up with nothing selected.
+- "Reduce transparency" became a slider, 0 to 100, instead of an on/off switch. The glass
+  effect now scales with the level: blur, saturation, brightness and the edge ring fade out
+  while the tint fades in, so the middle of the slider is a real middle. The top of the scale
+  still drops `backdrop-filter` outright rather than leaving a `blur(0px)` compositing layer.
+  A setting saved as the old boolean is read back as 0 or 100, so nobody's choice resets.
+
 - Added `PUT /api/me/profile` so a signed-in user can set their first and last name. It is a
   full replace: both fields are required, and the response is the whole updated user. No
   migration was needed; the `users` table already had `first_name` and `last_name` columns.

@@ -136,7 +136,7 @@ async function useTheme(page: Page, theme: Theme) {
     JSON.stringify({
       language: 'en',
       theme,
-      reduceTransparency: false,
+      reduceTransparency: 0,
       micPermissionAsked: true,
     }),
   );

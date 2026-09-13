@@ -72,8 +72,8 @@
     "finish": "Start talking",
     "logout": "Use a different number",
     "name": {
-      "title": "What should we call you?",
-      "description": "Dr. Kohandezh uses your name during the conversation."
+      "title": "Tell us about yourself",
+      "description": "Dr. Kohandezh uses your name during the conversation. Your date of birth is optional."
     },
     "appearance": {
       "title": "Choose how the app looks",
@@ -103,9 +103,11 @@
     "back": "Back",
     "personal": {
       "title": "Personal information",
-      "description": "Your name and account details.",
+      "description": "Your name, date of birth and account details.",
       "firstName": "First name",
       "lastName": "Last name",
+      "birthDate": "Date of birth",
+      "birthDateHint": "Optional. Jalali calendar, for example 1372/03/31.",
       "phone": "Phone number",
       "email": "Email",
       "noEmail": "—",
@@ -118,7 +120,8 @@
         "lastNameRequired": "Enter your last name.",
         "tooLong": "Use 100 characters or fewer.",
         "failed": "Saving failed. Try again.",
-        "offline": "You are offline. Connect to the internet to save."
+        "offline": "You are offline. Connect to the internet to save.",
+        "birthDateInvalid": "Enter a real date of birth, from 1900 up to today."
       }
     },
     "appearance": {
@@ -130,7 +133,7 @@
       "system": "System",
       "systemHint": "Follows your device setting.",
       "reduceTransparency": "Reduce transparency",
-      "reduceTransparencyHint": "Turns off the glass effect on the menu and the buttons."
+      "reduceTransparencyHint": "Higher means less glass on the menu and the buttons. At 100% they are flat."
     },
     "language": {
       "title": "Language",

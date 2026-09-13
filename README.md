@@ -163,7 +163,7 @@ pnpm dev:admin      # http://localhost:5175
 pnpm dev:widget     # http://localhost:5176, widget demo page
 pnpm typecheck
 pnpm lint
-pnpm test --run     # vitest
+pnpm test           # vitest, one run
 pnpm test:e2e       # playwright
 pnpm build          # all four targets into apps/frontend/dist/<target>
 pnpm build:widget   # widget only, dist/widget/assistant-widget.js
@@ -273,7 +273,7 @@ Automated tests use mocks and synthetic media. Real provider tests are disabled 
 docker compose build
 docker compose run --rm orchestrator pytest -q
 docker compose run --rm orchestrator ruff check .
-pnpm typecheck && pnpm lint && pnpm test --run
+pnpm typecheck && pnpm lint && pnpm test
 ./scripts/healthcheck
 ```
 

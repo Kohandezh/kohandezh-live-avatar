@@ -33,14 +33,38 @@ test.describe('with the microphone permission granted', () => {
 
     // Step 1: the fresh account's name is empty, not pre-filled from anywhere.
     await expect(
-      page.getByRole('heading', { name: 'What should we call you?' }),
+      page.getByRole('heading', { name: 'Tell us about yourself' }),
     ).toBeVisible();
     await expect(page.getByLabel('First name')).toHaveValue('');
     await expect(page.getByLabel('Last name')).toHaveValue('');
 
     await page.getByLabel('First name').fill('Sara');
     await page.getByLabel('Last name').fill('Ahmadi');
+
+    // The birthday, typed in the Jalali calendar. The segments are React Aria
+    // spinbuttons, not text inputs, so each one is focused and typed into;
+    // React Aria moves to the next segment by itself.
+    const segment = (type: string) =>
+      page.locator(`[data-type="${type}"][role="spinbutton"]`);
+    await segment('month').click();
+    await page.keyboard.type('3');
+    await segment('day').click();
+    await page.keyboard.type('31');
+    await segment('year').click();
+    await page.keyboard.type('1372');
+
+    // Read back as Jalali, never silently reinterpreted as a Gregorian 1372.
+    await expect(segment('year')).toHaveText('1372');
+    await expect(segment('month')).toHaveAttribute(
+      'aria-valuetext',
+      /Khordad/,
+    );
+
     await page.getByRole('button', { name: 'Continue' }).click();
+
+    // The birthday is saved along with the name, and the step is cleared, which
+    // is the proof the Jalali value converted to a real Gregorian day on the way
+    // out: an invalid one would have failed validation and kept us on step 1.
 
     // Step 2: appearance. Picking "Dark" has to reach <html> immediately,
     // this is the "onboarding done" step's own live preview, not just state
@@ -83,9 +107,13 @@ test.describe('with no microphone permission granted', () => {
   test('"Not now" still reaches /video (requirement 10)', async ({ page }) => {
     await loginAsNewUser(page, UNSEEDED_PHONE_SKIPPED);
 
+    // No birthday typed at all: the field is optional, so step 1 still clears.
     await page.getByLabel('First name').fill('Reza');
     await page.getByLabel('Last name').fill('Karimi');
     await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Choose how the app looks' }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Continue' }).click();
 
     await expect(

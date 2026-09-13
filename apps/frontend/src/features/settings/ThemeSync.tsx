@@ -1,5 +1,6 @@
 import { useLayoutEffect } from 'react';
 import { useReduceTransparency, useTheme } from './hooks';
+import { REDUCE_TRANSPARENCY_MAX } from './settingsSlice';
 
 type ResolvedTheme = 'light' | 'dark';
 
@@ -70,10 +71,25 @@ export function ThemeSync() {
   }, [theme]);
 
   useLayoutEffect(() => {
-    // Safari and iOS never fire `prefers-reduced-transparency`, so this
-    // attribute is the only way those platforms can turn off the glass.
-    document.documentElement.dataset.reduceTransparency =
-      String(reduceTransparency);
+    const root = document.documentElement;
+
+    // `--glass-reduce` is a 0-to-1 factor the `glass` and `glass-fringe` utilities interpolate
+    // with: 0 leaves today's look untouched, 1 is fully flat. Everything it scales moves toward
+    // opaque, so readability only ever improves as the level rises. See src/styles/globals.css.
+    root.style.setProperty(
+      '--glass-reduce',
+      String(reduceTransparency / REDUCE_TRANSPARENCY_MAX),
+    );
+
+    // The attribute marks the top of the scale only. At that point the utilities drop
+    // `backdrop-filter` altogether rather than leaving a `blur(0px)`, which would still cost a
+    // compositing layer on every glass element for no visible effect.
+    //
+    // Safari and iOS never fire `prefers-reduced-transparency`, so this control is the only way
+    // those platforms can turn the glass off at all.
+    root.dataset.reduceTransparency = String(
+      reduceTransparency >= REDUCE_TRANSPARENCY_MAX,
+    );
   }, [reduceTransparency]);
 
   return null;

@@ -133,7 +133,21 @@ else.
 pnpm lint
 pnpm typecheck
 pnpm build
-pnpm test --run
+pnpm test
+```
+
+`pnpm test` runs Vitest once and exits. For watch mode:
+
+```bash
+pnpm --filter @app/frontend test:watch
+```
+
+The root scripts call `turbo run <task>`, and Turborepo owns the flags after that word. An extra
+flag has to be pushed past it with `--`, or Turborepo rejects it as one of its own options:
+
+```bash
+pnpm test -- --reporter=verbose        # not: pnpm test --reporter=verbose
+pnpm lint -- --fix                     # not: pnpm lint --fix
 ```
 
 ## End-to-end tests

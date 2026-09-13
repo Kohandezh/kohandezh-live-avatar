@@ -5,7 +5,7 @@ Before opening a PR (this repository uses pnpm, ADR 0009):
 ```bash
 pnpm lint
 pnpm build
-pnpm test --run
+pnpm test
 ```
 
 For user-facing workflows, run the e2e tests too:

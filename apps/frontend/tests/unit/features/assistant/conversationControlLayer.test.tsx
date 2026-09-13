@@ -50,7 +50,7 @@ function renderLayer(
         settings: {
           language: locale,
           theme: 'system',
-          reduceTransparency: false,
+          reduceTransparency: 0,
           micPermissionAsked: false,
         },
       },

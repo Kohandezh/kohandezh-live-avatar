@@ -1,0 +1,13 @@
+-- Birthday, collected during onboarding.
+--
+-- DATE, not TIMESTAMPTZ: a birthday is a calendar day, not an instant. Storing it with a time
+-- zone would shift it by a day for users east or west of the server.
+--
+-- Nullable, with no default: the field is optional, and every account created before this
+-- migration has no birthday to backfill. NULL means "not given", which is not the same as any
+-- real date.
+--
+-- Stored in the Gregorian calendar, which is what PostgreSQL DATE is. The app shows and collects
+-- it in the Jalali (Solar Hijri) calendar and converts at the edge; see
+-- apps/frontend/src/features/profile/jalali.ts.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;

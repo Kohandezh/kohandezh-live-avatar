@@ -241,7 +241,7 @@ For meaningful changes, run:
 ```bash
 pnpm lint
 pnpm build
-pnpm test --run
+pnpm test
 ```
 
 For user-facing workflows, add/update e2e coverage under `tests/e2e/` (`pnpm test:e2e`, browsers via `pnpm --filter @app/frontend exec playwright install`).
@@ -391,7 +391,7 @@ A task is done only when all of these are true:
 - Every user-facing string exists in `en` and `fa`. The layout works in RTL.
 - Types are strict. Responses are validated with Zod.
 - Tests exist for the new behavior and its failure paths.
-- `pnpm lint`, `pnpm build`, and `pnpm test --run` pass. `pnpm test:e2e` passes when a user flow changed.
+- `pnpm lint`, `pnpm build`, and `pnpm test` pass. `pnpm test:e2e` passes when a user flow changed.
 - For UI: verified in the running app, in every affected target (UI/UX standard 12).
 - Docs and the mock are updated together with the code.
 - The diff was self-reviewed.
