@@ -32,8 +32,9 @@ pnpm without a separate install step.
   `pnpm-workspace.yaml` allows exactly that one. Add to that list deliberately, never in bulk.
 - **`shamefully-hoist` is not the fix.** If a package cannot find something, declare the dependency.
   Turning hoisting on gives back the exact problem this ADR is here to remove.
-- Everyday commands change shape: `pnpm test --run` instead of `npm test -- --run`, and
-  `pnpm --filter @app/frontend exec <tool>` to run a workspace binary.
+- Everyday commands change shape: pnpm forwards extra arguments to a script without npm's `--`,
+  and `pnpm --filter @app/frontend exec <tool>` runs a workspace binary. (Superseded in part by
+  ADR 0012: the root scripts now call `turbo run`, so a tool's own flags need `--` again.)
 - CI installs with `--frozen-lockfile`, which fails when `pnpm-lock.yaml` and `package.json`
   disagree. That is the point: a lockfile that drifts should stop the build.
 - Contributors need pnpm. `corepack enable pnpm` is enough.

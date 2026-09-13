@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The documented test command works again. Since the Turborepo migration, `pnpm test --run` was
+  parsed by `turbo` as one of its own options: it printed a usage dump, ran zero tests, and looked
+  like a test failure. `@app/frontend`'s `test` script is now `vitest run`, so the command is plain
+  `pnpm test` everywhere (docs, CI). Watch mode moved to
+  `pnpm --filter @app/frontend test:watch`.
 - Added an optional date of birth. Onboarding step 1 now collects it next to the name, and it
   stays editable on `/settings/personal`. The field is a Jalali (Solar Hijri) date: the user
   types Persian years and months, and the app stores a Gregorian `YYYY-MM-DD`. The calendar is
