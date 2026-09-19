@@ -69,6 +69,15 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
   const sdkRef = useRef<LiveAvatarSdk | null>(null);
   const backendIdRef = useRef<string | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
+  /**
+   * The session whose stream is already on the media element.
+   *
+   * Attaching assigns `srcObject`, and assigning it again interrupts a `play()` that has not
+   * resolved yet. The browser rejects that call with `AbortError`, which used to be reported
+   * as a blocked autoplay: the user was told to tap the circle to hear audio that was never
+   * blocked in the first place.
+   */
+  const attachedSessionRef = useRef<LiveAvatarSession | null>(null);
   const keepAliveRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   /**
@@ -106,18 +115,53 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
   const playAttachedMedia = useCallback(async () => {
     const element = mediaRef.current;
     if (!element) return;
+    // Already running, so there is nothing to unblock. A second `play()` would at best do
+    // nothing and at worst abort the one that is still resolving.
+    if (!element.paused) {
+      dispatch({ type: 'audioBlocked', isBlocked: false });
+      return;
+    }
     try {
       await element.play();
       dispatch({ type: 'audioBlocked', isBlocked: false });
-    } catch {
-      // Browsers refuse playback that did not follow a user gesture. The UI offers a button.
-      dispatch({ type: 'audioBlocked', isBlocked: true });
+    } catch (error) {
+      /*
+        One rejection is excluded, not one included.
+
+        `AbortError` means a new stream replaced the old one while `play()` was still
+        resolving. Nothing is blocked, so telling the user to tap a circle sends them after a
+        problem they do not have. That was the bug.
+
+        Everything else still offers the tap, including an error this code has never seen.
+        Browsers agree on `NotAllowedError` for the autoplay policy today, but matching only
+        that name would take the recovery button away from any browser that picks another one,
+        and a user who cannot hear the doctor and has nothing to press is the worse failure.
+      */
+      const wasInterrupted =
+        error instanceof DOMException && error.name === 'AbortError';
+      dispatch({ type: 'audioBlocked', isBlocked: !wasInterrupted });
     }
+  }, []);
+
+  /** Puts the session's stream on the media element, once per session. See `attachedSessionRef`. */
+  const attachSessionMedia = useCallback((session: LiveAvatarSession) => {
+    const element = mediaRef.current;
+    if (!element || attachedSessionRef.current === session) return;
+    session.attach(element);
+    attachedSessionRef.current = session;
   }, []);
 
   const attachMedia = useCallback((element: HTMLMediaElement | null) => {
     mediaRef.current = element;
-    if (element && sessionRef.current) sessionRef.current.attach(element);
+    if (!element) {
+      attachedSessionRef.current = null;
+      return;
+    }
+    const session = sessionRef.current;
+    if (session) {
+      session.attach(element);
+      attachedSessionRef.current = session;
+    }
   }, []);
 
   const stopKeepAlive = useCallback(() => {
@@ -137,6 +181,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
     sessionRef.current = null;
     elevenLabsRef.current = null;
     backendIdRef.current = null;
+    attachedSessionRef.current = null;
     stopKeepAlive();
 
     if (session) {
@@ -185,7 +230,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
         // left the UI on "Connecting…" during a live conversation, so the stream decides.
         dispatch({ type: 'streamReady' });
         dispatch({ type: 'connected', at: Date.now() });
-        if (mediaRef.current) session.attach(mediaRef.current);
+        attachSessionMedia(session);
         void playAttachedMedia();
       });
       session.on(SessionEvent.SESSION_CONNECTION_QUALITY_CHANGED, (quality) => {
@@ -253,7 +298,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
         dispatch({ type: 'micChanged', isMuted: false }),
       );
     },
-    [playAttachedMedia],
+    [attachSessionMedia, playAttachedMedia],
   );
 
   const start = useCallback(async () => {
@@ -332,7 +377,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
         return;
       }
 
-      if (mediaRef.current) session.attach(mediaRef.current);
+      attachSessionMedia(session);
       await playAttachedMedia();
       dispatch({ type: 'micChanged', isMuted: session.voiceChat.isMuted });
       // A fallback for a session that connected without ever reporting a ready stream.
@@ -365,7 +410,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
         dispatch({ type: 'failed', error: classifyAssistantError(error) });
       }
     }
-  }, [language, playAttachedMedia, releaseSession, subscribe]);
+  }, [attachSessionMedia, language, playAttachedMedia, releaseSession, subscribe]);
 
   const stop = useCallback(async () => {
     // Always first, so a start that is mid-await sees the counter move at its next check even

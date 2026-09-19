@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- "The browser blocked the sound. Tap the circle to hear it." no longer appears when nothing is
+  blocked. The avatar's stream was attached twice, once when `SESSION_STREAM_READY` arrived and
+  once after `start()` resolved. The second attach assigns `srcObject` again, which interrupts a
+  `play()` that has not resolved yet, and the browser rejects that call with `AbortError`. The
+  hook caught every rejection and reported a blocked autoplay. The stream is now attached once
+  per session, and an `AbortError` is the one rejection that is not treated as a block. Any other
+  rejection still offers the tap, including one this code has never seen: a user who cannot hear
+  the doctor and has nothing to press is the worse failure.
 - The floating menu is icons only. Each item keeps its word as screen-reader text, so the
   accessible name and voice control are unchanged. The labels had made the pill wide enough to
   crowd the corner controls above it on a phone.
