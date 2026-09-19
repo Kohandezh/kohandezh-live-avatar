@@ -515,7 +515,7 @@ reading it. The block above is what the page says.
   embedding step and a verification pass. Migration: not one file but a **Postgres image swap** to
   get `pgvector`, which is a dump and restore of the whole database, not an append-only migration.
   That sits badly with C4. Operations: a retention and deletion process for stored user questions,
-  plus ongoing false-positive sampling, which the Portkey page describes as the only way to
+  plus ongoing false-positive sampling, which the Portkey page describes as the usual way to
   estimate the rate at all. Lock-in: the embedding model becomes load-bearing, and changing it
   invalidates every stored vector, so every cached answer has to be re-embedded. The embedding and
   judge calls add latency to every question, which is the other half of what the requester asked
@@ -538,7 +538,7 @@ reading it. The block above is what the page says.
   and **I have no evidence either way**: confirming it means a paid provider call, which this spike
   is not permitted to make. See section 7.
 - **Fits the constraints?**
-  - **C3** fails the same way as C, for the same reason.
+  - **C3** is undecided the same way as C, for the same reason.
   - **C7 fails hard.** BYO needs `PUBLIC_LIVEKIT_URL` to be a trusted public `wss://` endpoint with
     reachable WebRTC ports, and the code refuses to start a BYO session otherwise
     (`apps/api/services/liveavatar/manager.py:73-81`, `.../src/config.py:182-183`). An on-premise
@@ -608,16 +608,16 @@ from "C breaks a rule" to "C needs a decision nobody has made", but not its dire
 flowchart TB
     Q(["cache the avatar's answers?"])
     Q --> G1{{"does the answer's media or text<br/>reach our backend today?<br/>assistant/service.py:50-54"}}
-    G1 -->|"no · the browser holds all of it"| G2{{"may we store a user's question<br/>and the answer given to them?<br/>no rule decides this · SECURITY.md:16-18<br/>bans logging, not storing"}}
-    G2 -->|"the ADR says no"| A(["Option A · do nothing<br/>keep every answer live"]):::forced
-    G2 -->|"B needs no answer to it"| B(["Option B · curated answer library<br/>staff-authored questions, no user text stored<br/>existing LITE + Egress chain"]):::chosen
+    G1 -->|"no · the browser holds all of it"| B(["Option B · curated answer library<br/>staff-authored questions, no user text stored<br/>needs no answer to the storage question"]):::chosen
     B --> G3{{"can provider_usage show the saving?<br/>database.py:291-300"}}
     G3 -->|"no per-answer rows today"| INSTR(["prerequisite · add per-answer<br/>usage rows before building"]):::fallback
     INSTR --> SHIP
     G3 -->|"yes, once instrumented"| SHIP(["ship B · measure the real hit rate"]):::chosen
-    SHIP --> G4{{"is the measured hit rate worth<br/>one wrong-answer incident?"}}
-    G4 -->|"no"| STOP(["stop at B"]):::chosen
-    G4 -->|"yes, and the ADR permits user text"| CD(["Option C or D · semantic cache<br/>risk: a fluent answer to another question<br/>trigram measured 0.842 on opposite intent<br/>against 0.152 on the same intent"]):::fallback
+    SHIP --> G4{{"did the measured hit rate justify<br/>the curation cost?"}}
+    G4 -->|"no · undo it, B is cheap to reverse"| A(["Option A · do nothing<br/>keep every answer live"]):::forced
+    G4 -->|"yes · go further?"| G2{{"may we store a user's question<br/>and the answer given to them?<br/>no rule decides this · SECURITY.md:16-18<br/>bans logging, not storing"}}
+    G2 -->|"the ADR says no · this kills C and D<br/>and leaves B untouched"| STOP(["stop at B"]):::chosen
+    G2 -->|"the ADR says yes, and the risk is worth it"| CD(["Option C or D · semantic cache<br/>risk: a fluent answer to another question<br/>trigram measured 0.842 on opposite intent<br/>against 0.152 on the same intent"]):::fallback
 
     classDef chosen   fill:#e6f4ea,stroke:#5a9e6f,color:#000
     classDef fallback fill:#fde8e8,stroke:#c86a6a,color:#000
