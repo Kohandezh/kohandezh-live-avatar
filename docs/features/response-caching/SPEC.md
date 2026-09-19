@@ -18,18 +18,18 @@ mints a session token and sees nothing else: no question text, no answer text, n
 (`apps/api/services/orchestrator/src/assistant/service.py:50-54`). There is no answer to keep
 and no way to serve one again. Caching is not missing from this system, but the one cache that
 exists is a deterministic TTS audio cache consulted before the provider is called
-(`apps/api/services/elevenlabs/service.py:59-60`), and it sits on the Phase 1 workbench path
-that users do not reach (RESEARCH.md §4.2).
+(`apps/api/services/elevenlabs/service.py:59-60`), and it sits on the Phase 1 workbench path,
+which is not what users talk to (RESEARCH.md §1).
 
 This spec covers a curated library of pre-rendered answers. Staff author a fixed set of
 questions in the `admin` target and approve the rendered video. Users reach those answers
 through suggested questions on `mobile`, `web` and `widget`, and anything typed or spoken
 freely still starts a live session. The library is reached by selection, not by matching
-free-text questions, because matching cannot be made safe here: the avatar speaks with a named
-practitioner's face, so a fluent answer to the wrong question is attributed to a real person
-(RESEARCH.md §5.0, §6). The gain is lower provider cost and a faster answer on the questions
-asked most. Its size cannot be stated yet, because `provider_usage` records no per-answer
-characters or duration for the assistant
+free-text questions, because matching cannot be made safe here on the evidence available: in
+production the avatar speaks with a named practitioner's face, so a fluent answer to the wrong
+question is attributed to a real person (RESEARCH.md §5.0, §6). The gain is lower provider
+cost and a faster answer on the questions asked most. Its size cannot be stated yet, because
+`provider_usage` records no per-answer characters or duration for the assistant
 (`apps/api/services/orchestrator/src/assistant/service.py:125-140`), so per-answer usage rows
 come before the cache rather than after it (RESEARCH.md §4.3).
 
@@ -156,17 +156,23 @@ template's guidance text. That is deliberate, for three reasons.
    The spike is `In Review`, not `Resolved`, and its outcome is `→ ADR`, not `→ SPEC`. The ADR
    it asks for does not exist. Writing sections 2 to 12 now would invent behaviour on top of an
    approach nobody has decided.
-3. The decision to proceed to the Purpose section only is recorded in the mission ledger at
-   `~/foreman/20260919-respcache/ledger.md`.
+3. The product owner was told the gate does not pass and chose to proceed to the Purpose
+   section only. That decision was recorded outside this repository, in the log of mission
+   `20260919-respcache`.
 
 The ADR must settle whether a user's question text, the avatar's answer text, or the answer's
 media may be persisted at all, and whether media from one user's conversation may be replayed
 to another user (RESEARCH.md §8). Option B needs no answer to the first question, because the
-questions are staff-authored and no user text is stored. The boundary still has to be written
-down before this spec is filled in, so the next feature does not cross it by accident.
+questions are staff-authored and no user text is stored. That is half the position. The
+authoring endpoints Option B reuses have no authentication today
+(`apps/api/services/orchestrator/src/main.py:254,260,280,359,397,436`), and closing them is work
+this spec has to carry (RESEARCH.md §5, Option B, C3). The storage boundary still has to be
+written down before this spec is filled in, so the next feature does not cross it by accident.
 
-Two further prerequisites sit ahead of any build, both from RESEARCH.md §8: per-answer
-`provider_usage` rows on the assistant path, so a saving can be measured at all, and leaving
-sandbox mode (`LIVEAVATAR_SANDBOX=false` with a production avatar configured), because the
-sandbox avatar is a borrowed public one and sessions are clamped to sixty seconds
-(`apps/api/services/orchestrator/src/assistant/service.py:17-18,74-75,221-225`).
+`RESEARCH.md` §8 lists six items of production work, in order. Two of them are worth naming
+here. Per-answer `provider_usage` rows on the assistant path, so a saving can be measured at
+all. And leaving sandbox mode (`LIVEAVATAR_SANDBOX=false` with a production avatar configured),
+because the sandbox avatar is a borrowed public one and sessions are clamped to sixty seconds
+(`apps/api/services/orchestrator/src/assistant/service.py:17-18,74-75,221-225`). The other four
+are the ADR above, this spec, authentication on the authoring endpoints, and the `202` plus
+job-id runner, which means converting `finalize` rather than wrapping it.
