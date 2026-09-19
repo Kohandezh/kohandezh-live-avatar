@@ -46,6 +46,36 @@ docker compose run --rm orchestrator pytest -q
 All must pass. `pnpm test:e2e` starts the four dev servers on their ports with the mock API; free
 the ports first.
 
+### Does an SMS really arrive?
+
+`docker compose run --rm orchestrator pytest -q` never sends one. Every Asanak test answers the
+HTTP call with a fake, so a green suite says nothing about whether a phone rings. Check that by
+hand before a release or a demo:
+
+```bash
+docker compose run --rm \
+  -e REAL_PROVIDER_TESTS=true -e CONFIRM_CREDIT_USAGE=YES \
+  orchestrator pytest apps/api/services/orchestrator/tests/integration/provider/test_real_asanak.py -s
+```
+
+It spends one real SMS on the number in `OTP_TEST_PHONE`, then prints the code it sent. Compare
+that with the message on the phone. Asanak accepting the request is not proof of delivery; the
+phone is.
+
+The test names the reason when it fails, because a blocked address and a wrong password look the
+same from the login screen otherwise:
+
+| Report says | What to do |
+| --- | --- |
+| blocked the address of this machine | Asanak answers Iranian addresses only. Run it from an allowed network, or ask Asanak support to allow the address. |
+| Asanak status 1008 | The web service username or password is wrong. It is not the panel login. |
+| Asanak status 1006 | The account is out of credit. Top it up in the panel. |
+| Asanak status 1010 | Asanak rejected the destination number. |
+| No answer came back at all | The request never got through. Check that the host can reach `sms.asanak.ir` on port 443. |
+
+A pass only proves the SMS path. Real login also needs `OTP_DELIVERY=asanak` in `.env`, which is
+`console` by default so local development never spends credit.
+
 ## 4. Web PWA (port 5174)
 
 | Id | Case | Steps | Expected |

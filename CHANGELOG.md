@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Real SMS delivery can be checked without guesswork. An opt-in test
+  (`tests/integration/provider/test_real_asanak.py`) sends one real code through Asanak and names
+  the cause when it fails, telling a blocked IP apart from a wrong web service password. The
+  opt-in mechanism it uses never worked: an autouse fixture stripped every `Settings` variable
+  from the environment, `REAL_PROVIDER_TESTS` among them, so every provider test skipped itself
+  even when asked to run.
 - The login code is no longer echoed back to the browser once a real SMS is sent. `devCode` used
   to depend on `APP_ENV=development` alone, so a development machine with `OTP_DELIVERY=asanak`
   showed the code on the login screen next to the input while also sending it by SMS. It now
