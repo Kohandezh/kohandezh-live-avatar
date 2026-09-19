@@ -14,7 +14,7 @@
  */
 
 export interface ControlIconProps {
-  /** Tailwind size class. `size-5` inside a 48 px circle, `size-6` inside the 64 px one. */
+  /** Tailwind size class. `size-5` for every control circle; `size-4` inline in the text. */
   className?: string;
 }
 

@@ -10,7 +10,7 @@ import { i18n } from '@/i18n';
 import { renderWithProviders } from '../../../utils/renderWithProviders';
 
 /**
- * The four physically anchored controls of `/audio`.
+ * The four physically anchored controls of `/audio` and `/video`.
  *
  * These tests guard the three promises that are easy to break by accident and impossible to
  * see in a diff: every circle has a name, a refused circle still explains itself instead of
@@ -65,12 +65,12 @@ afterAll(async () => {
   await i18n.changeLanguage('en');
 });
 
-describe('the /audio control layer', () => {
+describe('the conversation control layer', () => {
   it('gives every circle an accessible name', () => {
     renderLayer();
 
-    // End is named by its own visible word, so there is no second announcement and voice
-    // control can reach it. The other three are icon-only and carry an aria-label.
+    // Every circle is icon-only now, so the name lives in `aria-label` and nothing on the
+    // screen repeats it.
     for (const name of [
       'End',
       'Type instead',
@@ -191,6 +191,28 @@ function colorsOf(button: HTMLElement): string[] {
   );
 }
 
+describe('the shape of a control', () => {
+  it('draws all four as the same circle, with no visible label on any of them', () => {
+    renderLayer();
+
+    const circles = screen.getAllByRole('button').map(circleOf);
+    expect(circles).toHaveLength(4);
+    for (const circle of circles) {
+      // One size and one material. A control that is bigger or solid reads as the important
+      // one, and on this screen none of them is.
+      expect(circle).toHaveClass('size-12');
+      expect(circle).toHaveClass('glass');
+      expect(circle).not.toHaveClass('size-16');
+    }
+
+    // No circle carries a word beside it. End was the one that did, and it made the row of
+    // four look like three controls and a labelled button.
+    for (const button of screen.getAllByRole('button')) {
+      expect(button.textContent).toBe('');
+    }
+  });
+});
+
 describe('the colour of a control icon', () => {
   it('paints End with the danger token, and with nothing else', () => {
     renderLayer();
@@ -200,12 +222,14 @@ describe('the colour of a control icon', () => {
     ]);
   });
 
-  it('paints the live microphone against its own fill', () => {
+  it('paints the live microphone like every other control', () => {
+    // It used to be a 64 px solid accent disc, which made it the loudest thing on a screen
+    // whose subject is the person talking.
     renderLayer();
 
     const mic = screen.getByRole('button', { name: 'Mute the microphone' });
-    expect(colorsOf(mic)).toEqual(['text-accent-foreground']);
-    expect(circleOf(mic)).toHaveClass('bg-accent');
+    expect(colorsOf(mic)).toEqual(['text-foreground']);
+    expect(circleOf(mic)).not.toHaveClass('bg-accent');
   });
 
   it('dims a refused control with a colour instead of raw opacity', () => {
@@ -227,16 +251,12 @@ describe('the colour of a control icon', () => {
     ).toContain('group-active:opacity-70');
   });
 
-  it('never leaves a blocked control looking solid', () => {
-    // A filled circle with a dimmed glyph reads as on and off at the same time, and the dim
-    // is a colour tuned against the glass. The component decides this, so the two can never
-    // disagree with the call site.
+  it('keeps a blocked control on the same glass as the rest', () => {
     renderWithProviders(
       <ControlButton
         anchorClassName="control-anchor-bottom-right"
         label="Mute"
         icon={<svg />}
-        isFilled
         isBlocked
         blockedReason="not yet"
         onPress={vi.fn()}
@@ -246,7 +266,6 @@ describe('the colour of a control icon', () => {
 
     const button = screen.getByRole('button', { name: 'Mute' });
     expect(colorsOf(button)).toEqual(['text-muted']);
-    expect(circleOf(button)).not.toHaveClass('bg-accent');
     expect(circleOf(button)).toHaveClass('glass');
   });
 });

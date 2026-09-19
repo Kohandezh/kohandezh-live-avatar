@@ -87,7 +87,7 @@ A pass only proves the SMS path. Real login also needs `OTP_DELIVERY=asanak` in 
 | W5 | Signed-in root | Signed in, open `/` | Redirects to `/assistant` without showing the landing. |
 | W6 | Conversation idle | Open `/assistant` | Title "Conversation with Dr. Kohandezh", dark stage with "Not started", one primary Start, Voice/Video switch, empty transcript. |
 | W7 | Conversation live (real) | Press Start, allow the microphone, say something | Status Requesting, Connecting, Live; video plays; your words and the answer appear as bubbles ("You", "Dr. Kohandezh"); countdown chip turns to warning at 15 s; ends with "Trial conversations end after about one minute." |
-| W8 | Controls (real) | While live: mute, unmute, interrupt, end | Mute label toggles and the avatar stops hearing you; Interrupt stops the answer; End shows "You ended the conversation" and Start again. |
+| W8 | Controls (real) | While live: mute, unmute, interrupt, end | Four identical glass circles, one per corner, no words on any of them: End top left, type top right, interrupt bottom left, microphone bottom right. The microphone glyph gains a slash and the avatar stops hearing you; Interrupt stops the answer; End shows "You ended the conversation" and Start again. |
 | W9 | Voice mode | Switch to Voice before and during a conversation | Video hides, sound continues, ring shows speaking/listening state, switching back does not reconnect. |
 | W10 | Microphone denied (real) | Block the microphone in the browser, press Start | "The microphone is blocked..." error with Retry. No spinner stuck. |
 | W11 | Provider down (real) | Stop the backend or use a wrong provider key, press Start | Clear error state with Retry; no raw error text or status code. |

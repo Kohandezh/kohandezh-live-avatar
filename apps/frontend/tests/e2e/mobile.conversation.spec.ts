@@ -88,6 +88,24 @@ async function startAndFreezeConnecting(page: Page): Promise<void> {
   await expect(page.getByText('Connecting…').first()).toBeVisible();
 }
 
+/**
+ * Wait until the session is genuinely connected.
+ *
+ * Not "until End appears". Since `/video` moved to the shared control layer all
+ * four circles mount at `requesting`, so End is on screen a few hundred
+ * milliseconds before the dynamic import of the SDK has even resolved, and
+ * `window.__liveAvatar` is still undefined at that point. The microphone drops
+ * its `aria-disabled` only when `canControl` is true, which is the app saying
+ * the session can take a control. `/audio` waits on `data-orb-status` for the
+ * same reason; this screen has no orb.
+ */
+async function waitForConnected(page: Page) {
+  await expect(page.getByRole('button', { name: 'Mute' })).not.toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+}
+
 test.describe('requirement 16: the video screen', () => {
   test('idle shows exactly one enabled control, over a full-bleed stage', async ({
     page,
@@ -381,18 +399,16 @@ test.describe('requirements 18 and 19: the navigation guard', () => {
     await loginWithSeededUser(page);
 
     await page.getByRole('button', { name: 'Start the conversation' }).click();
-
-    // A real connected call: the End button only exists once status is
-    // 'connected', so waiting for it proves the fake SDK drove the hook all
-    // the way through, rather than parking in 'connecting' like the frozen
-    // helper above does.
-    await expect(page.getByRole('button', { name: 'End' })).toBeVisible();
+    await waitForConnected(page);
 
     await page.evaluate(() => window.__liveAvatar.emit('avatar.speak_started'));
 
-    // The interrupt button only renders while `isAvatarSpeaking` is true, so
-    // its presence is the app's own confirmation that the flag really flipped.
-    await expect(page.getByRole('button', { name: 'Interrupt' })).toBeVisible();
+    // Interrupt is always on screen now, so its presence proves nothing. It
+    // becomes pressable only while the avatar holds the turn, and that is the
+    // app's own confirmation that the flag really flipped.
+    await expect(
+      page.getByRole('button', { name: 'Interrupt' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
 
     await page
       .getByRole('navigation', { name: 'Menu' })
@@ -413,8 +429,13 @@ test.describe('requirements 18 and 19: the navigation guard', () => {
     // Once the avatar stops speaking the same tap is allowed again — this
     // time reaching the confirm dialog, because the session is still live.
     await page.evaluate(() => window.__liveAvatar.emit('avatar.speak_ended'));
-    await expect(page.getByRole('button', { name: 'Interrupt' })).toHaveCount(
-      0,
+    // `useSpeakingHold` keeps the control live for 800 ms after the avatar
+    // stops, so interrupt changes state once per answer instead of blinking
+    // with every speech segment. Wait that out rather than racing it.
+    await expect(page.getByRole('button', { name: 'Interrupt' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+      { timeout: 5_000 },
     );
 
     await page
@@ -435,7 +456,7 @@ test.describe('requirements 18 and 19: the navigation guard', () => {
     await loginWithSeededUser(page);
 
     await page.getByRole('button', { name: 'Start the conversation' }).click();
-    await expect(page.getByRole('button', { name: 'End' })).toBeVisible();
+    await waitForConnected(page);
     expect(await page.evaluate(() => window.__liveAvatar.isOpen)).toBe(true);
 
     await page

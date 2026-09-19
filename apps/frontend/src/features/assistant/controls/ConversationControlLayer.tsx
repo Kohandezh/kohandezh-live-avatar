@@ -20,6 +20,26 @@ export const CONTROL_REASONS = {
   offline: 'assistant.controls.reasons.offline',
 } as const;
 
+/*
+  The bottom of a content column that sits under this layer, as a class rather than a utility.
+
+  `dock-clear` reserves `--dock-clearance`, which clears the floating menu. A column also has to
+  clear the two bottom control circles, and they stand on top of that clearance. The
+  short-viewport branch drops the extra reserve again: on a landscape phone 4.5rem of it is most
+  of the remaining height, and the lines clear the circles sideways there instead.
+*/
+export const CONTROL_COLUMN_BOTTOM =
+  'pb-[calc(var(--dock-clearance)+4.5rem)] [@media(max-height:34rem)]:pb-[var(--dock-clearance)]';
+
+/*
+  Keeps a full-width line out from under the corner circles on a short screen, where the column
+  has no room to sit above them.
+
+  Margin, not padding. The lines stretch to the column's width, so padding would inset the text
+  and leave the BOX full width, still sitting under the circle and still eating its taps.
+*/
+export const CONTROL_CLEAR_CORNERS = '[@media(max-height:34rem)]:mx-20';
+
 export interface ConversationControlLayerProps {
   /** True while `status === 'ending'`. End keeps its place and shows a spinner. */
   isEndPending: boolean;
@@ -37,7 +57,7 @@ export interface ConversationControlLayerProps {
 }
 
 /**
- * The four physically anchored controls of the `/audio` conversation.
+ * The four physically anchored controls of the `/audio` and `/video` conversations.
  *
  * End at the physical top left, type at the physical top right, interrupt at the physical
  * bottom left, the microphone at the physical bottom right. They do not mirror: the product
@@ -55,6 +75,10 @@ export interface ConversationControlLayerProps {
  * and in between not one of the four ever appears or disappears. That is the whole point: the
  * old screen rearranged itself at the exact moment the connection succeeded, which is when
  * the user is watching it hardest.
+ *
+ * All four are the same 48 px glass circle with a 20 px glyph and no visible label. A control
+ * that is bigger or solid reads as the important one, and on this screen none of them is: the
+ * conversation is.
  *
  * DOM order is the one thing that does mirror. The pixels are fixed, so one DOM order cannot
  * match reading order in both languages; the rows are reversed in Persian so that tab order
@@ -82,11 +106,10 @@ export const ConversationControlLayer = memo(function ConversationControlLayer({
     <ControlButton
       key="end"
       anchorClassName="control-anchor-top-left"
-      // The visible word is the accessible name, so there is no second announcement and
-      // voice control ("tap End", "tap پایان") reaches it. It is the only text in the layer,
-      // which is what people aim at, so it is part of the button rather than beside it.
+      // Icon-only like the other three. The word under it was the one label in the layer and
+      // made End the odd control out; the red handset already says what it does, and the name
+      // still reaches a screen reader and voice control through `aria-label`.
       label={t('assistant.end')}
-      showLabel
       tone="danger"
       icon={<PhoneEndIcon className="size-5" />}
       isPending={isEndPending}
@@ -121,13 +144,12 @@ export const ConversationControlLayer = memo(function ConversationControlLayer({
       key="mic"
       anchorClassName="control-anchor-bottom-right"
       // The name says what the press will do. No `aria-pressed` with it: "unmute, pressed"
-      // is double speak, and the slash plus the fill already carry the state.
+      // is double speak, and the slash on the glyph already carries the state.
       label={t(isMicMuted ? 'assistant.mic.unmute' : 'assistant.mic.mute')}
-      icon={<MicIcon muted={isMicMuted} className="size-6" />}
-      size="lg"
-      // Solid only when it is genuinely live. A filled circle with a dimmed icon would read
-      // as on and off at the same time.
-      isFilled={!isMicMuted && micReason === null}
+      // The same circle and the same glyph size as the other three. It used to be a 64 px
+      // solid accent disc, which made it the loudest thing on a screen whose subject is the
+      // person talking. Mute still reads at a glance: the icon carries the slash.
+      icon={<MicIcon muted={isMicMuted} className="size-5" />}
       isBlocked={micReason !== null}
       blockedReason={micReason ? t(micReason) : undefined}
       onPress={onToggleMic}

@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Drawer,
-  Label,
-  TextArea as HeroTextArea,
-  TextField,
-} from '@heroui/react';
+import { Drawer } from '@heroui/react';
 import {
   Transcript,
   useConversationScreen,
   WARNING_SECONDS,
 } from '@/features/assistant';
 import {
+  CONTROL_CLEAR_CORNERS,
+  CONTROL_COLUMN_BOTTOM,
   CONTROL_REASONS,
+  ConversationComposer,
   ConversationControlLayer,
   TranscriptIcon,
   useConversationNotice,
@@ -26,29 +24,6 @@ import { ConversationStage } from './ConversationStage';
 
 /** Touch targets must be at least 44 px. */
 const TOUCH_TARGET = 'min-h-11';
-
-/*
-  The bottom of the content column, as an inline style rather than a utility.
-
-  `dock-clear` reserves `--dock-clearance`, which clears the floating menu. This column has to
-  clear the two bottom control circles as well, and they stand on top of that clearance. The
-  short-viewport branch below drops the extra reserve again: on a landscape phone 4.5rem of it
-  is most of the remaining height, and the notice line and the transcript block clear the
-  circles sideways there instead.
-*/
-const COLUMN_BOTTOM =
-  'pb-[calc(var(--dock-clearance)+4.5rem)] [@media(max-height:34rem)]:pb-[var(--dock-clearance)]';
-
-/*
-  Keeps the two reserved lines out from under the corner circles on a short screen, where the
-  column has no room to sit above them. 5rem, not 4rem: the microphone is the 64 px one.
-
-  Margin, not padding. Both lines stretch to the column's width, so padding would inset the
-  text and leave the BOX full width, still sitting under the circle and still eating its taps.
-  Measured in a browser: the transcript block and the interrupt circle overlapped by the
-  circle's whole 48 by 48 area with padding.
-*/
-const CLEAR_CORNERS = '[@media(max-height:34rem)]:mx-20';
 
 const NOTICE_TONE = {
   muted: 'text-muted',
@@ -92,7 +67,6 @@ export function AudioConversationPage() {
   const { controller, stageRef } = useConversationScreen('/audio');
   const [isTranscriptOpen, setTranscriptOpen] = useState(false);
   const [isComposerOpen, setComposerOpen] = useState(false);
-  const [draft, setDraft] = useState('');
   const endedRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
 
@@ -233,14 +207,6 @@ export function AudioConversationPage() {
     .filter(Boolean)
     .join(' · ');
 
-  const sendDraft = () => {
-    const text = draft.trim();
-    if (!text) return;
-    sendText(text);
-    setDraft('');
-    setComposerOpen(false);
-  };
-
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-background">
       {/* Not shown, only heard. See the note on the component. */}
@@ -255,7 +221,7 @@ export function AudioConversationPage() {
       <div
         className={cn(
           'stage-safe-top safe-inline-gutter mx-auto flex h-full w-full max-w-md flex-col',
-          COLUMN_BOTTOM,
+          CONTROL_COLUMN_BOTTOM,
         )}
       >
         <h1 className="sr-only">{t('conversation.audio.title')}</h1>
@@ -400,7 +366,7 @@ export function AudioConversationPage() {
             aria-atomic="true"
             className={cn(
               'flex h-11 flex-wrap items-center justify-center gap-x-1 overflow-hidden px-4 text-center text-xs',
-              CLEAR_CORNERS,
+              CONTROL_CLEAR_CORNERS,
               NOTICE_TONE[notice.tone],
             )}
           >
@@ -423,7 +389,7 @@ export function AudioConversationPage() {
             className={cn(
               'flex h-12 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-center text-sm text-muted',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-              CLEAR_CORNERS,
+              CONTROL_CLEAR_CORNERS,
             )}
           >
             <span aria-hidden="true" className="line-clamp-2">
@@ -485,46 +451,13 @@ export function AudioConversationPage() {
       </Drawer.Backdrop>
 
       {/* The typed turn. `sendText` has existed in the session hook with no user
-          interface at all; this is it. */}
-      <Drawer.Backdrop
+          interface at all; this is it. Shared with `/video`. */}
+      <ConversationComposer
         isOpen={isComposerOpen}
         onOpenChange={setComposerOpen}
-        isDismissable={false}
-      >
-        <Drawer.Content placement="bottom">
-          <Drawer.Dialog aria-label={t('conversation.compose.label')}>
-            <Drawer.Body>
-              <TextField isDisabled={!canControl} fullWidth>
-                <Label>{t('conversation.compose.label')}</Label>
-                <HeroTextArea
-                  rows={3}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder={t('conversation.compose.placeholder')}
-                  dir="auto"
-                />
-              </TextField>
-            </Drawer.Body>
-            <Drawer.Footer>
-              <Button
-                variant="tertiary"
-                className={TOUCH_TARGET}
-                onPress={() => setComposerOpen(false)}
-              >
-                {t('conversation.compose.close')}
-              </Button>
-              <Button
-                variant="primary"
-                className={TOUCH_TARGET}
-                isDisabled={!canControl || draft.trim().length === 0}
-                onPress={sendDraft}
-              >
-                {t('conversation.compose.send')}
-              </Button>
-            </Drawer.Footer>
-          </Drawer.Dialog>
-        </Drawer.Content>
-      </Drawer.Backdrop>
+        canSend={canControl}
+        onSend={sendText}
+      />
     </div>
   );
 }
