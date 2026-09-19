@@ -44,7 +44,9 @@
   Five wrong codes destroy the code and lock the number for five minutes.
 - The code is written to the log only when `APP_ENV=development`. In any other environment the
   console sender logs a warning and delivers nothing, so a live code never reaches a log file.
-  Returning the code in the response (`devCode`) is also development only.
+  Returning the code in the response (`devCode`) needs development **and**
+  `OTP_DELIVERY=console`. A development machine that sends real SMS does not echo the code, so a
+  demo cannot leave it on screen next to the input.
 - Phone numbers are masked in logs.
 
 ## SMS credentials (Asanak)

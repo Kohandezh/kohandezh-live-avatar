@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The login code is no longer echoed back to the browser once a real SMS is sent. `devCode` used
+  to depend on `APP_ENV=development` alone, so a development machine with `OTP_DELIVERY=asanak`
+  showed the code on the login screen next to the input while also sending it by SMS. It now
+  needs console delivery as well, where there is no message to read. Setting `APP_ENV=production`
+  instead would have marked the session cookie `Secure` and broken login over plain `http`.
 - The documented test command works again. Since the Turborepo migration, `pnpm test --run` was
   parsed by `turbo` as one of its own options: it printed a usage dump, ran zero tests, and looked
   like a test failure. `@app/frontend`'s `test` script is now `vitest run`, so the command is plain
