@@ -177,7 +177,13 @@ class LiveAvatarClient:
                 raise ProviderError(
                     "liveavatar_auth", "LiveAvatar rejected the server credentials", 502, False
                 )
-            if (
+            # A 422 is the provider describing the request we should have sent, and its message
+            # lists every value a field accepts. One of the valid stop reasons is NO_CREDITS, so
+            # a plain substring match on "credit" turned "reason must be one of ..." into "your
+            # account is out of credit" and sent an operator hunting for a billing problem that
+            # did not exist. A validation error is never a quota error.
+            is_validation_error = response.status_code == 422
+            if not is_validation_error and (
                 response.status_code in {402, 429}
                 or "credit" in message.lower()
                 or "quota" in message.lower()

@@ -153,6 +153,36 @@ async def test_quota_failure_is_classified_without_retry():
 
 
 @pytest.mark.asyncio
+async def test_a_validation_error_is_not_read_as_a_billing_problem():
+    """The real 422 from the provider, which lists NO_CREDITS among the valid stop reasons.
+
+    Matching "credit" anywhere in the message turned this into "LiveAvatar credits or
+    concurrency are exhausted", which reads as a billing problem and sends whoever is on call
+    to the wrong panel. The request was simply wrong.
+    """
+    body = {
+        "code": 4000,
+        "message": (
+            "Request validation errors. body -> reason: Input should be 'UNKNOWN', "
+            "'USER_DISCONNECTED', 'SERVER_ERROR', 'IDLE_TIMEOUT', 'NO_CREDITS', 'USER_CLOSED', "
+            "'AVATAR_DELETED', 'MAX_DURATION_REACHED', 'ZOMBIE_SESSION_REAP', 'AGENT_HANG_UP' "
+            "or 'DISPATCH_FAILED'"
+        ),
+    }
+
+    async def handler(_: httpx.Request):
+        return httpx.Response(422, json=body)
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = LiveAvatarClient(api_key="key", base_url="https://live.test", http_client=http)
+    with pytest.raises(ProviderError) as error:
+        await client.stop_session("session-token", "session-id", reason="not-a-valid-reason")  # noqa: S106
+    assert error.value.code == "liveavatar_error"
+    assert "422" in error.value.message
+    await http.aclose()
+
+
+@pytest.mark.asyncio
 async def test_session_teardown_uses_current_canonical_contract():
     requests = []
 
