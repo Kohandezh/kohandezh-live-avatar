@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A LiveAvatar validation error is no longer reported as a billing problem. The provider answers a
+  bad request with a 422 whose message lists every valid value for the field, and one valid stop
+  reason is `NO_CREDITS`. The client matched "credit" anywhere in the message, so "reason must be
+  one of ..." surfaced as "LiveAvatar credits or concurrency are exhausted" and sent whoever was on
+  call to the billing panel. A 422 is never a quota error.
 - "The browser blocked the sound. Tap the circle to hear it." no longer appears when nothing is
   blocked. The avatar's stream was attached twice, once when `SESSION_STREAM_READY` arrived and
   once after `start()` resolved. The second attach assigns `srcObject` again, which interrupts a
