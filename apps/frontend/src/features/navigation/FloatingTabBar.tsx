@@ -74,13 +74,16 @@ export interface FloatingTabBarProps {
    * render anywhere.
    */
   liveRoute: ConversationLiveRoute;
-  /** Raises the tint so labels stay readable over a live video. */
+  /** Raises the tint so the icons stay readable over a live video. */
   onVideo?: boolean;
   className?: string;
 }
 
 /**
  * The floating liquid-glass pill: settings, video, audio. Requirement 14.
+ *
+ * Icon-only. Each item keeps its word as `sr-only` text, so the accessible name, voice
+ * control and the search for "Settings" are all unchanged; only the pixels are gone.
  *
  * Items are plain buttons, not `NavLink`s: a press first runs the navigation
  * guard (blocked while the avatar is speaking, confirmed when a conversation
@@ -129,7 +132,9 @@ export function FloatingTabBar({
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => guard.requestNavigate(item.to)}
                     className={cn(
-                      'flex min-h-11 min-w-11 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus-visible:focus-ring motion-reduce:transition-none',
+                      // A 44 px square, which is the minimum touch target and, once the words
+                      // are gone, also the whole control. The active pill becomes a circle.
+                      'flex size-11 items-center justify-center rounded-full transition-colors focus-visible:focus-ring motion-reduce:transition-none',
                       isActive
                         ? 'bg-accent-soft text-accent-soft-foreground'
                         : 'text-muted hover:text-foreground',
@@ -144,7 +149,10 @@ export function FloatingTabBar({
                         />
                       ) : null}
                     </span>
-                    <span>{item.label}</span>
+                    {/* The name, heard and not seen. The words made the pill wide enough to
+                        crowd the corner controls above it on a phone. A screen reader and
+                        voice control still get the word from here. */}
+                    <span className="sr-only">{item.label}</span>
                     {isItemLive ? (
                       <span className="sr-only">{t('nav.live')}</span>
                     ) : null}

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The floating menu is icons only. Each item keeps its word as screen-reader text, so the
+  accessible name and voice control are unchanged. The labels had made the pill wide enough to
+  crowd the corner controls above it on a phone.
 - The video conversation uses the same controls as the voice one. `/video` had a pill of
   labelled buttons at the bottom; it now has the same four glass circles in the four physical
   corners that `/audio` got in the control overhaul: End top left, type top right, interrupt

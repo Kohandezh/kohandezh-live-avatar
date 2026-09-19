@@ -109,7 +109,7 @@ A pass only proves the SMS path. Real login also needs `OTP_DELIVERY=asanak` in 
 | M3 | Conversation | Same as W6 to W11 | Same results; the stage is 3:4 on a phone. |
 | M4 | Account | Profile tab | Same as W12; language change from Settings flips the whole app to RTL. |
 | M5 | Logout | Log out | Landing again, tab bar hidden. |
-| M6 | Persian | Switch to فارسی | Tab labels Persian, header RTL, no clipped labels. |
+| M6 | Persian | Switch to فارسی | Everything RTL and Persian, nothing clipped. The floating menu is icons only, so check its names with a screen reader rather than on screen. The four conversation circles do NOT mirror: End stays at the physical top left (ADR 0013). |
 | M7 | Native: safe areas | Run on a notched device | Header and tab bar clear the notch and the home indicator. |
 | M8 | Native: token | Log in, kill the app, reopen | Still signed in (token in secure storage). Log out, reopen: signed out. |
 | M9 | Native: microphone | First Start | OS permission prompt; denial gives the W10 error; allow gives a live conversation. |

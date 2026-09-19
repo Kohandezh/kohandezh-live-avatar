@@ -59,4 +59,23 @@ describe('FloatingTabBar', () => {
     // from aria-current, and it only exists on the item whose route is live.
     expect(screen.getAllByText('Live')).toHaveLength(1);
   });
+
+  it('shows the icons only, and still answers to every name', () => {
+    // The words made the pill wide enough to crowd the conversation controls
+    // above it on a phone. Losing the pixels must not lose the name: a screen
+    // reader and voice control both still reach each item by its word.
+    render(
+      <MemoryRouter initialEntries={['/audio']}>
+        <FloatingTabBar liveRoute={null} />
+      </MemoryRouter>,
+    );
+
+    for (const name of ['Settings', 'Video', 'Audio']) {
+      const button = screen.getByRole('button', { name: new RegExp(name) });
+      expect(button).toBeInTheDocument();
+      // The label is present for assistive technology and hidden from sight.
+      const label = screen.getByText(name);
+      expect(label).toHaveClass('sr-only');
+    }
+  });
 });
