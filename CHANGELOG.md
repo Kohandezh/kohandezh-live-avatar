@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- The video conversation uses the same controls as the voice one. `/video` had a pill of
+  labelled buttons at the bottom; it now has the same four glass circles in the four physical
+  corners that `/audio` got in the control overhaul: End top left, type top right, interrupt
+  bottom left, microphone bottom right. Typing a turn works on `/video` as well, from the
+  shared `ConversationComposer`. A row of status chips became the one static session line, and
+  the offline, audio-blocked, weak-connection and time-warning alerts became the one notice
+  line, both of them the same as `/audio`. Switching between the two screens no longer means
+  learning the controls twice.
+- The four conversation controls are one size and one material. The microphone was a 64 px
+  solid accent disc among three 48 px glass circles, which made it the loudest thing on a
+  screen whose subject is the person talking. Mute still reads at a glance: the glyph carries
+  the slash. End lost the word "پایان" under it, the only visible label in the layer; the red
+  handset says what it does and the name still reaches a screen reader and voice control.
 - Real SMS delivery can be checked without guesswork. An opt-in test
   (`tests/integration/provider/test_real_asanak.py`) sends one real code through Asanak and names
   the cause when it fails, telling a blocked IP apart from a wrong web service password. The

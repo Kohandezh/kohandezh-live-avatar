@@ -13,16 +13,11 @@ export interface ControlButtonProps {
    */
   anchorClassName: string;
   /**
-   * The accessible name. With `showLabel` it is also the visible word under the circle, so
-   * the button is named by its own text and needs no `aria-label` at all.
+   * The accessible name. Every control is icon-only, so this is the only name it has and it
+   * is always set as `aria-label`.
    */
   label: string;
-  showLabel?: boolean;
   icon: ReactNode;
-  /** 48 px for the three secondary controls, 64 px for the microphone. */
-  size?: 'md' | 'lg';
-  /** Solid accent instead of glass. The live microphone, so the primary control reads as on. */
-  isFilled?: boolean;
   tone?: 'default' | 'danger';
   /**
    * Dimmed and refused, but still focusable and still pressable.
@@ -68,10 +63,7 @@ export interface ControlButtonProps {
 export const ControlButton = memo(function ControlButton({
   anchorClassName,
   label,
-  showLabel = false,
   icon,
-  size = 'md',
-  isFilled = false,
   tone = 'default',
   isBlocked = false,
   blockedReason,
@@ -81,16 +73,6 @@ export const ControlButton = memo(function ControlButton({
 }: ControlButtonProps) {
   const reasonId = useId();
   const hasReason = isBlocked && Boolean(blockedReason);
-
-  /*
-    A blocked control is never solid.
-
-    Two reasons, and both point the same way. A solid accent circle with a dimmed glyph reads
-    as on and off at the same time, and the dim below is a colour that is only tuned against
-    the glass. The call site already avoids the combination; deciding it here means the two
-    can never disagree.
-  */
-  const isSolid = isFilled && !isBlocked;
 
   /*
     One colour class for the icon, chosen here instead of stacked into `cn()`.
@@ -107,11 +89,9 @@ export const ControlButton = memo(function ControlButton({
   */
   const iconColorClass = isBlocked
     ? 'text-muted'
-    : isSolid
-      ? 'text-accent-foreground'
-      : tone === 'danger'
-        ? 'text-danger'
-        : 'text-foreground';
+    : tone === 'danger'
+      ? 'text-danger'
+      : 'text-foreground';
 
   return (
     <button
@@ -124,23 +104,20 @@ export const ControlButton = memo(function ControlButton({
       // off this attribute, because a colour can be measured and `opacity: 0.4` could not
       // clear 3:1 in light.
       data-soft-disabled={isBlocked ? 'true' : undefined}
-      // Named by its visible word when it has one, so a screen reader does not read the name
-      // and then the same word again.
-      aria-label={showLabel ? undefined : label}
+      aria-label={label}
       onClick={isBlocked ? onBlockedPress : onPress}
       className={cn(
         anchorClassName,
         // The layer above is `pointer-events-none` so taps reach the screen behind it. Each
         // control turns them back on for its own box.
-        'group pointer-events-auto flex flex-col items-center gap-1 rounded-2xl',
+        'group pointer-events-auto flex rounded-full',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
       )}
     >
       <span
         className={cn(
-          'flex items-center justify-center rounded-full',
-          size === 'lg' ? 'size-16' : 'size-12',
-          isSolid ? 'bg-accent' : 'glass glass-fringe',
+          'flex size-12 items-center justify-center rounded-full',
+          'glass glass-fringe',
           iconColorClass,
         )}
       >
@@ -162,26 +139,8 @@ export const ControlButton = memo(function ControlButton({
         </span>
       </span>
 
-      {showLabel && (
-        <span
-          className={cn(
-            'text-xs font-medium',
-            // Not plain `text-danger`. globals.css measures that token at 4.0:1 as text on a
-            // dark ground, because it is tuned to carry white ON a red fill. HeroUI's
-            // `--danger-soft-foreground` is the same family meant to be read as text, and the
-            // repo already redirects its own danger text roles to it for this reason. The icon
-            // keeps `text-danger`: a glyph is a non-text element and needs 3:1, not 4.5:1.
-            tone === 'danger'
-              ? 'text-(--danger-soft-foreground)'
-              : 'text-foreground',
-          )}
-        >
-          {label}
-        </span>
-      )}
-
-      {/* The description, not the name. `aria-label` above already sets the name for the
-          icon-only controls, so this span is only ever read as the "why". */}
+      {/* The description, not the name. `aria-label` above already sets the name, so this
+          span is only ever read as the "why". */}
       {hasReason && (
         <span id={reasonId} className="sr-only">
           {blockedReason}
