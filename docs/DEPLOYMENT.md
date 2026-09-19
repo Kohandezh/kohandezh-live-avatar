@@ -155,8 +155,9 @@ real users rely on, go through this checklist:
   `APP_ENV=development` anyway).
 - `OTP_DELIVERY=asanak` with `ASANAK_USERNAME` and `ASANAK_PASSWORD` set. The backend refuses to
   start otherwise once delivery is switched to Asanak.
-- `APP_ENV=production`. This removes `devCode` from the OTP response and stops the console
-  sender from writing codes to the log.
+- `APP_ENV=production`. This stops the console sender from writing codes to the log. It also
+  removes `devCode` from the OTP response, though `OTP_DELIVERY=asanak` already does that on its
+  own, which is what keeps a development demo with real SMS from showing the code.
 - HTTPS everywhere: the web app, the admin dashboard, the widget host, and the API. Browsers only
   grant the microphone in a secure context.
 - `CORS_ALLOWED_ORIGINS` set to the real web, admin, and widget origins, nothing else.

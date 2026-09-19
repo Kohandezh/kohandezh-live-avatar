@@ -43,6 +43,22 @@ async def test_the_answer_carries_no_code_outside_development(api):
 
 
 @pytest.mark.asyncio
+async def test_the_answer_carries_no_code_once_a_real_sms_is_sent(api):
+    """A development machine that sends real SMS must not also print the code on screen.
+
+    This is the demo setup: APP_ENV stays development so the session cookie still works over
+    plain http, while OTP_DELIVERY=asanak sends a real message. Echoing the code there would put
+    the secret next to the input in front of whoever is watching.
+    """
+    api.settings.otp_delivery = "asanak"
+
+    body = (await api.client.post("/auth/otp/request", json={"phone": PHONE})).json()
+
+    assert "devCode" not in body
+    assert api.sender.codes  # the code was still created and handed to the sender
+
+
+@pytest.mark.asyncio
 async def test_an_invalid_phone_is_refused_before_a_code_is_created(api):
     response = await api.client.post("/auth/otp/request", json={"phone": "123"})
 

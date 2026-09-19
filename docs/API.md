@@ -49,9 +49,10 @@ The backend normalizes the phone to E.164. Iranian local numbers (`09123456789`)
 Response `202`:
 `{ "phone": "+989123456789", "expiresInSeconds": 120, "resendAfterSeconds": 60, "devCode"?: "123456" }`
 
-- `devCode` is present only when the backend runs with `APP_ENV=development`. It exists so the
-  login flow can be finished without an SMS provider. In any other environment the code is
-  neither returned nor logged.
+- `devCode` is present only when the backend runs with `APP_ENV=development` **and**
+  `OTP_DELIVERY=console`. It exists so the login flow can be finished when no SMS is sent. As
+  soon as delivery is switched to `asanak` the code is in the message, so it is left out of the
+  response rather than printed on the login screen. In production it is never returned or logged.
 - `429 otp_rate_limited` with `details: { "retryAfterSeconds": n }`. The limits are one code per
   minute and five codes per hour for one phone, and twenty codes per hour for one IP address.
 - `502 otp_delivery_failed` when the SMS provider does not accept the message

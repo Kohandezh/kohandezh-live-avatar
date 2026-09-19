@@ -5,7 +5,9 @@ import { apiClient } from '@/shared/api';
 /**
  * POST /api/auth/otp/request
  * The backend normalizes the phone to E.164 and sends (or logs, in
- * development) a one-time code. `devCode` is present only outside production.
+ * development) a one-time code. `devCode` comes back only when the backend is in development
+ * and prints the code to its console instead of sending an SMS. Once a real SMS goes out the
+ * field is absent, so the screen never shows a code the user can already read.
  */
 export const otpRequestResponseSchema = z.object({
   phone: z.string(),

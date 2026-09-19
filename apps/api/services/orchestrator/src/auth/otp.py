@@ -88,10 +88,15 @@ class OtpService:
             await self.coordinator.delete_otp(phone)
             await self.coordinator.release_once(f"otp:resend:{phone}")
             raise
+        # The code comes back to the caller only when nothing else can show it. Console delivery
+        # sends no SMS, so the login screen prints the code or the flow cannot be finished. Once a
+        # real SMS goes out there is somewhere to read it, and echoing it as well would leave the
+        # secret on screen next to the input for anyone standing nearby.
+        echo_code = self.settings.is_development and self.settings.otp_delivery == "console"
         return OtpChallenge(
             expires_in_seconds=self.settings.otp_ttl_seconds,
             resend_after_seconds=RESEND_SECONDS,
-            dev_code=code if self.settings.is_development else None,
+            dev_code=code if echo_code else None,
         )
 
     async def verify(self, phone: str, code: str) -> None:
