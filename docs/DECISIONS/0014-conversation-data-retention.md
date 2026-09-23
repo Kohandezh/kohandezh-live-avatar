@@ -36,40 +36,44 @@ what only the owner can settle, with a proposed default that is not a decision. 
 ## Decision
 
 Items 1 to 7 carry the numbers of §8. Item 13 of `docs/SECURITY.md` stays as it is: logging
-conversation text stays banned whatever is stored. A table row is storage, not a log. A log line
-with `question_text` in it is a log, and stays banned. In code, stored text is a `SecretStr`, like
-the backend's keys (`.../src/config.py:21`), so a stray `repr` prints stars. Log calls keep the
-house shape, an event name plus metadata in `extra` (`.../src/auth/router.py:51`). A test asserts
-that creating a draft leaves its text in no log record. Per-answer usage rows (a count, a
-duration, `cache_hit`) are metadata, which item 13 permits now (`docs/SECURITY.md:16`).
+conversation text stays banned whatever is stored. A table row is storage; a log line with
+`question_text` in it is a log. User text travels only in a request body, never in a URL. Log
+calls keep the house shape, an event name plus metadata in `extra` (`.../src/auth/router.py:51`),
+and a test asserts that creating a draft leaves its text in no log record. Per-answer usage rows
+(a count, a duration, `cache_hit`) are metadata, which item 13 permits now (`docs/SECURITY.md:16`).
 
 ### 1. What may be stored, for how long, and how it is deleted
 
-**Decision.** The backend may store one piece of user text: the question that missed on the
-pre-session screen, as a draft (§5 Option E, step 4). Answer text joins it only through item 5's
-read-back. No live media is stored. A deletion request removes every draft with the user's id.
+**Decision.** The backend may store one piece of user text per missed visit, as a draft (§5 Option
+E, step 4). In phase 2 the screen before Start is buttons (§6, trade-offs, B's suggestions row),
+so it is the first `user_transcript` of a session started without a tap on a suggestion
+(`apps/frontend/src/features/assistant/state.ts:343-356`). In phase 3 it is the question asked on
+that screen; its audio is not kept after transcription. No live media is stored. A deletion
+request removes the user's drafts by user id (limits in Consequences). No draft is written until
+the job that enforces the 30 days runs: the phase 2 spec builds it, or waits for ADR 0015.
 
 | Record | Lifecycle | Kept until |
 | ------ | --------- | ---------- |
 | Draft: the user's words | question review | rejection, approval, or 30 days, whichever comes first. Item 5's audit row stays, without text |
-| Library entry: staff's reworded text (item 2) | question review, then media render | the entry is withdrawn |
+| Library entry: staff's cleaned text (item 2) | question review, then media render | the entry is withdrawn |
 | Rendered MP4 | media render | withdrawn or replaced. The file is deleted with its row |
 
-**Rejected:** a draft for every turn. Follow-up turns lean on earlier ones, the pre-session matcher
-can never serve them, and they multiply stored user text (§5 Option E, step 4).
+**Rejected:** a draft per turn, since follow-up turns lean on earlier ones (§5 Option E, step 4).
+And no user text at all: B stays, but staff never learn which questions are missing (§6,
+trade-offs, first row).
 
 **Owner decision:** default proposed is question text only and no live media, one draft per missed
-visit, 30 days for a draft nobody reviewed, and consent as the legal basis: the pre-session screen
-asks, and if the user does not agree, no draft is made. The spike holds no legal analysis. Which
-law applies is for the owner and counsel.
+visit, 30 days for an unreviewed draft, and consent as the legal basis, asked before Start: no
+agreement, no draft. The spike has no legal analysis. Which law applies is for owner and counsel.
 
 ### 2. Replay to a different user
 
 **Decision.** Media recorded from one user's live conversation is never shown to another user.
-Media rendered offline from approved text may be shown to any user, on both doors. A question one
-user asked reaches others only as a library entry: reworded by staff, cleaned of names and other
-personal details, and approved (§5 Option E, step 5). A widget visitor's words are never stored
-(item 3), so they are never shown.
+Media rendered offline from approved text may be shown to signed-in users, and to widget visitors
+as item 3 decides. A question one user asked reaches others only as a library entry (§5 Option E,
+step 5). The whole entry, question and answer, is staff text, cleaned of names and other personal
+details before approval, since an agent answer can repeat what the user said. A widget visitor's
+words are never stored (item 3), so they are never shown.
 
 **Rejected:** showing the user's words as asked. That shows one person's details to strangers, and
 lets whoever posts drafts choose what others read (§8, open questions, the key-collision bullet).
@@ -82,50 +86,57 @@ rewording and approval. The stricter choice, a library only staff write, is Opti
 **Decision.** Nothing is stored from the embed door. A draft needs a signed-in user: the draft
 endpoint refuses a principal without a user id, and every embed caller has none (`router.py:49`).
 The refusal lives in the endpoint's dependency, not in a setting, because item 13 wants such a
-promise true "in the code, not in a setting an operator can flip". A widget visitor's question may
-still be matched in memory, then dropped. The widget plays library entries, and its misses are
-counted as numbers in the usage rows.
+promise true "in the code, not in a setting an operator can flip". Whether the widget plays
+library entries is open: ADR 0010 keeps widget sessions in sandbox, while the code reads one
+global flag (`0010-website-widget.md:71-73`, `.../src/assistant/service.py:71`, §5 Option E, C9).
+If it does, a visitor's question is matched in memory and dropped, and misses count as numbers.
 
 **Rejected:** a deletion key for anonymous text. The only per-visitor value the backend holds is
 the client address the rate limit counts (`router.py:49`). It is shared, it changes, and storing
 it beside the text adds personal data. A random code per visitor is a credential with no account.
 
-**Owner decision:** default proposed is that no text is stored from the widget. Staff then learn
-how often widget visitors miss, never what they asked.
+**Owner decision:** default proposed is that no text is stored from the widget, and that the
+widget plays no library entries while its sessions stay in sandbox, because a visitor would see
+the practitioner's face on a hit and the sandbox avatar on a miss (my reasoning). The second part
+is settled again when the widget leaves sandbox (§8, production item 2).
 
 ### 4. Third parties at query time
 
 **Decision.** Only phase 3 of E needs this. On both doors, before a session, a user's speech may
-go to hosted speech-to-text only at a vendor that already hears it on the live path, and only on
-an install with internet access. ElevenLabs qualifies: the voice agent wraps the customer's
-ElevenLabs agent, carries the Persian speech recognition, and ElevenLabs bills those minutes
-(`.env.example:51-54`). This backend's key may sit in another workspace (U9). No new vendor
-receives user speech or text. Embeddings run locally, as ADR 0006 planned (`sentence-transformers`,
-`0006-backend-stack.md:33`). A no-internet install transcribes locally too, or skips phase 3 (C7).
+go to hosted speech-to-text only at the account that already hears it on the live path: the same
+ElevenLabs workspace that runs the live agent (U9, U17). That agent carries the Persian speech
+recognition, on the customer's own ElevenLabs plan (`.env.example:51-54`). If this backend's key
+sits in another workspace, the default is a local model, or no phase 3. Only installs with
+internet access qualify. No new vendor or account receives user speech or text. Embeddings run
+locally, as ADR 0006 planned (`sentence-transformers`, `0006-backend-stack.md:33`). A no-internet
+install transcribes locally too, or skips phase 3 (C7).
 
 **Rejected:** a hosted embedding API such as `text-embedding-3-large`. It sends every question,
 hits included, to a vendor that sees nothing today, and it fails C7 (§5 Option E, "Which matcher").
 
-**Owner decision:** default proposed is vendors already on the live path only, internet installs
-only, local embeddings. Persian accuracy is unmeasured either way (U11, U14).
+**Owner decision:** default proposed is the live agent's own ElevenLabs workspace only, internet
+installs only, local embeddings. Persian accuracy is unmeasured either way (U11, U14).
 
 ### 5. Provenance of drafts, approval, and audit
 
-**Decision.** A draft's answer side comes only from a server-side read-back of the conversation by
-its provider id, once U9 holds, never from answer text the browser posts (§5 Option E, "Provenance
-of a draft"). A no-internet install cannot read back, so its drafts stay questions only (C7). The
-question side may come from the browser, from signed-in users only (item 3), behind its own rate
-limit: the hourly one counts session mints only (`router.py:59-63`). Approving or rejecting needs
-the `admin` role, checked by `require_admin` (`.../src/auth/dependencies.py:57-60`), and writes an
-audit row: reviewer, decision, time, no user text. The same holds for the existing video approval
-endpoint, which has no `Depends(...)` and no reviewer column (`.../src/main.py:444-458`).
+**Decision.** A draft's answer side comes only from a server-side read-back by provider id, once
+U9 holds, never from answer text the browser posts (§5 Option E, "Provenance of a draft"). A
+no-internet install cannot read back, so its drafts stay questions only (C7). The question side
+may come from the browser, from signed-in users only (item 3). The draft, speech-to-text and match
+endpoints each get their own rate limit: the hourly one counts session mints only
+(`router.py:59-63`), and hosted speech-to-text is paid (§5 Option E, C3). Approving or rejecting
+needs `require_admin` (`.../src/auth/dependencies.py:57-60`) and writes an audit row: reviewer,
+decision, time, no user text. So does the existing video approval endpoint, which has no
+`Depends(...)` (`.../src/main.py:444-458`) and no reviewer column
+(`.../migrations/001_initial.sql:39-53`).
 
-**Rejected:** browser-posted answer text with a "draft" label and a careful reviewer. A pre-filled
-answer is the setting where "the median user accepted suggestions 17% of the time without
-modifications" (Levy et al., CHI 2021, fetched 2026-09-23, in §5 Option E, "The confirm step").
+**Rejected:** browser-posted answer text, labelled a draft, and a careful reviewer. When the
+suggested label was wrong, "the median user accepted suggestions 17% of the time without
+modifications" (Levy et al., CHI 2021, fetched 2026-09-23, §5 Option E, "The confirm step").
 
 **Owner decision:** default proposed is that one admin approves, and audit rows are kept as long as
-the library exists. The stricter choice is approval by the practitioner whose face speaks it.
+the library exists. Approval by the practitioner needs a role that does not exist
+(`.../migrations/002_assistant.sql:10`), so it is an auth-model change with its own decision.
 
 ### 6. Object storage and the serving route
 
@@ -172,11 +183,17 @@ Option B needs none of these answers (§6).
 **What it costs.**
 
 - Stored user text is a one-way door: undoing drafts is a privacy exercise (§5 Option E, Reversal).
-- Deletion at 30 days needs a scheduled job, and none exists today (ADR 0015, below).
-- A consent step on the pre-session screen, in `en` and `fa`, on three targets.
+- Deletion at 30 days needs a scheduled job, and none exists today, so phase 2 waits for one.
+- A consent step on the pre-session screen, in `en` and `fa`, on `mobile` and `web`.
+- Staff never learn what widget visitors ask (item 3).
 - Local models need a machine-learning runtime the image lacks (`.../requirements.txt:1-15`).
-- Blob playback downloads the whole file before it plays (§5 Option B, C3 correction).
 - Staff write every answer until U9 holds, which is the work the draft loop was meant to save.
+- Each new table or status is an append-only migration with no downgrade (C4 in §3), and the
+  review queue grows with every miss (§5 Option E, Cost).
+
+**What deletion does not reach.** Database backups of the draft table, and the copy of a
+conversation that stays at the provider after read-back. This ADR does not cover them. The spike
+has no evidence on either.
 
 **Options this enables or closes**, under the proposed defaults. C and D reopen only by amending
 items 1 and 2, and only if rendering cannot reach voice parity (U10).
@@ -187,7 +204,10 @@ items 1 and 2, and only if rendering cannot reach voice parity (U10).
 | C | items 1 and 2 | closed: no live media is stored or replayed |
 | D | items 1, 2 and 7 | closed, and item 7 waits on U1 |
 | E, phase 2 | items 1, 2, 3 and 5 | open for questions; the answer side waits on U9 |
-| E, phase 3 | item 4 | open on internet installs, once U11, U12, U13, U15 and U6 have evidence |
+| E, phase 3 | item 4 | open on internet installs, once U11, U12, U15 and U6 have evidence and the owner has set U13 |
+
+If the owner says no to storing user text, E's loop stops, C and D stay closed, and B stays. B's
+measured hit rate then decides between keeping B and Option A (§6, the diagram).
 
 **Documents that change on acceptance.**
 
@@ -195,20 +215,17 @@ items 1 and 2, and only if rendering cannot reach voice parity (U10).
   logged (item 13), never from the embed door, and deleted on the ADR's schedule.
 - `docs/DATA_MODEL.md` gains the draft table with its own review status (not `DRAFT`), the audit
   columns and the retention rules, and the tables it leaves out today (§8, open questions).
-- `docs/DECISIONS/0010-website-widget.md:71-73`, if widget visitors should see production renders:
-  widgets stay in sandbox there; the code reads one global flag (`.../src/assistant/service.py:71`).
+- `docs/DECISIONS/0010-website-widget.md:71-73`, if the owner lets the widget play library entries
+  (item 3).
 - `docs/API.md` and `apps/frontend/src/data/mock/handlers.ts`, with the spec that adds endpoints.
 
 **Background jobs go to ADR 0015.** They are not conversation data, and the retry question does
-not fit in a screen. ADR 0015 must settle:
-
-1. An in-process runner over `generation_jobs`, as the spike proposes, or a queue library such as
-   `arq` (§5 Option E, "The job runner"), and whether it also runs item 1's scheduled deletion.
-2. Who owns job state, and the lease and attempt columns (`.../migrations/001_initial.sql:55-67`).
-3. How a job that dies with the process is retried, and what becomes of its Egress recording and
-   its LITE session, held in process memory (`apps/api/services/liveavatar/manager.py:53`, U18).
-4. `GET /api/jobs/{jobId}` (`docs/API.md:20-22`), and converting `finalize`, which busy-waits up
-   to fifteen seconds (`.../src/main.py:406-409`).
+not fit in a screen. ADR 0015 must settle: an in-process runner over `generation_jobs` or a queue
+library such as `arq` (§5 Option E, "The job runner"); who owns job state, with its lease and
+attempt columns (`.../migrations/001_initial.sql:55-67`); retry after the process dies, with its
+Egress recording and its LITE session held in memory (`apps/api/services/liveavatar/manager.py:53`,
+U18); `GET /api/jobs/{jobId}` (`docs/API.md:20-22`) and a `finalize` that no longer busy-waits
+(`.../src/main.py:406-409`); and whether it runs item 1's scheduled deletion.
 
 **Not settled here, and still the owner's:** the acceptable false-confirm rate (U13), and whether
 a user must be told that a recording is playing (§8, open questions).
