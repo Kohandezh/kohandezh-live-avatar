@@ -27,7 +27,8 @@ Three facts shape every item below:
   (`.../migrations/002_assistant.sql:23-24`, `router.py:49`).
 - Some customers need an install with no internet access (`0006-backend-stack.md:21`, C7 in §3).
 - Two lifecycles must not share a status column: the question's review and the media's render
-  (§8, last open question). `DRAFT` already means a recording row (`.../src/database.py:129-134`).
+  (§8, the two-lifecycles open question). `DRAFT` already means a recording row
+  (`.../src/database.py:129-134`).
 
 This record is **Proposed**. The owner accepts, edits or rejects each item. "Owner decision" marks
 what only the owner can settle, with a proposed default that is not a decision. Code is cited at
@@ -187,6 +188,7 @@ Option B needs none of these answers (§6).
 - A consent step on the pre-session screen, in `en` and `fa`, on `mobile` and `web`.
 - Staff never learn what widget visitors ask (item 3).
 - Local models need a machine-learning runtime the image lacks (`.../requirements.txt:1-15`).
+- A blob plays only after the whole file downloads (§5 Option B, C3 correction).
 - Staff write every answer until U9 holds, which is the work the draft loop was meant to save.
 - Each new table or status is an append-only migration with no downgrade (C4 in §3), and the
   review queue grows with every miss (§5 Option E, Cost).
