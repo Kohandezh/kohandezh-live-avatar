@@ -62,29 +62,33 @@ The widget is the exception: it has one screen, so it has no router, and its `in
 demo page rather than the app shell. Everything else is shared. Rules:
 
 - Admin code is never bundled into the mobile or web app. Admin pages live under `src/pages/admin/` and are only imported by `src/app/admin/router.tsx`.
-- Mobile and web share the same user pages. They differ in layout (bottom tab bar vs. top navigation) and in the PWA service worker.
+- Mobile and web share the same user pages and the same floating glass menu (`MobileLayout.tsx:83-84`, `WebLayout.tsx:64-66`). They differ in content width (mobile fills the screen; web centers it in a `max-w-5xl` column, `WebLayout.tsx:57`) and in the PWA service worker (web only).
 - Code that needs to know the target reads `env.appTarget` from `src/shared/config/env.ts`. Do not read `import.meta.env` in feature code.
 - The build target is not the runtime platform. `src/shared/platform` answers "am I inside Capacitor?" at runtime.
 - The widget renders the shared `features/assistant` panel. It has no Redux store and no service worker, and it authenticates with a public embed key instead of a user session (ADR 0010).
 
 ### Navigation
 
-The product is "Dr. Kohandezh Assistant": one conversation screen, one account screen, and a
-login. The routers keep the same shape on every target.
+The mobile and web routers share one route tree (web adds the public `/avatar`), guarded the
+same way. The admin router guards almost everything behind the admin role instead.
 
-| Route        | mobile                   | web                      | admin                       |
-| ------------ | ------------------------ | ------------------------ | --------------------------- |
-| `/`          | landing, or `/assistant` | landing, or `/assistant` | dashboard (auth + admin)    |
-| `/login`     | phone + code             | phone + code             | phone + code                |
-| `/assistant` | conversation (auth)      | conversation (auth)      |                             |
-| `/profile`   | account (auth)           | account (auth)           |                             |
-| `/avatar`    |                          | Phase 1 workbench        |                             |
-| `/users`     |                          |                          | user table (auth + admin)   |
-| `/forbidden` |                          |                          | signed in without the role  |
+| Route                                                  | mobile                            | web                               | admin                          |
+| ------------------------------------------------------- | ----------------------------------- | ----------------------------------- | --------------------------------- |
+| `/`                                                       | login, or on to `/video` (public)  | login, or on to `/video` (public)  | dashboard (auth + admin)        |
+| `/login`                                                  | phone + code (public)              | phone + code (public)              | phone + code (public)           |
+| `/forbidden`                                              | signed in, wrong access (public)   | signed in, wrong access (public)   | signed in, wrong access (public)|
+| `/onboarding`                                             | name capture (auth)                | name capture (auth)                |                                  |
+| `/video`, `/audio`                                        | conversation (auth + profile)      | conversation (auth + profile)      |                                  |
+| `/settings`, `/settings/personal`, `/settings/appearance` | account (auth + profile)           | account (auth + profile)           |                                  |
+| `/avatar`                                                 |                                     | Phase 1 workbench (public; linked from `/settings` for admins) |                                  |
+| `/users`                                                  |                                     |                                     | user table (auth + admin)       |
+| anything else                                             | not found (public)                 | not found (public)                 | not found (auth + admin)        |
 
-`/` shows the landing to visitors and sends a signed-in user straight to `/assistant`. The mobile
-tab bar (Conversation, Profile) is hidden until the user is signed in. The web navigation shows
-the Phase 1 workbench link only to admins; the route itself stays reachable.
+"auth" is `RequireAuth`; "profile" adds `RequireProfile`, which also needs the server's
+`firstName` set; "admin" adds `RequireRole('admin')`. `/` sends a signed-in user straight to
+`/video`, or to `/onboarding` until the user has a name. The floating glass menu
+(`MobileLayout.tsx:74-76`, `WebLayout.tsx:64-66`) shows only on `/video`, `/audio` and
+`/settings` and its subpages, once the user is signed in and named.
 
 ## System Boundaries
 
