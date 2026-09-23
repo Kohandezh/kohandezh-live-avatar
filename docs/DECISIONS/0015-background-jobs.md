@@ -68,7 +68,7 @@ append-only migration (C4, `RESEARCH.md:97`) adds these columns. This record doe
 | `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` | last change |
 
 It adds a unique index on `dedupe_key` over `queued` and `running` rows: a repeat request gets the
-existing `jobId`. The runner writes `error_code` and `error_message`, unused (`RESEARCH.md:1497-1498`).
+existing `jobId`. The runner writes `error_code` and `error_message`, unused (`RESEARCH.md:1496-1497`).
 
 **Rejected:** a Redis lock as the lease. It vanishes with its key and keeps no failure record.
 
@@ -81,8 +81,8 @@ existing `jobId`. The runner writes `error_code` and `error_message`, unused (`R
 finds no file yet and releases itself (item 4) is not an attempt. A failure whose error is marked
 retryable (`.../src/errors.py:6-11`, as `main.py:410-413` does) returns to `queued` with backoff.
 Any other failure is `failed` at once: retrying a render that cannot pass spends paid minutes.
-When the process dies, its jobs' leases lapse. The runner then counts the attempt and requeues each,
-or fails it with `worker_lost` at `max_attempts`. Finalize and sweep are safe to run twice.
+When the process dies, its jobs' leases lapse. The attempt stays counted, and the runner requeues
+each, or fails it with `worker_lost` at `max_attempts`. Finalize and sweep are safe to run twice.
 
 A `render_video` job cannot resume. Its LITE session lived in the dead process's memory
 (`manager.py:53`); the provider ends it on its five-minute idle timeout (LITE events page, cited at
@@ -130,9 +130,10 @@ and a system job is admin only. Anyone else gets `404`. The mock gets the route 
 It stops Egress (`main.py:404`), enqueues `finalize_video`, and answers `202` with the `jobId`. The
 job checks for the file; if missing, it sets `run_after` a few seconds ahead and releases the lease
 instead of sleeping. Once the file appears, it probes it and marks the row `VIDEO_GENERATED`
-(`main.py:414-415`), or fails with `egress_failure` (`main.py:411-412`). `finalize` takes no
-`Depends(...)` today (`main.py:397-398`), so it and its poll require `require_admin`: the conversion
-lands with or after §8 production item 6, authoring-endpoint auth (`RESEARCH.md:1459-1471`).
+(`main.py:414-415`). At the wait's end it fails with `egress_failure` (`main.py:411-412`); that
+timeout is final and is not retried. `finalize` takes no `Depends(...)` today (`main.py:397-398`),
+so it and its poll require `require_admin`: the conversion lands with or after §8 production item
+6, authoring-endpoint auth (`RESEARCH.md:1459-1471`).
 
 **Rejected:** wrapping the loop in `asyncio.create_task`. It sleeps, dies on restart, has no poll.
 
@@ -142,11 +143,12 @@ The spike never measured how long Egress takes to write the file. Client polling
 ### 5. The deletion job
 
 **Decision.** The same runner runs ADR 0014 item 1's scheduled deletion, as `retention_sweep` with
-a fixed `dedupe_key`. On startup the runner enqueues it if none is queued. The next run, one day
-ahead, is enqueued in the same transaction that closes the current run, whatever its outcome. A
-failed sweep shows to an admin in the job list. Each run deletes drafts past 30 days (`0014:58`),
-`done` and `failed` jobs past item 2's period, and a withdrawn or replaced MP4 with its row
-(`0014:60`). Those periods are ADR 0014's, not changed here.
+a fixed `dedupe_key`. On startup the runner enqueues it if none is queued or running. The next
+run, a day ahead, is enqueued in the transaction that closes the current run, whatever its outcome.
+A failed sweep is logged as a structured event with no user text (`.../src/auth/router.py:51`); the
+phase 2 spec defines the admin surface that shows it. Each run deletes drafts past 30 days
+(`0014:58`), `done` and `failed` jobs and `RENDER_FAILED` rows past item 2's period, and a withdrawn
+or replaced MP4 with its row (`0014:60`). Draft and media periods stay ADR 0014's.
 
 ADR 0014's gate holds until then:
 
@@ -172,11 +174,11 @@ new dependency. The runner works offline (C7, `RESEARCH.md:100`). `render_video`
 
 - Jobs share a process with requests. Retry covers a crash, not load: fine while approvals are rare.
   A deploy or shutdown closes every LITE session (`main.py:122`, `manager.py:223-230`), so a render
-  in flight uses up an attempt and a paid session.
-- The migration is one-way (C4). The runner is code we own: claiming, leases, backoff, tests.
-- `finalize` answers `202`, not `200`, and needs an admin session. The workbench polls, and these
-  change: `useRecording.ts:57`, `apps/frontend/src/shared/api/assets.ts:39-42`, `VideoFinalizeDto`
-  (`apps/frontend/src/shared/api/dto.ts:98`), `apps/frontend/tests/utils/server.ts:71`, the test.
+  in flight uses up an attempt and a paid session. The migration is one-way (C4).
+- `finalize` answers `202`, not `200`, and needs an admin session. The workbench polls. These change:
+  `useRecording.ts:57`, `apps/frontend/src/shared/api/assets.ts:39-42`, `VideoFinalizeDto`
+  (`apps/frontend/src/shared/api/dto.ts:98`), `apps/frontend/tests/utils/server.ts:71`, and the test
+  `apps/frontend/src/features/recording/useRecording.test.tsx:37`.
 
 **Work this unblocks.** §8 production item 7. ADR 0014 item 1's deletion job, so E's phase 2
 (production item 8). B's and E's render jobs, once U18 holds and production items 2, 3, 6 are done.
