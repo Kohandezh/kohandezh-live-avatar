@@ -16,11 +16,12 @@ unverified.
 **Amendment, 2026-09-23.** Section 5 now also scores the product owner's own design as **Option
 E**, and §6, §7 and §8 are re-issued with it. The amendment cites the code at `6a0b8ee`, whose code
 is identical to `main@eb05da0` (`git diff --stat eb05da0 6a0b8ee` lists only this file and
-`docs/features/INDEX.md`). It also corrects five claims in the earlier text. Each correction is
-marked "Correction, 2026-09-23" where it applies, and nothing was removed silently. They are in
-§1 and §4.4 (object storage needs a client), §4.6, Option B (two render sites, and a `<video src>`
-that plays on `web` only), Option C (`pgvector` without a dump and restore), and §8 (the
-approval endpoint).
+`docs/features/INDEX.md`). It also corrects six claims in the earlier text. Each correction is
+marked with its date where it applies, and nothing was removed silently. They are in §1 and §4.4
+(object storage needs a client), §4.6, Option B (two render sites, and a `<video src>` that plays
+on `web` only), Option C (`pgvector` without a dump and restore), §8 (the approval endpoint), and
+§6 with two cells of the side-by-side table and Option C's Cost line (turn 2's claim that every
+option shares B's authentication and `finalize` costs, narrowed using Option C's own description).
 
 **On the `Status` value.** `docs/templates/SPIKE.md` offers only `Open / Resolved`, and the
 `writing-spikes` skill's close-out step says to set `Resolved`. This document uses `In Review`
@@ -431,8 +432,10 @@ reading it. The block above is what the page says.
   user reaches these through **suggested questions**, not through free-text matching. Tapping one
   plays the stored MP4. Typing or speaking anything else starts a live session exactly as today.
   (Added 2026-09-23: the suggestions have to sit on the screen before Start. A session is billed
-  from the mint or from the connection, so a tap inside an open session saves nothing. See Option
-  E, "Where the saving happens".)
+  per minute from the mint or from the connection, so a tap inside an open session saves no
+  session minutes. It still saves that turn's language-model cost and the wait for a generated
+  answer, because ElevenLabs passes the model cost through separately and the tap never reaches
+  the agent. See Option E, "Where the saving happens".)
 - **Evidence.** Every server-side piece exists and was verified in §4: Egress
   (`livekit_gateway.py:81`), probe (`media_probe.py:8`), storage rows
   (`001_initial.sql:39`), serving (`main.py:436-441`), approval (`main.py:444-458`). The one gate
@@ -480,7 +483,7 @@ reading it. The block above is what the page says.
     `/assets/video/{id}/finalize` and `GET /assets/video/{id}` are registered directly on the app
     with no `Depends(...)` (`.../src/main.py:254,260,280,359,397,436`), and so is the approval
     endpoint `PATCH /assets/{kind}/{asset_id}/status` (`:444`, added 2026-09-23, see the
-    correction under §8 item 5), unlike
+    correction under §8 production item 6), unlike
     `/api/assistant/session` (`.../src/assistant/router.py:52`). On `web`, the workbench route is
     mounted above `RequireAuth` (`apps/frontend/src/app/web/router.tsx:29` versus `:32`), so it is
     reachable signed out. That is a pre-existing hole, not one B creates, but B would be the first
@@ -521,6 +524,8 @@ reading it. The block above is what the page says.
   playback mode in `features/assistant`, and the `202` job runner. Migration: one append-only file,
   which fits C4. Operations: staff have to curate and re-approve answers when facts change, and
   someone has to run the render job. That is the real ongoing cost and it is human, not technical.
+  (Added 2026-09-23: plus a small code change on the render path to pass the agent's voice
+  settings. See Option E, "Voice and avatar parity".)
   Lock-in: none worth naming, because no new dependency and no new service are added. (Qualified
   2026-09-23: that holds while B serves files from local disk, as its C7 bullet assumes. Moving
   them to object storage adds a client, see the correction in §4.4.) The honest
@@ -566,7 +571,10 @@ reading it. The block above is what the page says.
     0006 planned for but nothing installs today.
   - **C8** Persian embedding quality is unmeasured, and §5.0 shows Persian is the harder case.
 - **Cost.** Build: everything B needs, plus browser capture on three runtimes, an upload path, an
-  embedding step and a verification pass. Migration: not one file but a **Postgres image swap** to
+  embedding step and a verification pass. (Corrected 2026-09-23: everything B needs except B's
+  workbench authoring path and `finalize`. By C's own "How it works" the browser records and
+  uploads, so C never calls `/avatar/speak`, `/assets/generate-video` or `finalize`. It still needs
+  the playback endpoint, the playback mode at both render sites, and the job runner.) Migration: not one file but a **Postgres image swap** to
   get `pgvector`, which is a dump and restore of the whole database, not an append-only migration.
   That sits badly with C4.
   **Correction, 2026-09-23: "dump and restore" was never checked, and it is wrong for the right
@@ -644,18 +652,30 @@ in "What the pasted document specified differently, and why" at the end of this 
      or by typing. Voice goes to a new backend speech-to-text endpoint, because today the only
      Persian speech recognition runs inside the billed session. The text is matched against the
      approved list. The matcher is described below.
-  2. **Hit.** The screen shows the approved question it matched and asks the user to confirm it.
-     On yes, the stored MP4 plays and no token is minted. The user can ask again on the same
-     screen, which repeats step 1.
+  2. **Hit.** The screen shows up to three approved questions that match, plus "none of these,
+     ask live". The user taps one. The stored MP4 plays and no token is minted. The user can ask
+     again on the same screen, which repeats step 1. A single "is this your question?" prompt is
+     the variant to test against it (U12), not the default, for the reasons in "The confirm step"
+     below.
   3. **Miss, or the user says no.** The screen offers a live answer. The user's tap mints a
      session (`POST /api/assistant/session`), the SDK starts, and on `connected` the hook sends the
      question the user already asked with `sendText`
      (`apps/frontend/src/features/assistant/useAssistantSession.ts:334-384,466-477`). From then on
      the conversation is live, as it is today.
-  4. **Draft.** After a live answer, the browser sends the question and the final, corrected
-     answer text to a new draft endpoint. No media is captured from the live session.
+  4. **Draft.** After a live answer, a draft is made from the question that missed on the
+     pre-session screen, and only that one. Later turns of the live session make no drafts. That
+     question was asked as a first question, it stands on its own, and it is the only kind of
+     question the pre-session matcher can ever serve. Follow-up turns often lean on earlier ones
+     ("and for children?"). This keeps the volume at one draft per missed visit, and it keeps the
+     user text the ADR is asked to allow as small as possible. Drafting every turn is the owner's
+     call. One draft per missed visit is the proposed default. In the owner's full design the draft
+     also carries the final, corrected answer text. In the phasing §6 recommends, it carries the
+     question only until U9 holds, and staff write the answer (see "Provenance of a draft"). No
+     media is captured from the live session.
   5. **Review and render.** An admin reads the draft in the `admin` target, edits the text if
-     needed, and approves or rejects it. Approval creates a render job. The job renders the
+     needed, and approves or rejects it. An approved question is reworded, and cleaned of names
+     and other personal details, before any other user can see it: approved questions are what
+     step 2 shows to other people. Approval creates a render job. The job renders the
      approved text once, offline, through the chain that already exists (`POST /avatar/speak`,
      `POST /assets/generate-video`, `finalize`: `.../src/main.py:280,359,397`). An admin then
      approves the video, and the question joins the approved list. Staff can also add questions
@@ -706,7 +726,11 @@ in "What the pasted document specified differently, and why" at the end of this 
     text is undecided, exactly as for C (§3). New with E: a draft endpoint reachable through the
     public embed door, drafts whose content the browser asserts (see "Provenance of a draft"),
     and user audio or text sent to a third-party speech or embedding API if a hosted model is
-    used. E also inherits B's unauthenticated authoring path, approval endpoint included (§8).
+    used. The speech-to-text and match endpoints sit on the embed door too. They open no session,
+    so the hourly limit, which counts session mints (`.../src/assistant/router.py:59-63`), never
+    applies to them. Each of the three new endpoints needs its own limit, and a hosted
+    speech-to-text call is a paid call. E also inherits B's unauthenticated authoring path,
+    approval endpoint included (§8).
   - **C4 migrations. Holds.** An approved-answer table, a draft table with its own review states,
     and a vector column, all append-only. No Postgres image change at this scale (see "Which
     matcher").
@@ -715,7 +739,10 @@ in "What the pasted document specified differently, and why" at the end of this 
     `docs/API.md:194` applies the job rule to "anything slower than a few seconds", so they fit
     only if they stay under that. Unmeasured (U11).
   - **C6 measurable. Partly, as for B.** A hit and a session mint are both countable in
-    `provider_usage`. Minutes saved are not (§4.3). The saving exists only before the session
+    `provider_usage`. Minutes saved are not (§4.3). E also adds a speech-to-text call and an
+    embedding call on every question, misses included. Each needs its own `provider_usage` row
+    (the provider, the operation, and the audio duration or the characters), or the saving can
+    never be shown net of what E spends to find it. The saving exists only before the session
     starts (see "Where the saving happens", and U8 on whether that means before the mint).
   - **C7 on-premise. Weaker than B.** Local speech-to-text and embeddings need a machine-learning
     runtime the image does not have (`requirements.txt:1-15`). Hosted ones need the internet and
@@ -730,12 +757,14 @@ in "What the pasted document specified differently, and why" at the end of this 
     in sandbox (`docs/DECISIONS/0010-website-widget.md:71-73`), while the service reads one global
     sandbox setting for every caller (`.../src/assistant/service.py:71`). Which one is right
     decides whether the widget ever plays production renders.
-  - **Provenance, a new row. Fails as written.** A draft is text the browser asserts. It passes
-    only with a server-side read-back of the conversation (U9).
+  - **Provenance, a new row. Fails as written.** A draft is text the browser asserts. The answer
+    side passes only with a server-side read-back of the conversation (U9). Until then, the
+    phasing in §6 keeps drafts to the question only, and staff write every answer.
 - **Cost.** Build: everything B needs, plus pre-session capture on three runtimes, a
   speech-to-text endpoint, a match endpoint with an embedding step, the confirm screen at two
-  render sites, a draft endpoint with its own rate limit, a draft review screen, and
-  render-on-approval jobs. Dependencies: a speech-to-text model or API, an embedding model or
+  render sites, a draft endpoint, rate limits on all three new endpoints, a draft review screen,
+  and render-on-approval jobs. Like B, it needs a small code change on the render path to pass
+  the agent's voice settings (see "Voice and avatar parity"). Dependencies: a speech-to-text model or API, an embedding model or
   API, and an S3 client if Spaces is used. No queue library and no vector database. Migration:
   append-only. Operations: a review queue that grows with every miss, and a re-render of the
   library when the avatar or the voice changes. Risk: provenance, voice parity, and a user who
@@ -749,8 +778,8 @@ in "What the pasted document specified differently, and why" at the end of this 
 #### Option E in detail: the confirm step, scored on its own
 
 The spike's one safe mechanism is "the user picks from suggested questions" (§5.0 table). The
-confirm step is a different thing: the system proposes, and the user agrees or not. It was never
-evaluated before, so it is scored here on its own.
+confirm step is a different thing: the system proposes candidates after the user has asked, and
+the user picks one or declines. It was never evaluated before, so it is scored here on its own.
 
 - **What it prevents.** The pasted document plays the stored video as soon as the score passes a
   threshold. The user never sees which question was matched. That is the silent match §5.0
@@ -763,7 +792,7 @@ evaluated before, so it is scored here on its own.
   a fresh user gesture, so the stored video can play with sound. Without one, the browser may
   block audio after the asynchronous round trip. The repo already handles that block on the live
   path (`useAssistantSession.ts:115-144`).
-- **Its failure mode: a user who taps yes without reading.** The worst case is the pair §5.0
+- **Its failure mode: a user who taps a candidate without reading.** The worst case is the pair §5.0
   measured: two questions one word apart, where one is the negation of the other. Lexical
   similarity scored that pair 0.842 against 0.152 for a true paraphrase. It is also the pair a
   quick reader is least likely to tell apart, because almost every word is the same. So the
@@ -784,15 +813,27 @@ evaluated before, so it is scored here on its own.
   through security dialogs, not patients confirming a question. Carrying their rates over to this
   prompt is my inference. What they do support is that accepting a wrong one-tap suggestion is a
   common outcome, not a rare one, even for experts.
-- **Compared with B's row.** In B the user reads staff-worded questions before asking anything,
-  and there is no matcher. In E the user has already asked, and is then asked to accept a
-  paraphrase. E's leftover failure is "agreed without reading", and B has no such failure. So
-  E's wrong-answer risk is lower than C's and D's. Unlike B's, it is not zero.
-- **Mitigations worth testing, not assumed.** Show two or three candidates plus "none of these",
-  which forces a choice and moves E toward B's row. Show the first sentence of the stored answer
-  under each candidate. Never confirm on the user's behalf. Whether any of these brings the
-  unread-confirm rate low enough is a usability measurement (U12). The acceptable rate is the
-  owner's decision (U13).
+- **Compared with B's row.** B is not free of this failure either. If B's list holds two
+  near-identical questions, such as the §5.0 negation pair, a user who skims can tap the one they
+  did not mean, and then gets a correct answer to a question they did not ask. The habituation
+  sources above are about skimming familiar screens, and a list is one. The difference is in what
+  pushes the user toward the wrong item, and it is argued here, not measured. In E the matcher
+  picks the stored questions that are closest to what the user just said. When the user's real
+  question is not in the list, the closest ones are exactly the near-misses, so E puts the
+  dangerous candidate in front of the user by design. It also presents it as the system's answer
+  to what the user said, which is the setting Levy et al. measured: a pre-filled suggestion that
+  the person only has to accept. In B nothing selects the near-miss. The user reads a list staff
+  wrote before any question was asked, and chooses with no prompt from the system. Staff can also
+  keep near-identical pairs apart, or word them so the difference is plain. So E's wrong-answer
+  risk is lower than that of a silent threshold, and higher than B's. B's residual risk is a
+  misread tap that nothing in B steers the user toward.
+- **Which form E uses.** E shows up to three candidates plus "none of these, ask live", and the
+  user taps one. That forces a choice between visible alternatives and moves E toward B's row.
+  The single "is this your question?" prompt is the variant to test against it, because it is
+  the purest form of the pre-filled accept. Two more things to test, not assumed: showing the
+  first sentence of the stored answer under each candidate, and never selecting a candidate on
+  the user's behalf. Whether any of these brings the unread-tap rate low enough is a usability
+  measurement (U12). The acceptable rate is the owner's decision (U13).
 
 #### Option E in detail: which matcher, and why
 
@@ -800,7 +841,7 @@ The owner's words describe a **closed** decision: "a model detects the intent" a
 question is already in the approved list". The pasted document specifies an **open** one: an
 embedding similarity search in a vector database, with a threshold of 0.88 that plays the video.
 Option E uses the closed form, built by retrieval. It embeds the user's question, compares it only
-with the approved questions, and returns the nearest two or three above a floor, or "none".
+with the approved questions, and returns up to three nearest above a floor, or "none".
 
 - **Why not a trained classifier.** A classifier over N intents needs labelled Persian examples
   per intent and a retrain whenever the label set changes (§5.0 table). In E the label set changes
@@ -816,7 +857,8 @@ with the approved questions, and returns the nearest two or three above a floor,
   less for E than for C and D. It still matters: a matcher that ranks the negation first puts the
   dangerous candidate at the top of the list the user skims.
 - **No vector database at this scale.** The approved list is reviewed by people, so it holds tens
-  or hundreds of entries, not millions. Comparing one vector with a few hundred is a loop, not a
+  or hundreds of entries, not millions. That size is an estimate: it is bounded by what staff can
+  review, and nothing measures it yet. Comparing one vector with a few hundred is a loop, not a
   database feature. So the vectors live in a column of the approved-answer table, with the model
   id and version next to each one, so that a model change is a visible re-embed. The vector is
   written in the same transaction as the approval, so a rejected or deleted entry cannot keep
@@ -844,8 +886,8 @@ with the approved questions, and returns the nearest two or three above a floor,
   "charges per minute of session time" and adds that it "starts the session before enabling client
   token generation, so you're not metered during frontend setup" ([credits](https://docs.liveavatar.com/docs/faq/credits),
   fetched 2026-09-23, no date on the page). Its older FAQ says "Minutes are counted from the moment
-  the live chat connects to the avatar" ([master FAQ](https://docs.liveavatar.com/docs/faq/master-faq), last updated
-  2026-06-03, fetched 2026-09-23). The voice agent path is a LITE session at "1 credit per session
+  the live chat connects to the avatar" ([master FAQ](https://docs.liveavatar.com/docs/faq/master-faq), which shows
+  "last updated 2026-06-03"; fetched 2026-09-23 through Notion's page data; source not verifiable by review: a Notion page that renders only with JavaScript). The voice agent path is a LITE session at "1 credit per session
   minute" on the LiveAvatar side ([ElevenLabs agent connector](https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent)).
   The ElevenLabs minutes are billed on top, and "a session must never start without a user
   action" (`.../src/config.py:62-66`, `docs/API.md:126-129`). ElevenLabs measures an agent call
@@ -854,7 +896,7 @@ with the approved questions, and returns the nearest two or three above a floor,
   cost"](https://elevenlabs.io/docs/help-center/product/eleven-agents/how-much-does-eleven-agents-cost), fetched
   2026-09-23, no date on the page). So the provider pages point at the connection, and the
   repository's comment points at the mint. Either way the answer is the same for design: a stored
-  answer saves money only if it is served before `session.start()`, and before
+  answer saves session minutes only if it is served before `session.start()`, and before
   `POST /api/assistant/session` if the repository's comment is right. If the mint turns out to be
   free, the pre-session screen could mint while it matches, to shorten the wait on a miss, and
   stop the unused session on a hit.
@@ -878,8 +920,8 @@ with the approved questions, and returns the nearest two or three above a floor,
   That is U6 in a sharper form: not "are questions repeated" but "are the first questions of a
   visit repeated, and does the visit end there". `provider_usage` cannot answer it today (§4.3).
 - **This is not specific to E.** It applies to every option, and it is a new row in the
-  side-by-side table. B saves only if its suggestions are offered before Start, not inside a
-  session. C and D, as written, serve a stored file "instead of minting a session", but the
+  side-by-side table. B saves session minutes only if its suggestions are offered before Start,
+  not inside a session. C and D, as written, serve a stored file "instead of minting a session", but the
   question text they match on exists only inside a session today (`useAssistantSession.ts:466-469`,
   and C's own trigger is the in-session `user_transcript` event), so they need E's pre-session
   capture too.
@@ -895,15 +937,22 @@ with the approved questions, and returns the nearest two or three above a floor,
   page cannot change it, but a client outside a browser can send any value. That last point is my
   reasoning from how HTTP works, not something tested here. The hourly limit counts session mints
   (`router.py:59-63`), not other calls, so a caller could post drafts without opening any session.
-  A draft endpoint needs its own limit.
+  A draft endpoint needs its own limit. Whether drafts may come from the embed door at all, or
+  only from signed-in users, is a decision for the ADR (§8, question 5).
 - **What the reviewer can know:** whether the text is correct, safe, and something the
   practitioner would say. **What the reviewer cannot know:** whether the agent ever said it,
   whether any user asked it, or whether many users asked it. A count of identical drafts cannot be
   trusted either, since one caller can post many.
-- **The consequence.** Approving a draft is authoring, not confirming. It has to meet the same bar
-  as a staff member writing a new answer for Option B, and the admin screen has to say that the
-  text is unverified. If reviewers treat drafts as "the agent already said this", a planted
-  answer ends up spoken with the practitioner's face to every user.
+- **The consequence.** A label and reviewer care are not enough. A draft reaches the reviewer
+  pre-filled, while a staff member writing an answer for Option B starts from a blank page. That
+  is the setting Levy et al. measured: clinicians accepted pre-filled wrong labels without change,
+  "the median user accepted suggestions 17% of the time without modifications" (see "The confirm
+  step"). An admin approving a draft answer is closer to that study than a patient is. So a
+  planted answer can end up spoken with the practitioner's face to every user, which is the same
+  harm §6 rejects C and D for. **Until a server-side read-back works (U9), drafts carry the
+  question only, and staff write every answer from a blank page.** That costs the design nothing
+  it was promised: the value of the loop, learning which questions people ask, needs only the
+  question side (see "What survives either way" below).
 - **The fix that would remove the problem.** Read the conversation back on the server, after the
   session, by its provider id, and build the draft from that with no browser input. The
   ElevenLabs half of this exists (all pages fetched 2026-09-23, none dated). A server can fetch a
@@ -918,11 +967,11 @@ with the approved questions, and returns the nearest two or three above a floor,
   `conversation_id` ([client events](https://elevenlabs.io/docs/eleven-agents/customization/events/client-events)).
   The LiveAvatar half is weaker. LiveAvatar has a `GET /v1/sessions/{session_id}/transcript`
   endpoint, but its changelog introduces it for "transcriptions between users and avatars in FULL
-  Mode sessions" ([changelog](https://docs.liveavatar.com/changelog), entry dated November 2025), a stored
+  Mode sessions" ([changelog](https://docs.liveavatar.com/changelog), entry dated November 2025), and a stored
   `elevenlabs_agent` "produces an **Avatar Only (LITE mode)** session" ([voice
-  agents](https://docs.liveavatar.com/docs/core-concepts/voice-agents)), and the FAQ says "Lite mode does not store
-  session data at all" (master FAQ, 2026-06-03). So for this path the read-back has to come from
-  ElevenLabs. The connector page says the events passed through to the browser include "Initial
+  agents](https://docs.liveavatar.com/docs/core-concepts/voice-agents)). Those two fetchable pages are the evidence. The
+  master FAQ adds "Lite mode does not store session data at all" (source not verifiable by review: a Notion page that renders only with JavaScript). So for this
+  path the read-back has to come from ElevenLabs. The connector page says the events passed through to the browser include "Initial
   metadata, includes `conversation_id`" ([ElevenLabs agent
   connector](https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent), fetched 2026-09-23). Today the
   hook ignores every ElevenLabs event except transcripts, corrections and interruptions
@@ -936,7 +985,8 @@ with the approved questions, and returns the nearest two or three above a floor,
   caller could still name a different conversation, but only a real one of the same agent, so
   the text would still be something the agent said. That also removes the need to accept draft
   text from the public embed door. The webhook route would instead send every transcript of the
-  workspace to this backend, which is itself storage under the ADR.
+  workspace to this backend, which is itself storage under the ADR. Even with the read-back, the
+  answer is still reviewed: the agent can be wrong, and a read-back only proves it said the text.
 - **What survives either way.** The question side of a draft tells staff which questions people
   ask. That is the gap B could not close: staff can see that curation is falling behind but not
   which questions are missing (§6 trade-offs). It still needs question text, so it still needs the
@@ -944,31 +994,45 @@ with the approved questions, and returns the nearest two or three above a floor,
 
 #### Option E in detail: voice and avatar parity
 
-- **Rendered answers.** `/avatar/speak` builds a speech request from the text alone
-  (`.../src/main.py:285-287`), so it uses the default voice and model
-  (`apps/api/services/elevenlabs/service.py:47-48`): `ELEVENLABS_VOICE_ID`, empty by default, and
-  `eleven_v3_conversational` (`.../src/config.py:22-23`, `.env.example:15-16`). The video row
-  records that voice id (`.../src/main.py:388`).
+- **Rendered answers.** `/avatar/speak` builds a speech request from the text alone,
+  `TTSRequest(text=payload.text)` (`.../src/main.py:285`). So the voice id and the model come from
+  configuration: `ELEVENLABS_VOICE_ID`, empty by default, and `eleven_v3_conversational`
+  (`.../src/config.py:22-23`, passed in at `main.py:80-81`, used at
+  `apps/api/services/elevenlabs/service.py:47-48`). The tuning values do not. `config.py:29-32`
+  defines `ELEVENLABS_STABILITY`, `_SIMILARITY`, `_STYLE` and `_SPEED`, but nothing reads them
+  (`grep -rn "elevenlabs_similarity\|elevenlabs_stability\|elevenlabs_style\|elevenlabs_speed" apps/api`
+  finds only those four lines). The values that reach the provider are the request schema's
+  defaults (`.../src/schemas.py:34-37`). With the default `eleven_v3` model the client uses
+  Text-to-Dialogue and sends `stability` only (`apps/api/services/elevenlabs/client.py:50-53,114-118,123-138`).
+  The video row records the voice id (`.../src/main.py:388`).
 - **Live answers.** The voice agent "carries the Persian ASR, the Persian LLM prompt and the
   cloned voice" (`.env.example:51-53`, and `docs/API.md:126-128`). That voice is configured at the
   provider, not in this repository.
 - **What is known.** On the running install `ELEVENLABS_VOICE_ID` is set. **What is not.** Nothing
   in this repository says whether it is the agent's cloned voice. The same voice id would not be
   enough anyway. An agent has its own `tts.model_id`, "default: eleven_flash_v2", chosen from six
-  models that include `eleven_v3_conversational`, and its own `voice_id` ([agent
+  models that include `eleven_v3_conversational`, its own `voice_id`, and its own voice settings,
+  for example `similarity_boost` with "default: 0.8" ([agent
   reference](https://elevenlabs.io/docs/eleven-agents/api-reference/agents/create), fetched 2026-09-23, no date on
-  the page). Its voice settings have their own defaults too: `similarity_boost` is 0.8 there and
-  0.75 here (`.../src/config.py:30`). The page on the expressive model adds two points about
-  `eleven_v3_conversational`, which is this repository's default speech model: it "adapts
-  delivery to match the tone and intent of each exchange", and it "does not currently preserve
-  PVC characteristics well" ([expressive
-  mode](https://elevenlabs.io/docs/eleven-agents/customization/voice/expressive-mode), fetched 2026-09-23). PVC is
-  ElevenLabs' term for a professional voice clone. If the practitioner's voice is one, the render
+  the page). So matching needs three things. The voice id and the model can be matched in
+  configuration. The settings need a small code change on the render path, because the render
+  sends schema defaults, and on the v3 path only `stability`. That code change is a cost for B and
+  for E. The page on the expressive model adds two points about `eleven_v3_conversational`, which
+  is this repository's default speech model: it "adapts delivery to match the tone and intent of
+  each exchange", and it "does not currently preserve PVC characteristics well" ([expressive
+  mode](https://elevenlabs.io/docs/eleven-agents/customization/voice/expressive-mode), fetched 2026-09-23). Its
+  limitations list says it more strongly: it "does not preserve the characteristics of
+  Professional Voice Clones". If the practitioner's voice is a professional clone, the render
   model this repository uses by default may itself move the voice away from the clone. Whether it
-  is one is not recorded here. If the two
-  differ, a cached answer and the next live answer sound like two different people in one
-  conversation. Unverified (U10). Settling it means reading the agent's voice settings at the
-  provider, which this spike did not do because it is a provider call.
+  is one is not recorded here. If the two voices differ, a cached answer and the next live answer
+  sound like two different people in one conversation. Unverified (U10). Settling it means
+  reading the agent's voice settings at the provider, which this spike did not do because it is a
+  provider call.
+- **When parity cannot be reached.** Two conditions, and only these, make it impossible rather
+  than work. First, this backend's ElevenLabs key cannot use the agent's voice, because the voice
+  lives in a workspace the key does not reach (the workspace question in U9 and U17). Second, the
+  voice is a professional clone and no model the render path can use keeps it. In either case
+  the choice is between accepting two voices and recording the live answer (C or D).
 - **Avatar.** The LITE render uses `LIVEAVATAR_AVATAR_ID` unless the request names another
   avatar (`.../src/main.py:93`, `manager.py:63`). Its default,
   `dd73ea75-1218-4ef3-92ce-606d5f7fbc0a` (`.../src/config.py:35`), is the public sandbox avatar:
@@ -992,9 +1056,9 @@ with the approved questions, and returns the nearest two or three above a floor,
   `.../src/errors.py:36-38`).
 - **The pasted document's two choices.** BullMQ's main library is Node. Its Python package is at
   3.2.6, released 2026-09-21, and still carries "Development Status :: 3 - Alpha"
-  ([PyPI](https://pypi.org/pypi/bullmq/json), fetched 2026-09-23). Its own documentation calls it
-  "an experimental python package" ([docs.bullmq.io](https://docs.bullmq.io/python/introduction),
-  fetched 2026-09-23), and its description says "the library does not support all the features
+  ([PyPI](https://pypi.org/pypi/bullmq/json), fetched 2026-09-23). The summary of its documentation page
+  calls it "an experimental python package" ([docs.bullmq.io](https://docs.bullmq.io/python/introduction),
+  page description, fetched 2026-09-23), and its PyPI description says "the library does not support all the features
   available in the NodeJS version". Celery is a new dependency, a new process and a new role for
   Redis as a broker. If a queue library is ever needed, `arq` is asyncio-native and marked
   "Development Status :: 5 - Production/Stable" (0.28.0, released 2026-04-16,
@@ -1023,11 +1087,11 @@ with the approved questions, and returns the nearest two or three above a floor,
 
 | The pasted document says | Option E does instead | Why, with the evidence |
 | ------------------------ | --------------------- | ---------------------- |
-| Play the cached video when similarity is at or above a threshold, "e.g., 0.88" | Show the matched question and ask the user to confirm | §5.0 rejects a silent match on free text. 0.88 has no source here and is below the only published starting range, 0.90 to 0.95, for English (§5.0). See "The confirm step". |
+| Play the cached video when similarity is at or above a threshold, "e.g., 0.88" | Show up to three matching approved questions; the user taps one, or asks live | §5.0 rejects a silent match on free text. 0.88 has no source here and is below the only published starting range, 0.90 to 0.95, for English (§5.0). See "The confirm step". |
 | Backend in FastAPI or Node.js / NestJS | The existing FastAPI orchestrator | ADR 0006 chose Python because the work is speech and embeddings, and a Node backend "would need a second Python service beside it, which means two authentication paths" (`docs/DECISIONS/0006-backend-stack.md:33`). This feature is that work. |
 | Frontend in React / Next.js | The existing React and Vite targets | One Vite build per target (`docs/DECISIONS/0004-app-targets.md:20`), the widget an IIFE in a Shadow DOM (`0010-website-widget.md:34-39`), the mobile build the Capacitor `webDir` (`apps/frontend/capacitor.config.ts:7`). Next.js fits none of them. |
 | Video.js for playback | The native `<video>` elements the stages already use | The stages already switch between a native file `<video>` and the live `<video>` (`ConversationStage.tsx:66-101`). Video.js would land in the widget file, which cannot code-split (`0010-website-widget.md:54-56`). |
-| Pre-generation asks the ElevenLabs agent for the text, then calls a LiveAvatar / HeyGen API that returns an MP4 | Text comes from the reviewed draft or from staff. Rendering drives a live LITE session with speech audio and records it with Egress | There is no text-to-MP4 call in this repository. The render is a real-time session that Egress records (`apps/api/services/liveavatar/client.py:48-54`, `.../src/main.py:280-334,359-394`, `livekit_gateway.py:81-96`). LiveAvatar has no batch render: its FAQ says "there is no batch processing or queuing delay on the LiveAvatar side". HeyGen's asynchronous `POST /v3/videos` renders an MP4 "from a HeyGen avatar or an arbitrary image" ([HeyGen API](https://developers.heygen.com/reference/create-video), fetched 2026-09-23), but "HeyGen and LiveAvatar avatars are trained on different models and are not cross-compatible" (LiveAvatar master FAQ, 2026-06-03). So a batch render would show a different model of the practitioner's face (U16). ElevenLabs can answer a text question from the existing agent: `text_only` means "audio will not be processed and only text will be used" ([agent reference](https://elevenlabs.io/docs/eleven-agents/api-reference/agents/create)), billed "for each text message" with the language model's cost on top (the help center page cited under "Where the saving happens"), while the old simulate-conversation endpoint is "Deprecated" (fetched 2026-09-23). That can pre-fill an answer for a staff-entered question. It is still reviewed like any draft. |
+| Pre-generation asks the ElevenLabs agent for the text, then calls a LiveAvatar / HeyGen API that returns an MP4 | Text comes from the reviewed draft or from staff. Rendering drives a live LITE session with speech audio and records it with Egress | There is no text-to-MP4 call in this repository. The render is a real-time session that Egress records (`apps/api/services/liveavatar/client.py:48-54`, `.../src/main.py:280-334,359-394`, `livekit_gateway.py:81-96`). LiveAvatar has no render endpoint: its OpenAPI file lists paths for avatars, contexts, languages, language-model configurations and models, memory, secrets, sessions, credits, voice agents, voices and embeds, and none that produces a video file ([openapi.json](https://docs.liveavatar.com/openapi.json), fetched 2026-09-23). (Corrected in fix round 1: turn 1 quoted "there is no batch processing or queuing delay on the LiveAvatar side" as evidence here. That sentence sits under "Latency" on the LITE lifecycle page and is about real-time streaming, not about rendering.) HeyGen's `POST /v3/videos` creates a video "from a HeyGen avatar or an arbitrary image" ([HeyGen API](https://developers.heygen.com/reference/create-video), fetched 2026-09-23). LiveAvatar trains its own custom avatars from "Two minutes of input footage" ([avatars](https://docs.liveavatar.com/docs/core-concepts/avatars), fetched 2026-09-23). The only direct statement that the two are not interchangeable, "HeyGen and LiveAvatar avatars are trained on different models and are not cross-compatible", is in the LiveAvatar master FAQ (source not verifiable by review: a Notion page that renders only with JavaScript). So a batch render would most likely show a different model of the practitioner's face. That is unverified (U16). ElevenLabs can answer a text question from the existing agent: `text_only` means "audio will not be processed and only text will be used" ([agent reference](https://elevenlabs.io/docs/eleven-agents/api-reference/agents/create)), billed "for each text message" with the language model's cost on top (the help center page cited under "Where the saving happens"), while the old simulate-conversation endpoint is "Deprecated" (fetched 2026-09-23). That can pre-fill an answer for a staff-entered question. It is still reviewed like any draft. |
 | Storage in AWS S3 or Cloudflare R2, behind a CDN | Local disk by default. Any S3-compatible store, Spaces for this owner, as a setting. Served through the backend | Egress speaks any S3-compatible API (§4.4), so the vendor is a setting. A public CDN URL skips both doors (`.../src/assistant/router.py:34-49`) and cannot be reached by a no-internet install (C7). A direct Egress upload breaks `finalize` (correction in §4.4). Spaces can give "time-limited access to a private file" through a presigned URL ([file permissions](https://docs.digitalocean.com/products/spaces/how-to/set-file-permissions/), page dated 2026-07-13), but "Requests made using presigned URLs aren’t cached by the Spaces CDN" ([enable the CDN](https://docs.digitalocean.com/products/spaces/how-to/enable-cdn/), page dated 2026-09-03). Both were fetched 2026-09-23. So the CDN helps only public objects, which is exactly the case that skips the doors. |
 | Queue in BullMQ or Celery | An in-process runner over `generation_jobs` | See "The job runner". |
 | Saving the new pair to the admin queue is marked "Optional" | The draft loop is core, as the owner says, and it is gated | The owner's description makes it the point of the design. It needs question text stored, which the ADR has to allow (§8), and it needs provenance handled (see "Provenance of a draft"). |
@@ -1037,6 +1101,9 @@ with the approved questions, and returns the nearest two or three above a floor,
 | The cached video plays "immediately (< 500ms latency)" | No latency target is claimed | The path is record, transcribe, embed, match, then a tap. None of it is measured here (U11). |
 | `video_url` stored in the vector metadata | The URL is derived from the asset id when answering | The repository builds media URLs from the id at response time (`.../src/main.py:419`, `apps/frontend/src/shared/api/assets.ts:48`). A stored URL freezes the host and the access rule into data. |
 | `qualification_node` in the metadata | Not supported | It implies dialogue state. The Persian path rejects per-session variables (`apps/api/services/liveavatar/client.py:128-129`), so no state from cached turns can reach the live agent. |
+| On a miss, "Route live user message to ElevenLabs Agent" at once | The screen offers a live answer, and the user's tap starts it | A session "must never start without a user action" (`.../src/config.py:62-66`, `docs/API.md:128-129`), because the ElevenLabs minutes are billed separately. This also bends the owner's step 4 ("the question goes live") by one tap. The same tap is needed when a stored video fails to play. |
+| "Route live user message to ElevenLabs Agent (WebSocket)" and "Stream response audio/video dynamically via LiveAvatar WebRTC connection" | The existing combined path: the browser drives one LiveAvatar Voice Agent session that wraps the ElevenLabs agent | The assistant mints one voice agent token (`.../src/assistant/service.py:81-91`), and the SDK drives the whole session (`useAssistantSession.ts:334-373`). LiveAvatar's connector page says "the ElevenLabs agent WebSocket is not exposed by this connector" ([ElevenLabs agent connector](https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent), fetched 2026-09-23). Sending agent audio and avatar video on separate paths is the LITE bring-your-own-audio design the workbench uses (`apps/api/services/liveavatar/client.py:41-54`), not the assistant. |
+| "Ability to re-generate or manually upload a custom MP4 replacement" | Re-generate: yes, as a new render job. Manual upload: not in E's phases | No upload endpoint and no upload parser exist: `grep -rn -e UploadFile -e multipart apps/api` finds nothing. An upload endpoint must enforce a maximum size and a content-type allowlist on the server (`docs/SECURITY.md:19-20`). The existing probe (`.../src/media_probe.py:34-45`) could check the file. A spec can add it if the owner wants it. |
 
 #### Two readings of the pasted document that are not scored
 
@@ -1061,17 +1128,17 @@ instead and captures no media.
 
 | | A: do nothing | B: curated library | C: browser capture | D: BYO transport | E: owner's design |
 | - | - | - | - | - | - |
-| Wrong-answer risk | none | none (no matching) | high (§5.0) | high (§5.0) | lower, not none: the user confirms, and a user who confirms a near-miss without reading still gets the wrong answer (U12) |
+| Wrong-answer risk | none | none from matching. A misread tap on a list is possible, and nothing steers the user toward it | high as written, with a silent threshold (§5.0). With E's confirm step, the same as E | same as C | lower than a silent threshold, higher than B: the matcher puts the nearest questions, near-misses included, in front of a user who may tap one without reading (U12) |
 | Where the saving happens (billing counts from the mint or the connection, U8) | nowhere | only if the suggestions are offered before Start | needs E's pre-session capture: the question text exists only inside a session today | same as C | before the session starts, from the first question to the first miss |
 | C3 storage of user text (`SECURITY.md:16-18`) | untouched | untouched | **undecided** | **undecided** | **undecided** for the draft loop; untouched for a matcher over staff-authored questions |
 | C3 authoring path authentication | n/a | must be added (no auth today, approval endpoint included) | its own new upload path, authenticated from the start | must be added | must be added, plus a draft endpoint on the public embed door with its own rate limit |
-| Provenance of what gets stored | n/a | staff-authored | media recorded in the browser: whatever the client uploads | recorded by our own Egress | text the browser asserts; fixed only by a server-side read-back (U9) |
+| Provenance of what gets stored | n/a | staff-authored | media recorded in the browser: whatever the client uploads | recorded by our own Egress | text the browser asserts. The answer side waits for a server-side read-back (U9). Until then drafts carry the question only, and staff write the answers |
 | Voice matches the live answer | n/a | unverified: speech voice against the agent's cloned voice (U10) | yes, by construction | yes, by construction | same as B (U10) |
 | Serving route per target | n/a | `<video src>` plays on `web` only; a blob through axios plays on all three | same | same | same |
 | Who owns job state | n/a | `generation_jobs`, which no code uses yet | same, plus upload jobs | same | same, plus the draft review state |
 | C5 `202` plus job id | n/a | existing violation to fix (`main.py:406-409`) | needs the runner; does not use `finalize` | same as B | same as B, plus speech-to-text and match calls that must stay under a few seconds (U11) |
 | C7 on-premise | fine | serving fine, authoring needs a public LiveKit endpoint once, offline | needs a local embedding model | **broken, every session** | local speech and embedding models, and a render on every approval |
-| New dependency | none | none | `pgvector` image, embedding model | same, plus public LiveKit | speech-to-text and embedding models or APIs; no vector database, no queue library |
+| New dependency | none | none | `pgvector` image, embedding model | same, plus public LiveKit | speech-to-text and embedding models or APIs, and an S3 client if Spaces is used; no vector database, no queue library |
 | Covers all assistant targets | n/a | yes (`mobile`, `web`, `widget`), at two render sites | uncertain on iOS | yes | uncertain: pre-session recording is untested on all three runtimes (U15) |
 | Blocked on an unverified provider capability | no | no | no | **yes** | no for the core; provenance read-back is external (U9) |
 | C9 needs production mode first | no | yes | yes | yes | yes |
@@ -1082,10 +1149,19 @@ target, and who owns job state. Scoring E forced them, and they are filled for A
 of them land on B: B has to offer its suggestions before Start, its renders may not speak with the
 agent's voice, and its playback URL works on `web` only.
 
-Two cells for C also changed on 2026-09-23. The turn 2 review found that C's path never touches
-the workbench endpoints or `finalize`: the browser records and uploads, and the backend embeds and
-serves. So C does not inherit their missing authentication or the busy-wait. It needs its own
-upload path and the job runner. The rows "C3 authoring path authentication" and "C5" now say so.
+Two cells for C also changed on 2026-09-23, as a sixth correction. Option C's own "How it works"
+shows that its path never touches the workbench endpoints or `finalize`: the browser records and
+uploads, and the backend embeds and serves. So C does not inherit their missing authentication or
+the busy-wait. It needs its own upload path and the job runner. The rows "C3 authoring path
+authentication" and "C5" now say so, and so does C's Cost line.
+
+The wrong-answer row scores C and D in two forms. As written they play the stored answer above a
+silent threshold, which is §5.0's high risk. But C and D need the same pre-session screen as E
+(the row "Where the saving happens"), so they can take E's confirm step too, and then their
+matching risk equals E's. With equal matching, what separates E from C and D is the rest of the
+table: E renders from reviewed text while C and D replay a recording of one user's live answer;
+C and D get voice parity by construction; the media's provenance is weakest in C and strongest in
+D; and on C7, D fails every session while E needs local models and a render on each approval.
 
 ## 6. Recommendation
 
@@ -1105,21 +1181,30 @@ are lower, but so is the point of the feature, because nothing worth storing get
 traced to the evidence in §5.
 
 1. **The confirm step is a real answer to §5.0, but not a complete one.** It turns the matcher
-   from a decision into a suggestion, which is better than the silent threshold C and D use. It
-   leaves one failure: a user who taps yes without reading. That failure is sharpest on the pair
-   §5.0 measured as most dangerous, two questions one negation apart. Published one-click studies
-   put the acceptance of a wrong suggestion at 10 to 20% even for clinicians (Option E, "The
-   confirm step"). E's wrong-answer risk is lower than C's and D's. It is not zero. B's is.
+   from a decision into a suggestion, which is better than a silent threshold. It leaves one
+   failure: a user who taps a candidate without reading. That failure is sharpest on the pair §5.0
+   measured as most dangerous, two questions one negation apart. Two published numbers bear on
+   it, and they measure different things (Option E, "The confirm step"). Levy et al. found that
+   clinicians accepted 10 to 20% of wrong pre-filled labels. Bravo-Lillo et al. found that at most
+   20% of people noticed a changed field in a dialog they had seen many times, so 80% or more
+   missed it. B is not free of the failure either: a user can misread a list and tap the wrong
+   item. The difference, argued in "The confirm step", is that E's matcher puts the near-miss in
+   front of the user by design and presents it as the system's answer, while in B nothing steers
+   the user toward it. So E's risk is lower than a silent threshold and higher than B's. C and D
+   could take the same confirm step, because they need the same pre-session screen. Scored that
+   way, their matching risk equals E's, and what separates the three is the rest of the table
+   (the note under it).
 2. **E's saving lives where B's does, before the session starts.** Billing counts from the mint
-   or from the connection (U8), and inside a session there is nowhere to hold a turn. So E saves on the run of hits before the
-   first miss, and B saves on the suggestions tapped before Start. E's extra reach over B is the
+   or from the connection (U8), and inside a session there is nowhere to hold a turn. So E saves
+   on the run of hits before the first miss, and B saves on the suggestions tapped before Start. E's extra reach over B is the
    set of questions a user says freely before any session, that are in the library, and that the
    user would not have picked from a list. Nobody can size that today (U6, §4.3).
 3. **E's core loop needs the decision B does not.** The draft loop stores question and answer
    text, so it lands in the undecided half of C3, exactly like C and D. B needs no answer to that
-   question. E also adds a new problem nobody had named: a draft is text the browser asserts, so
-   an approved draft is only as trustworthy as the review, and the reviewer cannot know whether
-   the agent ever said it.
+   question. E also adds a new problem nobody had named: a draft is text the browser asserts, and
+   the reviewer cannot know whether the agent ever said it. A reviewer shown a pre-filled answer
+   is in Levy's setting, so review alone is not a control. That is why phase 2 keeps drafts to
+   the question only until a server-side read-back works (U9).
 4. **E costs much more than B, on every constraint where they differ.** Pre-session capture on
    three runtimes, a speech-to-text step whose Persian accuracy is unmeasured, an embedding step,
    a public draft endpoint, a review screen, and a render on every approval, which weakens C7.
@@ -1130,44 +1215,55 @@ curation is falling behind but not which questions are missing"), once the ADR a
 is why E is phase 2 and phase 3 in the diagram below, and not a rejected option.
 
 **What the new rows did to B.** Scoring E added five rows to the side-by-side table, and three of
-them land on B. B must offer its suggestions before Start, or a tap saves nothing. B's renders
-speak with the speech voice, which may not be the agent's cloned voice (U10). B's playback URL
-works on `web` only, unless the video is fetched as a blob (the correction under Option B's C3).
-The correction under Option B's C1 adds a fourth cost: playback has two render sites, not one.
-So B got more expensive again,
-as it did in turn 2. The ranking does not move, because E carries all four and more. It also
-gives C and D back one real advantage: they record the live answer, so its voice matches by
-construction. If the voices cannot be matched, that is the only reason left to reach for C or D.
+them land on B. B must offer its suggestions before Start, or a tap saves no session minutes. B's
+renders speak with the speech voice, which may not be the agent's cloned voice (U10), and matching
+the voice settings needs a small code change. B's playback URL works on `web` only, unless the
+video is fetched as a blob (the correction under Option B's C3). The correction under Option B's
+C1 adds a fourth cost: playback has two render sites, not one. So B got more expensive again, as
+it did in turn 2. The ranking does not move, because E carries all four and more. It also gives C
+and D back one real advantage: they record the live answer, so its voice matches by construction.
+That matters only if parity cannot be reached by rendering, which happens in two cases: this
+backend's key cannot use the agent's voice (U9, U17), or the voice is a professional clone that
+the render model cannot keep (Option E, "Voice and avatar parity").
 
-**The turn 2 symmetry claim, narrowed.** Turn 2 said "every option has to fix the authentication
-and the `202` violation". The turn 2 review found that this was not shown for C, and it was right.
-C's path never touches the workbench endpoints or `finalize`. Only the `202` job runner lands on
-every option. The missing authentication and the `finalize` conversion land on B, D and E, which
-render or record through the workbench chain. So strict scoring cost B slightly more than turn 2
-said, not nothing. The pick survives, because it never rested on those costs: it rests on the
-wrong-answer risk and the undecided storage question, and neither moved.
+**The turn 2 symmetry claim, narrowed (a sixth correction, 2026-09-23).** Turn 2 said "every
+option has to fix the authentication and the `202` violation". Option C's own "How it works"
+shows that this does not hold for C: the browser records and uploads, so C's path never touches
+the workbench endpoints or `finalize`. Only the `202` job runner lands on every option. The
+missing authentication and the `finalize` conversion land on B, D and E, which render or record
+through the workbench chain. So strict scoring cost B slightly more than turn 2 said, not nothing.
+The pick survives, because it never rested on those costs: it rests on the wrong-answer risk and
+the undecided storage question, and neither moved.
 
 **What Option E would have to prove to win.** This is the evidence the owner can buy. Each item
 is a measurement or a decision, not more argument.
 
-1. **The ADR allows it** (§8): storing question and answer text, replaying an answer drafted from
-   one user's conversation to others, deleting a widget visitor's text, and sending speech or text
+1. **The ADR allows it** (§8): storing question text, and answer text once item 2 holds; showing
+   a question that came from one user, reworded and cleaned, to other users; deleting a widget
+   visitor's text; whether drafts may come from the embed door at all; and sending speech or text
    to any third-party model E uses.
 2. **Provenance** (U9): a server-side read-back of the conversation works for this provider
-   set-up, or the owner accepts that every draft is reviewed as new authoring and the admin screen
-   says the text is unverified.
-3. **Voice parity** (U10): the rendered voice and the live voice are the same, checked in the
-   agent's settings and by listening. This gates B too.
+   set-up. Until it does, phase 2 carries the question only, and staff write every answer from a
+   blank page. A label on the draft plus reviewer care is not a substitute: a reviewer shown a
+   pre-filled answer is in the setting where Levy et al. measured 10 to 20% acceptance of wrong
+   entries.
+3. **Voice parity** (U10): the rendered voice and the live voice are the same, with the voice id
+   and the model matched in configuration and the settings matched by a small code change, then
+   checked by listening. This gates B too.
 4. **Persian speech-to-text** (U11): accuracy on recorded clinic questions above a bar the owner
    sets, with a model that fits the ADR's answer on third parties and C7, and a round trip within
    a few seconds.
-5. **The confirm step** (U12, U13): a usability test with Persian near-miss pairs, including
-   negations, showing an unread-confirm rate under a number the owner sets.
-6. **The reach** (U6): per-answer usage rows plus B's own pre-session numbers, showing that enough
-   visits end inside the hit run to pay for speech-to-text and embeddings on every question.
+5. **Recording before the session** (U15): the pre-session recorder works in the Capacitor
+   WebView on iOS and Android, in a browser, and in the widget's Shadow DOM.
+6. **The confirm step** (U12, U13): a usability test with Persian near-miss pairs, including
+   negations, showing an unread-tap rate under a number the owner sets.
+7. **The reach** (U6): per-answer usage rows, usage rows for E's own speech-to-text and embedding
+   calls, and B's own pre-session numbers, showing that enough visits end inside the hit run to
+   pay for those calls on every question.
 
-If item 1 holds, phase 2 (the draft loop feeding curation) is worth a spec on its own. If items 1
-to 6 hold, phase 3 (free speech before the session) is worth a spec too.
+Item 3 gates every render, B's included. With item 1, phase 2 is worth a spec on its own, with
+questions only. Item 2 adds the answer side to phase 2. Items 4 to 7 open phase 3, free speech
+before the session.
 
 ```mermaid
 flowchart TB
@@ -1175,19 +1271,22 @@ flowchart TB
     Q --> G1{{"does the answer's media or text<br/>reach our backend today?<br/>assistant/service.py:50-54"}}
     G1 -->|"no · the browser holds all of it"| B(["Option B · curated answer library<br/>offered before Start: billing counts<br/>from the mint or the connection · U8<br/>no user text stored"]):::chosen
     B --> GV{{"does the rendered voice match<br/>the agent's live voice? · U10"}}
-    GV -->|"no, and it cannot be matched"| CD(["Option C or D · record the live answer<br/>voice matches by construction<br/>needs the ADR, and U1 or U2"]):::fallback
-    GV -->|"yes"| G3{{"can provider_usage show the saving?<br/>database.py:291-300"}}
+    GV -->|"no · our key cannot use the agent's voice,<br/>or the render model loses the clone"| CD(["Option C or D · record the live answer<br/>voice matches by construction<br/>needs the ADR, and U1 or U2"]):::fallback
+    GV -->|"yes, once id, model and<br/>settings are matched"| G3{{"can provider_usage show the saving?<br/>database.py:291-300"}}
     G3 -->|"no per-answer rows today"| INSTR(["prerequisite · add per-answer<br/>usage rows before building"]):::fallback
     INSTR --> SHIP
     G3 -->|"yes, once instrumented"| SHIP(["ship B · measure hits and misses"]):::chosen
-    SHIP --> G4{{"did the measured hit rate justify<br/>the curation cost?"}}
+    SHIP --> G2{{"may we store a user's question?<br/>no rule decides this · SECURITY.md:16-18"}}
+    G2 -->|"the ADR says no · stops C, D<br/>and E's loop"| G4{{"did the measured hit rate<br/>justify the curation cost?"}}
+    G4 -->|"yes"| STOP(["stop at B"]):::chosen
     G4 -->|"no · undo it, B is cheap to reverse"| A(["Option A · do nothing<br/>keep every answer live"]):::forced
-    G4 -->|"yes · go further?"| G2{{"may we store a user's question<br/>and the answer given to them?<br/>no rule decides this · SECURITY.md:16-18"}}
-    G2 -->|"the ADR says no · stops C, D<br/>and E's loop, leaves B untouched"| STOP(["stop at B"]):::chosen
-    G2 -->|"the ADR says yes"| E2(["Option E, phase 2 · the draft loop<br/>every draft is unverified input,<br/>reviewed as a new answer, rendered as in B"]):::gated
-    E2 --> G5{{"Persian speech-to-text measured · U11<br/>confirm test on near-miss pairs · U12<br/>enough visits end inside the hit run · U6"}}
-    G5 -->|"all three hold"| E3(["Option E, phase 3 · free speech before<br/>the session, the user confirms,<br/>live answer on a miss"]):::gated
-    G5 -->|"any one fails"| STAY(["stay at E phase 2"]):::chosen
+    G2 -->|"the ADR says yes · worth it even<br/>while B's hit rate is low"| E2(["Option E, phase 2 · questions only<br/>staff see what users ask<br/>and write every answer"]):::gated
+    E2 --> G9{{"can the backend read the answer<br/>back from the provider? · U9"}}
+    G9 -->|"yes"| E2A(["phase 2 adds answer drafts<br/>read back on the server, then reviewed"]):::gated
+    G9 -->|"no"| STAY
+    E2 --> G5{{"Persian speech-to-text · U11<br/>recording on three runtimes · U15<br/>tap test under the owner's number · U12, U13<br/>enough visits end in the hit run · U6"}}
+    G5 -->|"all hold"| E3(["Option E, phase 3 · free speech before<br/>the session, the user taps a match,<br/>live answer on a miss"]):::gated
+    G5 -->|"any one fails"| STAY(["phase 2 stays as it is"]):::chosen
 
     classDef chosen   fill:#e6f4ea,stroke:#5a9e6f,color:#000
     classDef fallback fill:#fde8e8,stroke:#c86a6a,color:#000
@@ -1196,25 +1295,29 @@ flowchart TB
 ```
 
 Green is the recommended path, red is a fallback or a prerequisite, orange is a forced outcome,
-and dashed blue is Option E, a gated later phase that is not built. The takeaway: B is picked and
-offered before Start, because billing counts from the mint or the connection. It is gated on the voice check and on
-a cost measurement that does not exist yet. E's draft loop comes only after the ADR allows storing
-user text, and E's free-speech matching only after three measurements. C or D stay reachable for
-one reason only, voice parity. Phase 3 does not technically need phase 2. It is drawn after it
-because both need the ADR's answer on user speech, and phase 2's drafts are the cheapest way to
-learn which questions free speech would hit. The diagram leaves out C9 (production mode) and the
-shared prerequisites (authentication, the job runner), because they gate every branch, including
-doing nothing well. They are in §3, §5 and §8.
+and dashed blue is Option E, gated later phases that are not built. The takeaway: B is picked and
+offered before Start, because billing counts from the mint or the connection. It is gated on the
+voice check and on a cost measurement that does not exist yet. The storage question comes right
+after B ships, whatever B's hit rate is, on purpose: a low curated hit rate is the case phase 2
+exists to fix. If the ADR allows storing questions, phase 2 starts with questions only, and staff
+write every answer. Its answer side waits for a server-side read-back (U9). Free speech before the
+session (phase 3) waits for four measurements and the owner's number. If the ADR says no, B's
+measured hit rate decides between keeping B and undoing it. C or D stay reachable for one reason
+only: voice parity that rendering cannot reach. Phase 3 does not technically need phase 2. It is
+drawn after it because both need the ADR's answer on user speech, and phase 2's drafts are the
+cheapest way to learn which questions free speech would hit. The diagram leaves out C9
+(production mode) and the shared prerequisites (authentication, the job runner), because they gate
+every branch, including doing nothing well. They are in §3, §5 and §8.
 
 **What this trades off, and the mitigation for each:**
 
 | Trade-off | Mitigation |
 | --------- | ---------- |
-| The hit rate is bounded by what staff curate, not by traffic. It will be lower than a semantic cache's. | Partly mitigable. The per-answer usage rows make the **miss count** visible without storing any question text. Seeing **which** questions are missing needs question text: that is E's phase 2, after the ADR. |
+| The hit rate is bounded by what staff curate, not by traffic. It will be lower than a semantic cache's. | Partly mitigable. The per-answer usage rows make the **miss count** visible without storing any question text. Seeing **which** questions are missing needs question text: that is E's phase 2, after the ADR, and the diagram reaches it whatever B's hit rate is. |
 | Users who say or type a different wording get a live answer, so the saving is smaller than promised. | This is the point. A miss costs one live generation. A false hit costs trust. E's phase 3 is the route to free wording, behind its proofs. |
-| It does not deliver the owner's design as written: no free speech matching and no draft loop in the first release. | Say so plainly. The loop is phase 2 and free speech is phase 3, each gated on named evidence (the list above), not deferred without a condition. |
-| B's suggestions save nothing if they are offered inside a session, because a session is billed from the mint or from the connection (U8). | Offer them on the screen before Start. That screen is a list of buttons: no microphone, no speech-to-text. It is also where E's phase 3 input would later go. |
-| Rendered answers may not sound like the live agent (U10). | Check the agent's voice settings before the first render. If they cannot be matched, choose between accepting two voices and recording the live answer (C or D). |
+| It does not deliver the owner's design as written: no free speech matching and no draft loop in the first release, and when the loop comes, its drafts carry questions only until U9 holds. | Say so plainly. The loop is phase 2 and free speech is phase 3, each gated on named evidence (the list above), not deferred without a condition. The loop's stated value, learning which questions users ask, needs only the question side. |
+| B's suggestions save no session minutes if they are offered inside a session, because a session is billed per minute from the mint or from the connection (U8). A tap there still saves that turn's language-model cost and the wait. | Offer them on the screen before Start. That screen is a list of buttons: no microphone, no speech-to-text. It is also where E's phase 3 input would later go. |
+| Rendered answers may not sound like the live agent (U10). | Check the agent's voice settings before the first render. Match the voice id and model in configuration, and the settings with a small code change on the render path. If parity still cannot be reached (the key cannot use the agent's voice, or the render model cannot keep a professional clone), choose between accepting two voices and recording the live answer (C or D). |
 | Cached playback has two render sites, and a `<video src>` URL plays on `web` only. | Fetch the video through the shared axios client as a blob, as the audio path already does (`apps/frontend/src/shared/api/assets.ts:19-26`), and build playback at both sites. |
 | The offline render job and the `202` job runner are real work that the proposal did not budget for. | `generation_jobs` and its `dedupe_key` index are already in the schema (`001_initial.sql:55-68`) waiting for exactly this. |
 | B inherits an existing `202` violation rather than only a missing runner: `finalize` busy-waits up to fifteen seconds (`.../src/main.py:406-409`). | Not mitigable, and it should not be hidden in the estimate. Converting `finalize` is part of B's cost. D and E inherit it too. C does not. |
@@ -1238,15 +1341,15 @@ to irreversible once user questions and answers are stored.
 | U5 | The published threshold figures transfer to this system. | **Unverified, and narrower than it looks.** The figures in §5.0 are an AWS benchmark on English chatbot queries with Claude 3 Haiku and Titan Embeddings, republished by [Portkey](https://portkey.ai/blog/semantic-caching-thresholds/) (2026-04-18), a vendor blog rather than peer-reviewed work. The [arXiv paper](https://arxiv.org/abs/2601.23088) (2026-01-30, revised 2026-06-30) is a preprint. Nothing in either covers Persian. | They inform the direction and cannot settle the threshold. The decisive evidence for this repo is the local trigram measurement in §5.0, which is reproducible here. Every external link in this document was re-opened on 2026-09-19 and checked against what it is quoted as saying; see the correction note in §5.0 for the one that failed. |
 | U6 | Provider cost is actually dominated by repeated similar questions. | **Unverified, and currently unverifiable.** §4.3 shows `provider_usage` has no per-answer signal for the assistant. | This is the premise of the whole feature. It is why the recommendation makes instrumentation a prerequisite rather than a follow-up. |
 | U7 | An embedding call and a judge call are cheap relative to an avatar video minute. | **Unverified.** I have no published price for a LiveAvatar minute, for the ElevenLabs conversation minutes the voice agent path bills separately (`.../src/config.py:65-66`), or for an embedding call. §4.3 shows this system records no cost figure of its own, so the comparison cannot be made from `provider_usage` either. Turn 1 of this document asserted it three times as if it were established; it is an inference. | It is the reason Options C and D stay reachable as later fallbacks rather than being ruled out on cost. If it is false, the semantic options lose their remaining advantage and the answer collapses to Option B or Option A. Whoever writes the ADR should price it. |
-| U8 | The provider starts billing at the token mint (`POST /v1/sessions/token`), as `.../src/assistant/service.py:141-144` assumes. | **Unverified, and the sources disagree.** LiveAvatar's credits page says it "charges per minute of session time" and that "you're not metered during frontend setup"; its older FAQ counts minutes "from the moment the live chat connects". ElevenLabs counts "connection duration" (Option E, "Where the saving happens"). Settled by one sandbox-free test session, comparing its creation time, duration and credits charged, or by asking LiveAvatar support. | Decides whether a stored answer must be served before the mint or only before `session.start()`. The design conclusion does not change: after connection there is no point to hold a turn. |
-| U9 | The backend can read a finished voice agent conversation back from ElevenLabs, for draft provenance. | **Partly verified.** The ElevenLabs API can return a conversation's transcript by id, and LiveAvatar passes the `conversation_id` to the browser (Option E, "Provenance of a draft"). Not verified: that conversations run through the LiveAvatar Voice Agent appear in the customer's ElevenLabs workspace, and that this backend's `ELEVENLABS_API_KEY` belongs to that workspace. Settled by one test conversation and one read of it, which is a provider call this spike did not make. | Without it, every draft is unverified input and approving one is authoring (Option E). |
-| U10 | The rendered voice (`ELEVENLABS_VOICE_ID` with `eleven_v3_conversational`, `.../src/config.py:22-23`) sounds like the agent's live cloned voice. | **Unverified.** `ELEVENLABS_VOICE_ID` is set on the running install. The agent's voice id, model and settings live at the provider. ElevenLabs' own page says `eleven_v3_conversational` "does not currently preserve PVC characteristics well". Settled by reading the agent's `tts` settings and a listening test of one rendered answer against one live answer. | Options B and E. If false, cached and live answers sound like two people in one conversation, and recording the live answer (C or D) is the only route to the same voice (§6 diagram). |
+| U8 | The provider starts billing at the token mint (`POST /v1/sessions/token`), as `.../src/assistant/service.py:141-144` assumes. | **Unverified, and the sources disagree.** LiveAvatar's credits page says it "charges per minute of session time" and that "you're not metered during frontend setup"; its older master FAQ counts minutes "from the moment the live chat connects" (that page renders only with JavaScript, so this quote is not verifiable by review). ElevenLabs counts "connection duration" (Option E, "Where the saving happens"). Settled by one sandbox-free test session, comparing its creation time, duration and credits charged, or by asking LiveAvatar support. | Decides whether a stored answer must be served before the mint or only before `session.start()`. The design conclusion does not change: after connection there is no point to hold a turn. |
+| U9 | The backend can read a finished voice agent conversation back from ElevenLabs, for draft provenance. | **Partly verified.** The ElevenLabs API can return a conversation's transcript by id, and LiveAvatar passes the `conversation_id` to the browser (Option E, "Provenance of a draft"). LiveAvatar's own transcript endpoint is documented for FULL mode, and the voice agent runs as LITE. Not verified: that conversations run through the LiveAvatar Voice Agent appear in the customer's ElevenLabs workspace, and that this backend's `ELEVENLABS_API_KEY` belongs to that workspace. Settled by one test conversation and one read of it, which is a provider call this spike did not make. | It gates the answer side of Option E's phase 2. Until it holds, drafts carry the question only and staff write every answer, because a reviewer shown a pre-filled answer is not a reliable control (Option E, "Provenance of a draft"). |
+| U10 | The rendered voice (`ELEVENLABS_VOICE_ID` with `eleven_v3_conversational`, `.../src/config.py:22-23`) sounds like the agent's live cloned voice. | **Unverified.** `ELEVENLABS_VOICE_ID` is set on the running install. The agent's voice id, model and settings live at the provider. The render path sends the request schema's default settings (`.../src/schemas.py:34-37`), and on the v3 model only `stability` (`apps/api/services/elevenlabs/client.py:50-53`), so matching the settings needs a small code change. ElevenLabs' own page says `eleven_v3_conversational` "does not currently preserve PVC characteristics well". Settled by reading the agent's `tts` settings and a listening test of one rendered answer against one live answer. | Options B and E. If false, cached and live answers sound like two people in one conversation, and recording the live answer (C or D) is the only route to the same voice (§6 diagram). |
 | U11 | Persian speech-to-text is accurate enough on recorded clinic questions, and speech-to-text plus the match answer within "a few seconds" (`docs/API.md:194`). | **Unverified.** ElevenLabs Scribe v2 puts Persian in its ">5% to ≤10% WER" tier on its own benchmark; that is a hosted model. `faster-whisper`, which ADR 0006 names for local use, is not installed and was not measured. `.../src/config.py:57-59` records that none of the speech providers behind LiveAvatar's FULL mode, ElevenLabs included, support Persian. That is about LiveAvatar's set-up, not about Scribe, and ElevenLabs publishes no Persian figure for its realtime model. Settled by a labelled set of recorded Persian clinic questions, run through each candidate, with accuracy and time measured. | Option E's phase 3 and its C5, C7 and C8 scores. |
-| U12 | Users read the confirm prompt before tapping yes, including when the candidate differs from their question by one negation. | **Unverified.** Published one-click studies put wrong-suggestion acceptance at 10 to 20% for clinicians and change detection at 20% or less after habituation (Option E, "The confirm step"). None of them tested this prompt. Settled by a usability test with Persian near-miss pairs, on the pre-session screen, with the single-candidate and the pick-from-three variants. | The one failure left in Option E's matching. |
+| U12 | Users read the candidates before tapping one, including when a candidate differs from their question by one negation. | **Unverified.** Published one-click studies put wrong-suggestion acceptance at 10 to 20% for clinicians and change detection at 20% or less after habituation (Option E, "The confirm step"). None of them tested this prompt. Settled by a usability test with Persian near-miss pairs, on the pre-session screen, with the single-candidate and the pick-from-three variants. | The one failure left in Option E's matching. |
 | U13 | There is an accepted false-hit or false-confirm rate, and the pasted document's `0.88` has a source. | **Unverified, and it is a decision, not a fact.** No number is stated anywhere in the repository, and `0.88` has no source here. It sits below the only published starting range, 0.90 to 0.95, which is English (§5.0). Settled by the owner stating the rate the product can carry. | Without a number, U12's test cannot pass or fail, and C, D and E cannot be judged, only argued about. |
 | U14 | A multilingual embedding model ranks a Persian paraphrase above a Persian negation, and runs on the orchestrator's CPU fast enough. | **Unverified.** The `multilingual-e5` model cards list Persian and report no Persian paraphrase or negation test (Option E, "Which matcher"). No machine-learning runtime is installed (`requirements.txt:1-15`). Settled by running the §5.0 pairs, and a larger labelled Persian set, through the candidate models, with timing. | E's matcher quality. It is U3 applied to E, with lower stakes because the user confirms. |
 | U15 | A pre-session microphone recording works in the Capacitor WebView on iOS and Android, in a browser, and in the widget's Shadow DOM on a customer's page. | **Unverified.** The mobile target has never been built natively (`apps/frontend/src/shared/platform/microphone.ts:9-12`). This is the local microphone, not the remote track U2 is about. Settled by a recording test on each runtime. | Option E's C1 score. |
-| U16 | A provider batch render could replace the live LITE render, with this project's avatar and voice. | **Checked and negative for the avatar.** LiveAvatar has no batch render, and HeyGen's batch API cannot use a LiveAvatar avatar (Option E, deltas table). A separate HeyGen avatar of the practitioner would be a different model of the face. HeyGen's self-serve price is shown only in its dashboard. Settled by a side-by-side look at the two avatar models, and a price from the dashboard. | If a batch render were possible, the render step would not need a public LiveKit endpoint, which would remove B's and E's C7 problem. |
+| U16 | A provider batch render could replace the live LITE render, with this project's avatar and voice. | **Unverified, likely negative for the avatar.** LiveAvatar's OpenAPI file has no render endpoint, and HeyGen's API renders "from a HeyGen avatar or an arbitrary image" (Option E, deltas table). The only direct statement that a LiveAvatar avatar cannot be used there is in the LiveAvatar master FAQ, which renders only with JavaScript and is not verifiable by review. A HeyGen avatar or a photo of the practitioner would be a different model of the face. HeyGen's self-serve price is shown only in its dashboard. Settled by asking HeyGen or LiveAvatar support whether a LiveAvatar avatar id works in `POST /v3/videos`, a side-by-side look at the two avatar models, and a price from the dashboard. | If a batch render were possible, the render step would not need a public LiveKit endpoint, which would remove B's and E's C7 problem. |
 | U17 | A server can ask the customer's existing ElevenLabs agent a text question with this backend's key. | **Partly verified.** ElevenLabs agents have a text-only mode billed per message (Option E, deltas table). Not verified: whether this backend's key reaches the customer's agent, which is the same workspace question as U9. | Only for pre-filling answers to staff-entered questions. E's core does not need it. |
 | U18 | A render job can own a whole LITE session inside the API process, with a lease and a retry, within the account's session limits. | **Partly verified.** The code path exists (`apps/api/services/liveavatar/manager.py:56-190`). LiveAvatar documents one WebSocket per session and a five-minute idle timeout ([LITE events](https://docs.liveavatar.com/docs/lite-mode/events)). Plan limits on session length and concurrency differ between LiveAvatar's pages. Settled with U4, by running the render job once outside production. | Option E's job runner. It shares U4's evidence. |
 | U19 | Spaces can serve private renders through its CDN, and LiveKit Egress keeps a local copy when an upload fails. | **Checked and negative on both.** Presigned requests "aren’t cached by the Spaces CDN" (Option E, deltas table). Egress replaced the `backup_storage` key with a `backup` block in v1.9.0 (`pkg/config/base.go` at [v1.8.6](https://github.com/livekit/egress/blob/v1.8.6/pkg/config/base.go) against [v1.9.0](https://github.com/livekit/egress/blob/v1.9.0/pkg/config/base.go), fetched 2026-09-23), and this repository runs v1.14.1 (`docker-compose.yml:65`) with the old key (`infra/livekit-egress/egress.yaml:10`). My inference, not tested: the old key is ignored, so today there is no backup location for a failed upload. It does not matter while Egress writes to local disk. | Only if renders move to Spaces. It is also a small config finding outside this spike's files. |
@@ -1303,7 +1406,9 @@ Write `docs/DECISIONS/0014-conversation-data-retention.md` before any spec. It m
    drafts, rejected drafts and approved answers born from a conversation.
 2. May media generated during one user's conversation be replayed to a different user? That is a
    distinct question from storage and it is the one the proposal actually needs. Under Option E
-   the media is rendered later, but its text still comes from one user's conversation.
+   the media is rendered later, but its text still comes from one user's conversation. The same
+   holds for the question's wording: may a question one user asked be shown to other users as a
+   suggestion or a match, after staff reword it and remove names and other personal details?
 3. **Deletion for widget visitors.** Widget sessions have no user id (`002_assistant.sql:23-24`,
    `.../src/assistant/router.py:49`). If their text is stored, what key deletes it on request? Or
    is nothing stored from the widget door at all?
@@ -1311,8 +1416,10 @@ Write `docs/DECISIONS/0014-conversation-data-retention.md` before any spec. It m
    hosted speech-to-text or embedding API (for example `text-embedding-3-large` or ElevenLabs
    speech-to-text)? No rule decides this today. What does a no-internet install use instead (C7)?
 5. **Provenance of drafts.** Must a draft come from a server-side read-back of the conversation
-   (U9), or may the browser submit one? If the browser may, how is the draft labelled for the
-   reviewer, and who may approve it, with what audit record?
+   (U9), or may the browser submit one? This spike's answer for the answer side is the
+   read-back only (§6, item 2). For the question side: may drafts come from the widget's public
+   embed door at all, or only from signed-in users? And who may approve a draft, with what audit
+   record?
 6. Does object storage become a platform dependency? If yes, what is the on-premise story
    (self-hosted MinIO reached through the same `S3Upload` fields, per §4.4, which needs no new
    client only if Egress uploads directly; see the correction there)? And what is the **serving
@@ -1340,7 +1447,9 @@ job state, and how a job that dies with the process is retried (Option E, "The j
    (`docs/DECISIONS/0010-website-widget.md:71-73`), while the service reads one global setting
    (`.../src/assistant/service.py:71`).
 3. **Check voice parity (U10).** Read the agent's voice settings at the provider and compare them
-   with `ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL_ID`. It gates every render, B's included.
+   with `ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL_ID`. Plan the small code change that passes the
+   agent's voice settings on the render path, which today sends schema defaults (Option E, "Voice
+   and avatar parity"). It gates every render, B's included.
 4. The ADR above.
 5. A `SPEC.md` for Option B, in this folder, via the `writing-specs` skill. It must place the
    suggestions before Start, build playback at both render sites, and fetch the video in a way
@@ -1363,9 +1472,10 @@ job state, and how a job that dies with the process is retried (Option E, "The j
    includes **converting** `finalize`, which busy-waits up to fifteen seconds today
    (`.../src/main.py:406-409`), not just wrapping it.
 8. **Only if the ADR allows storing question text:** a spec for Option E's phase 2, the draft
-   loop, with drafts labelled unverified unless U9 is settled.
-9. **Only after U11, U12 and U6 have evidence:** a spec for Option E's phase 3, free speech before
-   the session with a confirm step.
+   loop, with questions only. Staff write every answer. The answer side is added only after U9 is
+   settled, by a server-side read-back, never from browser-submitted text.
+9. **Only after U11, U12, U15 and U6 have evidence, and the owner has set U13's number:** a spec
+   for Option E's phase 3, free speech before the session with a confirm step.
 
 **Open questions for whoever writes that spec.**
 
@@ -1414,3 +1524,25 @@ author must not meet them cold.
   should not share a status column: the question's review, and the media's render. `DRAFT` already
   means "recording row created" on `video_assets` (`.../src/database.py:129-134`), so the draft
   status needs another name.
+- **Added in fix round 1, for Option E's phases.** Each is a gap this spike names and does not
+  answer.
+  - Which language's approved entries does a user see? The list is authored per language. A
+    Persian speaker who types in English, or the reverse, may match nothing or the wrong list.
+  - Does the key-collision attack (§5.0) still matter once the user taps the match? A crafted
+    question now shows its crafted candidate only to the person who crafted it. The poisoning path
+    moves to the draft endpoint, which "Provenance of a draft" covers. Say which the spec assumes.
+  - Should declines ("none of these") be recorded? They are measurable without storing user
+    text, and they show the matcher's misses. They do not show an unread tap, which looks like a
+    success.
+  - How are near-duplicate drafts grouped for review? Grouping needs the same embedding step, and
+    a count of duplicates cannot be trusted (see "Provenance of a draft").
+  - Whose words are rendered after an admin edits an answer? From then on the text is staff's,
+    not the agent's, and it can drift from the ElevenLabs knowledge base. Is an approved answer
+    checked against the knowledge base, and again when the knowledge base changes?
+  - What does one render cost? One LITE session for the length of the answer (1 credit per
+    minute, see the note on U7), the speech characters, and Egress CPU. Nothing measures it yet.
+  - How are rejected or replaced renders deleted from a bucket, if Spaces is used? No delete path
+    exists today. A blob fetched through the backend needs no extra `media-src` origin in a
+    customer's policy. A direct bucket URL would.
+  - The widget opens in voice mode (`apps/frontend/src/app/widget/config.ts:73`), so a hit there
+    plays audio only unless the panel switches to video. Which one does the spec want?
