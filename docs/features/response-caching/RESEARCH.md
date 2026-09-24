@@ -25,7 +25,8 @@ option shares B's authentication and `finalize` costs, narrowed using Option C's
 
 **On the `Status` value.** The author left this spike `In Review`, because promoting a spike to
 `Resolved` is the maintainer's call. The owner marked it `Resolved` on 2026-09-25, together with
-the answers to ADR 0014 (accepted in part) and ADR 0015 (accepted). The pick stands: Option B (§6).
+the answers to ADR 0014 and ADR 0015 (both accepted). The owner chose Option B first, then
+Option D (ADR 0014 item 7).
 
 ## 1. The question
 

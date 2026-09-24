@@ -11,7 +11,7 @@ service (`docker-compose.yml:91-127`). Its only background work is `asyncio.crea
 Redis is locks and rate limits, not a queue (`.../src/coordination.py:30-107`).
 
 The spike (`docs/features/response-caching/RESEARCH.md`, "§" below) sent the question here
-(`RESEARCH.md:1434-1436`), and ADR 0014 lists what to settle (`0014:289-296`). Four facts force it:
+(`RESEARCH.md:1434-1436`), and ADR 0014 lists what to settle (`0014:319-326`). Four facts force it:
 
 - `docs/API.md:20-22` says long work answers `202` with a job id, polled at `GET /api/jobs/{jobId}`.
   That endpoint does not exist (§4.1 row 5).
@@ -20,7 +20,7 @@ The spike (`docs/features/response-caching/RESEARCH.md`, "§" below) sent the qu
 - `generation_jobs` was shaped for a runner (`.../migrations/001_initial.sql:55-68`), but no code
   uses it (§4.1 row 5). It has no attempt count, lease or worker id (`RESEARCH.md:1081-1082`).
 - B's and E's render jobs need a runner (`RESEARCH.md:1079-1084,1140`). ADR 0014 first waited for
-  a job to delete drafts after 30 days. The owner removed that deadline (`0014:61-68`), so no
+  a job to delete drafts after 30 days. The owner removed that deadline (`0014:63-68`), so no
   draft waits for this runner now.
 
 The owner answered each item on 2026-09-25. Each item's "Owner decision" line records the answer.
@@ -102,7 +102,7 @@ asset with an Egress id, `main.py:374-380`) and a new Egress. On reclaim the run
 Egress by its id (`main.py:393,404`); a failed stop counts as stopped, since `stop_egress` turns
 every error into `egress_failure` (`.../src/livekit_gateway.py:103-109`). The old row gets
 `RENDER_FAILED`, a new value no reviewer sets (`TEXT` column, `001_initial.sql:50`), and loses its
-file. `REJECTED` stays the staff outcome with its audit row (`0014:165-167`). The next attempt
+file. `REJECTED` stays the staff outcome with its audit row (`0014:189-191`). The next attempt
 waits five minutes (`run_after`), so the old session has ended at the provider.
 
 **What keeps a half-rendered asset invisible.** A new row starts `DRAFT` (`.../src/database.py:134`)
@@ -189,14 +189,14 @@ this cleanup. It runs inside the same runner, once a day, so a row can outlive i
 day at most. It keeps every failure: failed job rows and `RENDER_FAILED` video rows stay, so the
 failure history is never lost.
 
-It never deletes a draft. ADR 0014 item 1, as the owner decided it, keeps a draft until an admin
-approves or rejects it (`0014:61-68`).
+It never deletes a draft or an unpublished recorded answer. ADR 0014 item 1, as the owner decided
+it, keeps each until an admin decides about it (`0014:63-82`).
 
 **Decision.** The runner runs the cleanup as `retention_sweep` with a fixed `dedupe_key`. On
 startup the runner enqueues it if none is queued or running. The next run, a day ahead, is
 enqueued in the transaction that closes the current run, whatever its outcome. A failed sweep
 writes `job_failed` (item 3). Each run deletes `done` jobs past item 2's period, and a withdrawn
-or replaced MP4 with its row (`0014:74`). It never deletes a `failed` job or a `RENDER_FAILED`
+or replaced MP4 with its row (`0014:88`). It never deletes a `failed` job or a `RENDER_FAILED`
 row. A `RENDER_FAILED` row has already lost its file (item 3), so keeping it keeps no media.
 The media period stays ADR 0014's. With a queue library (item 1), the sweep is its scheduled job,
 if it can schedule jobs; the spike does not say.

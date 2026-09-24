@@ -1,7 +1,7 @@
 # 0014. Conversation data retention
 
-Status: Accepted in part (2026-09-25). Items 1, 2, 4, 5, 6 and 7 and the storage part of item 3
-are decided. The playback part of item 3 stays Proposed.
+Status: Accepted (2026-09-25). The owner decided every item. Items 1, 2, 3 and 7 changed the
+proposal. Item 3 depends on a new ADR for a signed-in widget.
 Date: 2026-09-23
 
 ## Context
@@ -32,17 +32,19 @@ Three facts shape every item below:
   (`.../src/database.py:129-134`).
 
 The owner answered each item on 2026-09-25. Each item's "Owner decision" line records the answer.
-Where the owner changed the proposal, the item's text now says what the owner decided.
+Where the owner changed the proposal, the item's text now says what the owner decided. The owner
+answered in two rounds. In the second, the owner chose to build both Option B and Option D, B
+first, and to make the widget a signed-in surface.
 
 | Item | Owner's answer | Result |
 | ---- | -------------- | ------ |
-| 1 | No automatic deletion after 30 days. Only an admin decides. | Accepted, changed |
-| 2 | Once an admin approves it, it can be shown to all users. | Accepted |
-| 3 | Store questions from the website widget too, confirmed after the risks were explained. | Storage part accepted, changed. Playback part open |
+| 1 | No automatic deletion after 30 days. Only an admin decides. Record every live answer (Option D). | Accepted, changed |
+| 2 | Once an admin approves it, it can be shown to all users, recorded answers included. | Accepted, changed |
+| 3 | Widget users must sign in; the widget loads the web version. Their questions are stored. | Accepted, changed. Needs a new ADR |
 | 4 | Asked why ElevenLabs and not LiveAvatar, then accepted. | Accepted |
 | 5 | Accepted. | Accepted |
 | 6 | Accepted. | Accepted |
-| 7 | Asked what BYO and Option D mean, then accepted the recommendation. | Accepted |
+| 7 | Build Option D after Option B, with BYO. The U1 test is approved. | Accepted, changed |
 
 Code is cited at `35f6154`, whose code is identical to `main@eb05da0`. `.../` is
 `apps/api/services/orchestrator/`.
@@ -62,71 +64,93 @@ and a test asserts that creating a draft leaves its text in no log record. Per-a
 E, step 4). In phase 2 the screen before Start is buttons (§6, trade-offs, B's suggestions row),
 so it is the first `user_transcript` of a session started without a tap on a suggestion
 (`apps/frontend/src/features/assistant/state.ts:343-356`). In phase 3 it is the question asked on
-that screen; its audio is not kept after transcription. No live media is stored. A draft has no
-end date: it stays until an admin approves or rejects it. Nothing deletes it on a timer. A
-deletion request from a signed-in user removes that user's drafts by user id; an admin carries it
-out (limits in Consequences). No draft is written before the phase 2 spec builds the consent step.
+that screen; its audio is not kept after transcription. A draft has no end date: it stays until
+an admin approves or rejects it. Nothing deletes it on a timer.
+
+The backend may also store **each live answer as its own video** (Option D, item 7). Every answer
+in every live session is recorded. The recording holds the avatar's audio and video only, never the
+user's microphone or camera. Today's recorder saves the whole room
+(`start_room_composite_egress`, `.../src/livekit_gateway.py:84-93`), so D needs a recorder that
+takes the avatar's tracks only. The question that led to the answer is stored with it as text, so
+an admin can judge it. A recorded answer, like a draft, stays until an admin publishes or rejects
+it.
+
+A deletion request from a user removes that user's drafts and unpublished recordings by user id;
+an admin carries it out (limits in Consequences). Before Start, the user is told that their
+questions and the avatar's answers are stored and may be shown to others after review, and must
+agree. Without agreement the session does not start. No draft or recording is written before the
+spec that builds this consent step.
 
 | Record | Lifecycle | Kept until |
 | ------ | --------- | ---------- |
 | Draft: the user's words | question review | an admin rejects or approves it, or its user asks for deletion. Item 5's audit row stays, without text |
 | Library entry: staff's cleaned text (item 2) | question review, then media render | the entry is withdrawn |
 | Rendered MP4 | media render | withdrawn or replaced. The file is deleted with its row |
+| Recorded answer: the avatar's live answer and its question text (Option D) | answer review | an admin rejects it, or its user asks for deletion. Once published, it is a library entry and follows that row |
 
 **Rejected:** a draft per turn, since follow-up turns lean on earlier ones (§5 Option E, step 4).
 And no user text at all: B stays, but staff never learn which questions are missing (§6,
 trade-offs, first row).
 
-**Owner decision, 2026-09-25: accepted with a change.** The proposal deleted an unreviewed draft
-after 30 days. The owner rejected that: only an admin decides what happens to a draft. The rest of
-the proposal stands: question text only and no live media, one draft per missed visit, and consent
-as the legal basis, asked before Start: no agreement, no draft. The spike has no legal analysis.
-Some privacy laws require an end date for stored personal data. If counsel finds that such a law
+**Owner decision, 2026-09-25: accepted with two changes.** First, the proposal deleted an
+unreviewed draft after 30 days. The owner rejected that: only an admin decides what happens to a
+draft. Second, the proposal stored no live media. The owner chose Option D, which records each live
+answer. The rest of the proposal stands: one draft per missed visit, and consent as the legal
+basis, asked before Start. Because every answer is recorded, a user who does not agree cannot start
+a session. The spike has no legal analysis. Some privacy laws require an end date for stored
+personal data, or a way to use a service without being recorded. If counsel finds that such a law
 applies, this item is amended.
 
 ### 2. Replay to a different user
 
-**Decision.** Media recorded from one user's live conversation is never shown to another user.
-Media rendered offline from approved text may be shown to signed-in users, and to widget visitors
-as item 3 decides. A question one user asked reaches others only as a library entry (§5 Option E,
-step 5). The whole entry, question and answer, is staff text, cleaned of names and other personal
-details before approval, since an agent answer can repeat what the user said. The same holds for
-a widget visitor's question (item 3): only the staff's reworded text is ever shown.
+**Decision.** Media rendered offline from approved text may be shown to all signed-in users. A
+question one user asked reaches others only as a library entry (§5 Option E, step 5). Its question
+text is staff text, cleaned of names and other personal details before approval, since an agent
+answer can repeat what the user said.
+
+A recorded live answer (item 1, Option D) may be shown to other users only after an admin watches
+the whole video and publishes it as a library entry, with a question the admin writes. An admin
+cannot edit a video, only publish or reject it. So an answer that names the user or repeats their
+personal or health details is rejected, however useful it is. The admin judges whether a question
+is common from the list of recorded questions; automatic grouping of similar questions comes later
+(Option E's matcher).
 
 **Rejected:** showing the user's words as asked. That shows one person's details to strangers, and
 lets whoever posts drafts choose what others read (§8, open questions, the key-collision bullet).
+And publishing a recorded answer without an admin watching all of it.
 
-**Owner decision, 2026-09-25: accepted.** No for recorded media. Yes for a question after staff
-rewording and admin approval: an approved entry may be shown to all users. For widget visitors,
-the playback part of item 3 still applies.
+**Owner decision, 2026-09-25: accepted with a change.** The proposal said no for recorded media.
+The owner chose Option D: a recorded live answer may be shown to all users once an admin has
+reviewed and published it. A question is shown only after staff rewording and admin approval.
 
 ### 3. Widget visitors
 
-**Decision, storage.** A widget visitor's question may be stored as a draft, under item 1's
-rules. A widget visitor has no user id (`router.py:49`), so this changes three things.
+**Decision.** The widget becomes a signed-in surface. A visitor signs in, and the widget loads the
+web version of the app. A widget user is then a signed-in user with a user id, and every rule of
+items 1 and 2 applies to them as to a `web` user: their questions are stored as drafts, their
+answers are recorded, they can ask for deletion, and they see library entries.
 
-- The draft stores no visitor identifier. The client address the rate limit counts is not stored
-  with it. So a visitor cannot later find or delete their own draft, and the widget's consent text
-  says so before Start.
-- Anyone who loads the widget on an allowed origin can post a draft. The public embed key is not a
-  credential (`0010-website-widget.md:69-70`). The draft endpoint has its own rate limit per key and
-  client address (item 5), and an admin reviews every draft before anyone sees it (item 2).
-- The consent step (item 1) is shown in the widget as well as on `mobile` and `web`.
+This reverses ADR 0010, which chose a public embed key because "there is no logged-in user"
+(`0010-website-widget.md:16`) and rejected loading the web target in an `<iframe>`
+(`0010-website-widget.md:22-24`). That change needs its own ADR. It must settle how a sign-in
+works inside a page on the customer's site, since browsers often block a site's cookies inside a
+frame on another site, and web sessions are HttpOnly cookies (`docs/SECURITY.md:6`).
 
-**Decision, playback.** Whether the widget plays library entries is open: ADR 0010 keeps widget
-sessions in sandbox, while the code reads one global flag (`0010-website-widget.md:71-73`,
-`.../src/assistant/service.py:71`, §5 Option E, C9).
+**Meanwhile:** until that ADR is accepted and built, the widget stays the anonymous embed door.
+Nothing is stored from the embed door, because a visitor with no user id cannot ask for deletion
+and anyone on an allowed origin could post drafts with the public key
+(`0010-website-widget.md:69-70`). The widget plays no library entries while its sessions stay in
+sandbox (`0010-website-widget.md:71-73`, `.../src/assistant/service.py:71`), because a visitor
+would see the practitioner's face on a hit and the sandbox avatar on a miss.
 
-**Rejected:** a deletion key for anonymous text. The only per-visitor value the backend holds is
-the client address the rate limit counts (`router.py:49`). It is shared, it changes, and storing
-it beside the text adds personal data. A random code per visitor is a credential with no account.
+**Rejected:** storing text from the anonymous widget. The owner first chose it, then chose a
+signed-in widget instead, which gives every stored question an owner. And a deletion key for
+anonymous text: the only per-visitor value the backend holds is the client address the rate limit
+counts (`router.py:49`), which is shared and changes.
 
-**Owner decision, 2026-09-25: storage accepted with a change.** The proposal stored no text from
-the widget. The owner decided to store widget questions too, so staff learn what website visitors
-ask. **Playback stays open.** Default proposed: the widget plays no library entries while its
-sessions stay in sandbox, because a visitor would see the practitioner's face on a hit and the
-sandbox avatar on a miss. It is settled with the owner's decision on the widget and sandbox (§8,
-production item 2).
+**Owner decision, 2026-09-25: accepted with a change.** The proposal stored nothing from the
+widget. The owner decided that widget users must sign in and use the web version, and that their
+questions are stored like any signed-in user's. The new widget ADR comes after Option B.
 
 ### 4. Third parties at query time
 
@@ -160,7 +184,7 @@ accuracy is unmeasured either way (U11, U14).
 **Decision.** A draft's answer side comes only from a server-side read-back by provider id, once
 U9 holds, never from answer text the browser posts (§5 Option E, "Provenance of a draft"). A
 no-internet install cannot read back, so its drafts stay questions only (C7). The question side
-may come from the browser, on both doors (item 3). The draft, speech-to-text and match
+may come from the browser, from signed-in users only (item 3). The draft, speech-to-text and match
 endpoints each get their own rate limit: the hourly one counts session mints only
 (`router.py:59-63`), and hosted speech-to-text is paid (§5 Option E, C3). Approving or rejecting
 needs `require_admin` (`.../src/auth/dependencies.py:57-60`) and writes an audit row: reviewer,
@@ -231,9 +255,18 @@ the live voice (U10). Only if that check fails does Option D become worth a paid
 **Rejected:** deciding yes now. It rests on an unverified capability, and makes a public media
 endpoint a per-session requirement, which breaks the installs ADR 0006 names (§5 Option D, C7).
 
-**Owner decision, 2026-09-25: accepted.** The owner asked what BYO and Option D mean; the answers
-are above. No BYO transport for the assistant now. Build Option B. Run the paid U1 check only if
-the U10 voice check fails, the only reason the spike keeps C or D open (§6).
+**Owner decision, 2026-09-25: accepted with a change.** The proposal was no BYO. The owner chose
+to build Option D after Option B, so the assistant gets a BYO transport, and approved the U1 test.
+
+- **Order:** Option B first. D reuses B's library, admin review screen and playback.
+- **Precondition:** the U1 test. It runs in sandbox where it can: a sandbox session costs no
+  LiveAvatar credits, though a voice agent session still uses the customer's ElevenLabs minutes.
+  It needs our LiveKit server reachable on a public `wss://` address first
+  (`apps/api/services/liveavatar/manager.py:73-81`). The owner is asked again right before the call.
+- **If U1 is false:** server-side capture is closed. The owner then decides whether to capture in
+  the browser instead (Option C).
+- **If U1 is true:** D works on internet installs only. Every live session then runs through our
+  LiveKit server, so its uptime becomes the assistant's uptime.
 
 ## Consequences
 
@@ -246,42 +279,40 @@ Option B needs none of these answers (§6).
 - Stored user text is a one-way door: undoing drafts is a privacy exercise (§5 Option E, Reversal).
 - Drafts have no end date (item 1). The draft table and the review queue grow until an admin
   clears them, and an unread draft keeps a user's words with no limit.
-- A consent step on the pre-session screen, in `en` and `fa`, on `mobile`, `web` and `widget`.
-- A widget visitor cannot have their draft deleted: nothing links it to them (item 3).
-- The draft endpoint accepts the public embed key, so it is a new write path open to anyone on an
-  allowed origin (item 3). Its rate limit trusts the first `X-Forwarded-For` entry today, which a
-  caller can fake (a recorded follow-up).
+- A consent step on the pre-session screen, in `en` and `fa`, on `mobile` and `web`, and on the
+  widget once it signs users in. A user who does not agree cannot start a session (item 1).
+- Every live answer is a stored video (item 1). Storage grows with every session, and every video
+  waits for an admin to watch it. Unpublished recordings have no end date.
+- A signed-in widget reverses ADR 0010 and needs its own ADR (item 3).
 - Local models need a machine-learning runtime the image lacks (`.../requirements.txt:1-15`).
 - A blob plays only after the whole file downloads (§5 Option B, C3 correction).
 - Staff write every answer until U9 holds, which is the work the draft loop was meant to save.
 - Each new table or status is an append-only migration with no downgrade (C4 in §3), and the
   review queue grows with every miss (§5 Option E, Cost).
 
-**What deletion does not reach.** Widget drafts on a visitor's request (item 3). Database backups
-of the draft table, and the copy of a conversation that stays at the provider after read-back.
-This ADR does not cover the last two. The spike has no evidence on either.
+**What deletion does not reach.** Database backups of the draft and recording tables, a recording
+already published as a library entry, and the copy of a conversation that stays at the provider.
+This ADR does not cover them. The spike has no evidence on backups or on the provider's copy.
 
-**Options this enables or closes**, under the proposed defaults. C and D reopen only by amending
-items 1 and 2, and only if rendering cannot reach voice parity (U10).
+**Options this enables or closes**, under the owner's decisions.
 
 | Option | Needs | Result |
 | ------ | ----- | ------ |
 | B | nothing | open now |
-| C | items 1 and 2 | closed: no live media is stored or replayed |
-| D | items 1, 2 and 7 | closed, and item 7 waits on U1 |
+| C | items 1, 2 and 7 | the fallback only if U1 is false, and only if the owner then chooses it |
+| D | items 1, 2 and 7 | chosen, built after B, once U1 holds |
 | E, phase 2 | items 1, 2, 3 and 5 | open for questions; the answer side waits on U9 |
 | E, phase 3 | item 4 | open on internet installs, once U11, U12, U15 and U6 have evidence and the owner has set U13 |
 
-If the owner says no to storing user text, E's loop stops, C and D stay closed, and B stays. B's
-measured hit rate then decides between keeping B and Option A (§6, the diagram).
+The build order is B, then D. E's draft loop and a signed-in widget each come with their own spec.
 
 **Documents that change on acceptance.**
 
 - `docs/SECURITY.md` gains an item: conversation text is stored only as ADR 0014 allows, and
   never logged (item 13). Added with this acceptance.
-- `docs/DATA_MODEL.md` gains the draft table with its own review status (not `DRAFT`), the audit
-  columns and the retention rules, and the tables it leaves out today (§8, open questions).
-- `docs/DECISIONS/0010-website-widget.md:71-73`, if the owner lets the widget play library entries
+- `docs/DATA_MODEL.md` gains the draft and recorded-answer tables, each with its own review status
+  (not `DRAFT`), the audit columns and the retention rules, with the spec that builds them.
+- `docs/DECISIONS/0010-website-widget.md` is superseded in part by the signed-in widget ADR
   (item 3).
 - `docs/API.md` and `apps/frontend/src/data/mock/handlers.ts`, with the spec that adds endpoints.
 
