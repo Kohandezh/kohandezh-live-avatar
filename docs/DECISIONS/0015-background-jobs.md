@@ -1,6 +1,6 @@
 # 0015. Background jobs
 
-Status: Accepted (2026-09-25). The owner decided every item; items 2, 3 and 5 with changes.
+Status: Accepted (2026-09-25). The owner decided every item; items 2, 3, 4 and 5 with changes.
 Date: 2026-09-24
 
 ## Context
@@ -30,7 +30,7 @@ The owner answered each item on 2026-09-25. Each item's "Owner decision" line re
 | 1 | Accepted. | Accepted |
 | 2 | Accepted, then changed with item 5: failed jobs are never deleted. | Accepted, changed |
 | 3 | Accepted. A strong audit log for all features is needed later. For now, log each failure. | Accepted, with a logging rule |
-| 4 | Asked for a plainer description and who "staff" means, then accepted. | Accepted |
+| 4 | Asked who "staff" means. Chose 30 seconds, and 60 only if needed. | Accepted, changed |
 | 5 | Failed jobs are not deleted. The rest is accepted. | Accepted, changed |
 
 Code is cited at `536be20` (= `main@eb05da0`); `.../` is `apps/api/services/orchestrator/`.
@@ -154,7 +154,7 @@ seconds with the browser's request held open (`.../src/main.py:406-409`). If the
 recording fails even when it was only slow.
 
 The change: `finalize` answers at once with a job id. A background job waits for the file, and the
-app asks "is it done?" every few seconds with `GET /api/jobs/{jobId}`. The job gives up after 60
+app asks "is it done?" every few seconds with `GET /api/jobs/{jobId}`. The job gives up after 30
 seconds in total. The only choice for the owner is that number. A longer wait saves a slow
 recording. A shorter wait tells the admin sooner that the recording failed.
 
@@ -174,8 +174,11 @@ so it and its poll require `require_admin`: the conversion lands with or after Â
 
 **Rejected:** wrapping the loop in `asyncio.create_task`. It sleeps, dies on restart, has no poll.
 
-**Owner decision, 2026-09-25: accepted.** A 60-second file wait in total, four times today's
-fifteen. The spike never measured how long Egress takes to write the file. Client polling is the
+**Owner decision, 2026-09-25: accepted with a change.** The proposal was 60 seconds. The owner
+chose a 30-second file wait in total, twice today's fifteen, raised to 60 only if it proves too
+short. So the wait is a backend setting with a default of 30, and raising it needs no code change.
+The spike never measured how long Egress takes to write the file. A timeout writes `job_failed`
+with `egress_failure` (item 3), so the logs show whether 30 is too short. Client polling is the
 spec's.
 
 ### 5. The deletion job
