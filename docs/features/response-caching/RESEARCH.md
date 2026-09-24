@@ -3,7 +3,7 @@
 | Field   | Value                                      |
 | ------- | ------------------------------------------ |
 | Created | 2026-09-19                                 |
-| Updated | 2026-09-23                                 |
+| Updated | 2026-09-24                                 |
 | Status  | In Review                                  |
 | Domain  | assistant                                  |
 | Author  | `respcache-t1-res` (Claude Opus 5), mission `20260919-respcache`; Option E amendment by `optione-t1-res` (Claude Opus 5.5), mission `20260923-respcache-e` |
@@ -507,8 +507,12 @@ reading it. The block above is what the page says.
     rejected for, and the asymmetry has to be argued rather than assumed.** Serving: files stay on
     local disk exactly as today, and object storage stays optional. Authoring: the render step
     needs `LIVEAVATAR_TRANSPORT=byo`, and `apps/api/services/liveavatar/manager.py:73-81` refuses
-    to start a BYO session unless `public_livekit_ready`, defined at `.../src/config.py:182-183`
-    as a `wss://` URL that is not localhost. That is the same requirement that makes D fail C7.
+    to start a BYO session unless `public_livekit_ready`, which `.../src/main.py:94` fills from
+    the `real_livekit_ready` property at `.../src/config.py:182-183`, a `wss://` URL that is not
+    localhost. (Corrected 2026-09-24: an earlier version of this bullet named the manager's
+    parameter as the property itself; `real_livekit_ready` is the property on `Settings`, and
+    `public_livekit_ready` is only the keyword `main.py` passes it under.) That is the same
+    requirement that makes D fail C7.
     The difference is **when and where it applies**, not whether it applies: for D it is a
     per-session requirement in every production install, including the air-gapped ones; for B it
     is a one-time offline job that can run at the vendor, with only the finished MP4 shipped to
