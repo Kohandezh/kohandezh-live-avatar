@@ -215,7 +215,8 @@ The batch is written as a whole or not at all. The checks, in the order they run
 
 - `401 unauthorized`, `403 embed_origin_not_allowed`, `403 account_disabled`: as for creating a
   session.
-- `422 validation_error`: the body or the id breaks the rules above.
+- `422 validation_error`: the body or the id breaks the rules above. A body that is not JSON at
+  all gets this `422` even before the auth check, because the body is decoded first.
 - `429 assistant_answers_rate_limited` with `retryAfterSeconds`, `retryable: true`: more than
   `ASSISTANT_ANSWERS_RATE_LIMIT_PER_HOUR` reports (default 600) in the last hour, per user, or per
   visitor address for the widget. This is its own counter. A report never spends one of the

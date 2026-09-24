@@ -548,6 +548,17 @@ async def test_only_the_camel_case_duration_is_accepted(api):
 
 
 @pytest.mark.asyncio
+async def test_a_body_that_is_not_json_is_refused_before_the_auth_check(api):
+    """FastAPI decodes the body before it runs the dependencies, as for POST /assistant/session."""
+    response = await api.client.post(
+        answers_url(UNKNOWN_SESSION), content=b"not json", headers={"Content-Type": "application/json"}
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
 async def test_concurrent_reports_cannot_pass_the_count_cap_together(api):
     api.settings.assistant_answers_per_session_max = 1
     await api.login(PHONE)
