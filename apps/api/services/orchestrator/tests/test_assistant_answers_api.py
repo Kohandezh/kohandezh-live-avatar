@@ -1,5 +1,7 @@
 """POST /assistant/session/{id}/answers: one provider_usage row per avatar answer."""
 
+import asyncio
+import inspect
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -38,6 +40,21 @@ async def open_session(api, headers: dict[str, str] | None = None) -> str:
 
 def session_row(api, session_id: str) -> dict[str, Any]:
     return api.database.sessions[UUID(session_id)]
+
+
+def yield_on_every_database_call(database) -> None:
+    """A real database hands control back to the event loop on every call. The fake never does,
+    so two concurrent requests cannot interleave unless the test adds those yield points."""
+
+    def yielding(method):
+        async def call(*args, **kwargs):
+            await asyncio.sleep(0)
+            return await method(*args, **kwargs)
+
+        return call
+
+    for name, method in inspect.getmembers(database, inspect.iscoroutinefunction):
+        setattr(database, name, yielding(method))
 
 
 @pytest.mark.asyncio
@@ -514,3 +531,33 @@ async def test_a_report_is_logged_once_and_without_its_body(api, caplog):
         assert "durationMs" not in logged
         assert "43217" not in logged
         assert "12347" not in logged
+
+
+@pytest.mark.asyncio
+async def test_concurrent_reports_cannot_pass_the_count_cap_together(api):
+    api.settings.assistant_answers_per_session_max = 1
+    await api.login(PHONE)
+    session_id = await open_session(api)
+    yield_on_every_database_call(api.database)
+
+    responses = await asyncio.gather(
+        *(api.client.post(answers_url(session_id), json=body((index, 1000))) for index in range(3))
+    )
+
+    assert sorted(response.status_code for response in responses) == [200, 409, 409]
+    assert len(answer_rows(api)) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_reports_cannot_pass_the_session_length_together(api):
+    await api.login(PHONE)
+    session_id = await open_session(api)
+    yield_on_every_database_call(api.database)
+
+    responses = await asyncio.gather(
+        api.client.post(answers_url(session_id), json=body((0, 40_000))),
+        api.client.post(answers_url(session_id), json=body((1, 40_000))),
+    )
+
+    assert sorted(response.status_code for response in responses) == [200, 409]
+    assert sum(row["estimated_duration_ms"] for row in answer_rows(api)) == 40_000

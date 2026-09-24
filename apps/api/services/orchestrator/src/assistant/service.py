@@ -228,52 +228,45 @@ class AssistantSessionService:
         if any(answer.duration_ms > limit_ms for answer in answers):
             raise ValidationError("an answer cannot be longer than the session", {"limitMs": limit_ms})
 
-        totals = await self.database.assistant_answer_totals(row["provider_session_id"])
-        seen = set(totals["indexes"])
-        fresh: list[AssistantAnswerItem] = []
-        for answer in answers:
-            # A repeated index is a re-sent report. The first one wins, the rest are dropped.
-            if answer.index not in seen:
-                seen.add(answer.index)
-                fresh.append(answer)
-        duplicates = len(answers) - len(fresh)
-        count = totals["count"] + len(fresh)
-        duration_ms = totals["duration_ms"] + sum(answer.duration_ms for answer in fresh)
-        # A batch of only duplicates writes nothing, so it has nothing to refuse.
-        if fresh and (count > self.settings.assistant_answers_per_session_max or duration_ms > limit_ms):
+        rows = [
+            {
+                "provider": "liveavatar",
+                "operation": "assistant_answer",
+                "provider_resource_id": row["provider_session_id"],
+                # No text reaches the backend, and the backend picks no speech model.
+                "model": None,
+                "characters": None,
+                "estimated_duration_ms": answer.duration_ms,
+                # Only the playback of a stored answer can know it was a hit.
+                "cache_hit": False,
+                "metadata": {
+                    "principal": principal,
+                    "sandbox": row["sandbox"],
+                    "provider_mode": metadata.get("provider_mode"),
+                    "answer_index": answer.index,
+                    "source": "browser",
+                },
+            }
+            for answer in answers
+        ]
+        # The database drops re-sent indexes and checks both caps under a per-session lock, in the
+        # same transaction as the insert. A check here would race with a concurrent report.
+        recorded = await self.database.record_assistant_answers(
+            row["provider_session_id"],
+            rows,
+            max_count=self.settings.assistant_answers_per_session_max,
+            max_duration_ms=limit_ms,
+        )
+        if recorded is None:
             raise AppError(
                 "assistant_answers_limit", "assistant session has no room for more answers", 409, False
             )
-
-        if fresh:
-            await self.database.record_usage_batch(
-                [
-                    {
-                        "provider": "liveavatar",
-                        "operation": "assistant_answer",
-                        "provider_resource_id": row["provider_session_id"],
-                        # No text reaches the backend, and the backend picks no speech model.
-                        "model": None,
-                        "characters": None,
-                        "estimated_duration_ms": answer.duration_ms,
-                        # Only the playback of a stored answer can know it was a hit.
-                        "cache_hit": False,
-                        "metadata": {
-                            "principal": principal,
-                            "sandbox": row["sandbox"],
-                            "provider_mode": metadata.get("provider_mode"),
-                            "answer_index": answer.index,
-                            "source": "browser",
-                        },
-                    }
-                    for answer in fresh
-                ]
-            )
+        duplicates = len(answers) - recorded
         logger.info(
             "assistant_answers_recorded",
-            extra={"session_id": str(session_id), "recorded": len(fresh), "duplicates": duplicates},
+            extra={"session_id": str(session_id), "recorded": recorded, "duplicates": duplicates},
         )
-        return AnswerReport(recorded=len(fresh), duplicates=duplicates)
+        return AnswerReport(recorded=recorded, duplicates=duplicates)
 
     def _forget_old_tokens(self) -> None:
         """Drop tokens of sessions that cannot be running any more, so the map stays small."""

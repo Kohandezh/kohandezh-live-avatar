@@ -16,6 +16,7 @@ from services.orchestrator.src.auth.otp import OtpService
 from services.orchestrator.src.auth.sessions import SessionService
 from services.orchestrator.src.config import Settings
 from services.orchestrator.src.coordination import Coordinator
+from services.orchestrator.src.database import new_answers_that_fit
 from services.orchestrator.src.main import app
 
 ADMIN_PHONE = "+989120000001"
@@ -188,22 +189,30 @@ class FakeDatabase:
     async def record_usage(self, data: dict[str, Any]):
         self.usage.append(data)
 
-    async def record_usage_batch(self, rows: list[dict[str, Any]]):
-        self.usage.extend(rows)
-
-    async def assistant_answer_totals(self, provider_resource_id: str):
-        rows = [
+    async def record_assistant_answers(
+        self, provider_resource_id: str, rows: list[dict[str, Any]], *, max_count: int, max_duration_ms: int
+    ):
+        # One step with no await inside: in memory that is what the advisory lock and the
+        # transaction give the real method.
+        stored = [
             item
             for item in self.usage
             if item["provider"] == "liveavatar"
             and item["operation"] == "assistant_answer"
             and item.get("provider_resource_id") == provider_resource_id
         ]
-        return {
-            "count": len(rows),
-            "duration_ms": sum(row.get("estimated_duration_ms") or 0 for row in rows),
-            "indexes": {row["metadata"]["answer_index"] for row in rows},
-        }
+        fresh = new_answers_that_fit(
+            rows,
+            stored_indexes={item["metadata"]["answer_index"] for item in stored},
+            stored_count=len(stored),
+            stored_duration_ms=sum(item.get("estimated_duration_ms") or 0 for item in stored),
+            max_count=max_count,
+            max_duration_ms=max_duration_ms,
+        )
+        if fresh is None:
+            return None
+        self.usage.extend(fresh)
+        return len(fresh)
 
     def operations(self) -> list[str]:
         return [item["operation"] for item in self.usage]

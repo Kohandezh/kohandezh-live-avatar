@@ -30,6 +30,35 @@ def _usage_values(data: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def new_answers_that_fit(
+    rows: list[dict[str, Any]],
+    *,
+    stored_indexes: set[int],
+    stored_count: int,
+    stored_duration_ms: int,
+    max_count: int,
+    max_duration_ms: int,
+) -> list[dict[str, Any]] | None:
+    """The answer rows of a report that are new, or None when they do not fit the session's caps.
+
+    A row whose answer_index the session already holds, or that repeats an earlier row of the same
+    report, is a re-sent answer and is dropped. A report of only such rows writes nothing, so it
+    always fits. Shared with the test fake, so both decide the same way.
+    """
+    seen = set(stored_indexes)
+    fresh = []
+    for row in rows:
+        index = row["metadata"]["answer_index"]
+        if index not in seen:
+            seen.add(index)
+            fresh.append(row)
+    count = stored_count + len(fresh)
+    duration_ms = stored_duration_ms + sum(row["estimated_duration_ms"] for row in fresh)
+    if fresh and (count > max_count or duration_ms > max_duration_ms):
+        return None
+    return fresh
+
+
 class Database:
     def __init__(self, url: str, migrations_dir: Path):
         self.url = url
@@ -294,36 +323,52 @@ class Database:
     async def record_usage(self, data: dict[str, Any]) -> None:
         await self._pool().execute(_USAGE_INSERT, *_usage_values(data))
 
-    async def record_usage_batch(self, rows: list[dict[str, Any]]) -> None:
-        """Insert several usage rows in one transaction: all of them are written, or none."""
+    async def record_assistant_answers(
+        self,
+        provider_resource_id: str,
+        rows: list[dict[str, Any]],
+        *,
+        max_count: int,
+        max_duration_ms: int,
+    ) -> int | None:
+        """Write the answer rows of one assistant session that are new and still fit its caps.
+
+        Everything runs in one transaction under an advisory lock on the session, so two
+        concurrent reports cannot both read the old totals and both pass the caps. Returns how
+        many rows were written, or None when the new rows do not fit; then nothing is written.
+        """
         async with self._pool().acquire() as conn:
             async with conn.transaction():
-                await conn.executemany(_USAGE_INSERT, [_usage_values(data) for data in rows])
-
-    async def assistant_answer_totals(self, provider_resource_id: str) -> dict[str, Any]:
-        """What one assistant session has reported so far.
-
-        The count and the summed duration bound the session. The stored answer indexes let a
-        re-sent batch be recognised without any text, and without a unique index.
-        """
-        row = await self._pool().fetchrow(
-            """
-            SELECT count(*) AS count,
-              coalesce(sum(estimated_duration_ms),0)::bigint AS duration_ms,
-              coalesce(
-                array_agg((metadata->>'answer_index')::int) FILTER (WHERE metadata ? 'answer_index'),
-                '{}'::int[]
-              ) AS indexes
-            FROM provider_usage
-            WHERE provider='liveavatar' AND operation='assistant_answer' AND provider_resource_id=$1
-            """,
-            provider_resource_id,
-        )
-        return {
-            "count": int(row["count"]),
-            "duration_ms": int(row["duration_ms"]),
-            "indexes": set(row["indexes"]),
-        }
+                # Held until the transaction ends. A second report for the same session waits here.
+                await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", provider_resource_id)
+                totals = await conn.fetchrow(
+                    """
+                    SELECT count(*) AS count,
+                      coalesce(sum(estimated_duration_ms),0)::bigint AS duration_ms,
+                      coalesce(
+                        array_agg((metadata->>'answer_index')::int)
+                          FILTER (WHERE metadata ? 'answer_index'),
+                        '{}'::int[]
+                      ) AS indexes
+                    FROM provider_usage
+                    WHERE provider='liveavatar' AND operation='assistant_answer'
+                      AND provider_resource_id=$1
+                    """,
+                    provider_resource_id,
+                )
+                fresh = new_answers_that_fit(
+                    rows,
+                    stored_indexes=set(totals["indexes"]),
+                    stored_count=int(totals["count"]),
+                    stored_duration_ms=int(totals["duration_ms"]),
+                    max_count=max_count,
+                    max_duration_ms=max_duration_ms,
+                )
+                if fresh is None:
+                    return None
+                if fresh:
+                    await conn.executemany(_USAGE_INSERT, [_usage_values(row) for row in fresh])
+                return len(fresh)
 
     async def usage_summary(self) -> list[dict[str, Any]]:
         rows = await self._pool().fetch(
