@@ -23,6 +23,8 @@
 16. The LiveAvatar session token returned by `POST /api/assistant/session` is a per-session
     credential for one conversation, not a login credential. The browser SDK holds it in memory
     only; it is never put in Redux, `localStorage`, a URL, or a log, on any target.
+17. Conversation text is stored only as ADR 0014 allows (`docs/DECISIONS/0014-conversation-data-retention.md`,
+    items 1 to 3), and never logged (item 13). Today the backend stores none.
 
 ## Sessions
 
