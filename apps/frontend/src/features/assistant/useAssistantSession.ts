@@ -10,6 +10,7 @@ import {
   type AssistantLanguage,
 } from '@/entities/assistant-session';
 import { useOnline } from '@/shared/hooks';
+import { createAnswerReporter, type AnswerReporter } from './answerReporter';
 import {
   assistantReducer,
   classifyAssistantError,
@@ -41,7 +42,8 @@ export interface UseAssistantSessionOptions {
  *
  *   start -> POST /api/assistant/session (our backend mints the provider token)
  *         -> new <session class>(token) -> start() -> attach(<video>)
- *   stop  -> SDK stop + POST /api/assistant/session/{id}/close
+ *   talk  -> each avatar speech segment -> POST /api/assistant/session/{id}/answers
+ *   stop  -> SDK stop + the last answers + POST /api/assistant/session/{id}/close
  *
  * The token itself says which session class can drive it, so the SDK decides, not our backend
  * response: `ElevenLabsAgentSession` for a LiveAvatar Voice Agent (the Persian path) and
@@ -68,6 +70,8 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
   // The loaded SDK module. The controls need its enums, and it is imported on demand.
   const sdkRef = useRef<LiveAvatarSdk | null>(null);
   const backendIdRef = useRef<string | null>(null);
+  /** Reports the avatar's answers of the backend session in `backendIdRef`. */
+  const answerReporterRef = useRef<AnswerReporter | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   /**
    * The session whose stream is already on the media element.
@@ -172,15 +176,18 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
   }, []);
 
   /**
-   * Stops the SDK and closes the backend row. Safe to call twice and on unmount.
-   * The backend row is closed even when the SDK stop fails, so a session is never leaked.
+   * Stops the SDK, reports the last answers, and closes the backend row. Safe to call twice and
+   * on unmount. The backend row is closed even when the SDK stop fails, so a session is never
+   * leaked.
    */
   const releaseSession = useCallback(async () => {
     const session = sessionRef.current;
     const backendId = backendIdRef.current;
+    const answerReporter = answerReporterRef.current;
     sessionRef.current = null;
     elevenLabsRef.current = null;
     backendIdRef.current = null;
+    answerReporterRef.current = null;
     attachedSessionRef.current = null;
     stopKeepAlive();
 
@@ -196,6 +203,10 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       }
     }
 
+    // Before close, because the backend refuses a report for a closed session. The report's own
+    // timeout bounds the wait, and it never throws.
+    await answerReporter?.finish();
+
     if (backendId) {
       try {
         await closeAssistantSession(backendId);
@@ -207,7 +218,11 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
   }, [stopKeepAlive]);
 
   const subscribe = useCallback(
-    (session: LiveAvatarSession, sdk: LiveAvatarSdk) => {
+    (
+      session: LiveAvatarSession,
+      sdk: LiveAvatarSdk,
+      answerReporter: AnswerReporter,
+    ) => {
       const {
         AgentEventsEnum,
         ConnectionQuality,
@@ -245,10 +260,12 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
         });
       });
       session.on(SessionEvent.SESSION_DISCONNECTED, () => {
+        answerReporter.segmentEnded();
         dispatch({ type: 'ended', reason: 'provider' });
       });
 
       session.on(AgentEventsEnum.SESSION_STOPPED, (event) => {
+        answerReporter.segmentEnded();
         dispatch({
           type: 'ended',
           reason: endReasonFromProvider(event.stop_reason),
@@ -260,17 +277,23 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       session.on(AgentEventsEnum.USER_SPEAK_ENDED, () =>
         dispatch({ type: 'userSpeaking', isSpeaking: false }),
       );
-      session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () =>
-        dispatch({ type: 'avatarSpeaking', isSpeaking: true }),
-      );
-      session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () =>
-        dispatch({ type: 'avatarSpeaking', isSpeaking: false }),
-      );
+      session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => {
+        answerReporter.segmentStarted();
+        dispatch({ type: 'avatarSpeaking', isSpeaking: true });
+      });
+      session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+        answerReporter.segmentEnded();
+        dispatch({ type: 'avatarSpeaking', isSpeaking: false });
+      });
 
       // An ElevenLabs agent reports the conversation on its own event stream instead of (or in
       // addition to) the generic transcription events. The reducer drops a sentence that
       // repeats the previous turn of the same speaker, so both paths can stay subscribed.
       session.on(AgentEventsEnum.ELEVENLABS_AGENT_EVENT, (event) => {
+        // The user cut in: the agent stops talking, and may never send its speak-ended event.
+        if (event.elevenlabs_event_type === 'interruption') {
+          answerReporter.segmentEnded();
+        }
         for (const action of elevenLabsEventActions(event)) dispatch(action);
       });
 
@@ -335,6 +358,12 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
         language ? { language } : {},
       );
       backendIdRef.current = created.id;
+      // A new reporter per backend session, so the answer index starts at 0 again.
+      const answerReporter = createAnswerReporter(
+        created.id,
+        created.maxSessionDurationSeconds * 1000,
+      );
+      answerReporterRef.current = answerReporter;
       if (abandoned()) {
         await abandon();
         return;
@@ -367,7 +396,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
         session = new sdk.LiveAvatarSession(created.sessionToken, config);
       }
       sessionRef.current = session;
-      subscribe(session, sdk);
+      subscribe(session, sdk, answerReporter);
 
       dispatch({ type: 'connecting' });
       await session.start();
