@@ -1,7 +1,7 @@
 # 0014. Conversation data retention
 
-Status: Accepted in part (2026-09-25). Items 1, 2, 4, 5 and 6 and the storage part of item 3 are
-decided. The playback part of item 3 and item 7 stay Proposed.
+Status: Accepted in part (2026-09-25). Items 1, 2, 4, 5, 6 and 7 and the storage part of item 3
+are decided. The playback part of item 3 stays Proposed.
 Date: 2026-09-23
 
 ## Context
@@ -38,11 +38,11 @@ Where the owner changed the proposal, the item's text now says what the owner de
 | ---- | -------------- | ------ |
 | 1 | No automatic deletion after 30 days. Only an admin decides. | Accepted, changed |
 | 2 | Once an admin approves it, it can be shown to all users. | Accepted |
-| 3 | Store questions from the website widget too. | Storage part accepted, changed. Playback part open |
+| 3 | Store questions from the website widget too, confirmed after the risks were explained. | Storage part accepted, changed. Playback part open |
 | 4 | Asked why ElevenLabs and not LiveAvatar, then accepted. | Accepted |
 | 5 | Accepted. | Accepted |
 | 6 | Accepted. | Accepted |
-| 7 | Asked what BYO and Option D mean, and what to do. | Open, the answer is in item 7 |
+| 7 | Asked what BYO and Option D mean, then accepted the recommendation. | Accepted |
 
 Code is cited at `35f6154`, whose code is identical to `main@eb05da0`. `.../` is
 `apps/api/services/orchestrator/`.
@@ -231,10 +231,9 @@ the live voice (U10). Only if that check fails does Option D become worth a paid
 **Rejected:** deciding yes now. It rests on an unverified capability, and makes a public media
 endpoint a per-session requirement, which breaks the installs ADR 0006 names (§5 Option D, C7).
 
-**Owner decision: open.** The owner asked what BYO and Option D mean, and what to do
-(2026-09-25); the answers are above. Recommended: no BYO transport now. Build Option B. Run the
-paid U1 check only if the U10 voice check fails, the only reason the spike keeps C or D open (§6).
-Option B does not wait for this item.
+**Owner decision, 2026-09-25: accepted.** The owner asked what BYO and Option D mean; the answers
+are above. No BYO transport for the assistant now. Build Option B. Run the paid U1 check only if
+the U10 voice check fails, the only reason the spike keeps C or D open (§6).
 
 ## Consequences
 

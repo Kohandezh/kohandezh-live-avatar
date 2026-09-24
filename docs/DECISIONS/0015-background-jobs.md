@@ -1,6 +1,6 @@
 # 0015. Background jobs
 
-Status: Accepted in part (2026-09-25). Items 1, 2, 3 and 5 are decided. Item 4 stays Proposed.
+Status: Accepted (2026-09-25). The owner decided every item; items 2, 3 and 5 with changes.
 Date: 2026-09-24
 
 ## Context
@@ -30,7 +30,7 @@ The owner answered each item on 2026-09-25. Each item's "Owner decision" line re
 | 1 | Accepted. | Accepted |
 | 2 | Accepted, then changed with item 5: failed jobs are never deleted. | Accepted, changed |
 | 3 | Accepted. A strong audit log for all features is needed later. For now, log each failure. | Accepted, with a logging rule |
-| 4 | Asked for a plainer description, then who "staff" means. | Open, rewritten in plain words |
+| 4 | Asked for a plainer description and who "staff" means, then accepted. | Accepted |
 | 5 | Failed jobs are not deleted. The rest is accepted. | Accepted, changed |
 
 Code is cited at `536be20` (= `main@eb05da0`); `.../` is `apps/api/services/orchestrator/`.
@@ -174,9 +174,9 @@ so it and its poll require `require_admin`: the conversion lands with or after ย
 
 **Rejected:** wrapping the loop in `asyncio.create_task`. It sleeps, dies on restart, has no poll.
 
-**Owner decision: open.** The owner asked for a plainer description (2026-09-25); it is above.
-Default proposed: a 60-second file wait in total, four times today's fifteen. The spike never
-measured how long Egress takes to write the file. Client polling is the spec's.
+**Owner decision, 2026-09-25: accepted.** A 60-second file wait in total, four times today's
+fifteen. The spike never measured how long Egress takes to write the file. Client polling is the
+spec's.
 
 ### 5. The deletion job
 
@@ -226,7 +226,8 @@ not: it needs `LIVEAVATAR_TRANSPORT=byo` and a public `wss://` endpoint (`main.p
 **Work this unblocks.** ยง8 production item 7. B's and E's render jobs, once U18 holds and
 production items 2, 3, 6 are done.
 
-**Documents that change on acceptance.**
+**Documents that change with the runner's code.** Docs describe the code as it is, so these
+change in the change that builds the runner, not on acceptance.
 
 - `docs/DATA_MODEL.md` gains `generation_jobs` and the `video_assets` statuses (`RENDER_FAILED`
   included) with who may see each. It documents neither today (`RESEARCH.md:1512-1514`).
