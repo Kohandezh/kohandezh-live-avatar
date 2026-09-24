@@ -36,6 +36,7 @@ contract between the two apps. Any backend that implements it works with this fr
 | GET    | `/api/admin/dashboard`                | Admin       | `entities/dashboard`          |
 | POST   | `/api/assistant/session`              | Auth or key | `entities/assistant-session`  |
 | POST   | `/api/assistant/session/{id}/close`   | Auth or key | `entities/assistant-session`  |
+| POST   | `/api/assistant/session/{id}/answers` | Auth or key | `entities/assistant-session`  |
 
 Login is a phone number plus a one-time code (OTP). There is no password anywhere in the system.
 
@@ -185,6 +186,61 @@ Response `200`:
 Same auth. Only the caller that created the session can close it; anybody else gets `404`.
 
 Response `200`: `{ "status": "closed" }`. Closing twice is fine and answers `200` again.
+
+### POST /api/assistant/session/{id}/answers
+
+Same auth. Only the caller that created the session can report for it; anybody else gets `404`.
+The browser reports the avatar answers it measured, and the backend writes one `provider_usage`
+row per answer (`operation: "assistant_answer"`, see `docs/DATA_MODEL.md`). The backend never
+observes an answer itself, so the browser has to report. The endpoint makes no provider call.
+
+Request. The body is closed: any other key, in the body or in an item, is `422`.
+
+```json
+{ "answers": [{ "index": 0, "durationMs": 4200 }, { "index": 1, "durationMs": 1800 }] }
+```
+
+- `answers`: 1 to 20 items.
+- `index`: integer, 0 to 10000. The position of the speech segment in the session, counted by the
+  browser. It only exists so a re-sent batch is not counted twice.
+- `durationMs`: integer, at least 1 and at most the session's length
+  (`maxSessionDurationSeconds` times 1000, so 60000 in sandbox). Never above 3600000.
+
+Response `200`: `{ "recorded": number, "duplicates": number }`. An item whose `index` the session
+already reported, or that repeats an earlier item of the same batch, is dropped and counted in
+`duplicates`; in a batch the earlier item wins. A duplicate is never an error, so re-sending a
+batch is safe.
+
+The batch is written as a whole or not at all. The checks, in the order they run:
+
+- `401 unauthorized`, `403 embed_origin_not_allowed`, `403 account_disabled`: as for creating a
+  session.
+- `422 validation_error`: the body or the id breaks the rules above. A body that is not JSON at
+  all gets this `422` even before the auth check, because the body is decoded first.
+- `429 assistant_answers_rate_limited` with `retryAfterSeconds`, `retryable: true`: more than
+  `ASSISTANT_ANSWERS_RATE_LIMIT_PER_HOUR` reports (default 600) in the last hour, per user, or per
+  visitor address for the widget. This is its own counter. A report never spends one of the
+  session creations that `assistant_rate_limited` counts.
+- `404 not_found`: the session does not exist, or another caller created it.
+- `409 assistant_session_closed`, `retryable: false`: the session was closed, failed to start, or
+  is older than its length plus 300 seconds (a tab that dies never calls close).
+- `422 validation_error` with `details.limitMs`: one `durationMs` is longer than the session.
+- `429 assistant_answers_busy`, `retryAfterSeconds: 2`, `retryable: true`: another report for the
+  same session was still being written after 2 seconds. Nothing was written. Sending the same
+  batch again is safe: an `index` already stored counts as a duplicate.
+- `409 assistant_answers_limit`, `retryable: false`: after the duplicates are dropped, the session
+  would hold more than `ASSISTANT_ANSWERS_PER_SESSION_MAX` answers (default 200), or answers longer
+  than the session in total. A batch of only duplicates writes nothing and answers `200`.
+
+What an `assistant_answer` row means. It is one avatar speech segment, from
+`AVATAR_SPEAK_STARTED` to `AVATAR_SPEAK_ENDED`, measured by the browser clock. The browser asserts
+it, and it is best effort: a tab that is killed loses the answers it had not reported yet. The row
+is a measurement aid for the response-cache work, not a billing record: `estimated_duration_ms` is
+not provider minutes, and the row count is an upper bound on agent turns until it is compared with
+the real provider. `occurred_at` is when the report arrived, not when the avatar spoke.
+`cache_hit` is always `false` on these rows. No text of the question or the answer is sent or
+stored, only the index and the duration (`docs/SECURITY.md` item 13; ADR 0014, still pending,
+says the same). Nothing in the app calls this endpoint yet.
 
 ## Backend requirements
 

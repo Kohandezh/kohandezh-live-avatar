@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, Request
 from ..auth.dependencies import client_ip, resolve_optional_user
 from ..config import Settings
 from ..errors import ForbiddenError, RateLimitedError, UnauthorizedError
-from ..schemas import AssistantSessionBody, AssistantSessionResponse
+from ..schemas import (
+    AssistantAnswersBody,
+    AssistantAnswersResponse,
+    AssistantSessionBody,
+    AssistantSessionResponse,
+)
 
 HOUR_SECONDS = 3600
 
@@ -87,3 +92,26 @@ async def close_assistant_session(
 ) -> dict[str, str]:
     await request.app.state.assistant.close(session_id, principal.key)
     return {"status": "closed"}
+
+
+@router.post("/assistant/session/{session_id}/answers", response_model=AssistantAnswersResponse)
+async def report_assistant_answers(
+    session_id: UUID,
+    payload: AssistantAnswersBody,
+    request: Request,
+    principal: Principal = Depends(get_principal),
+) -> AssistantAnswersResponse:
+    settings: Settings = request.app.state.settings
+    # Its own key, and before the lookup: a report must never spend a session mint, and an unknown
+    # session is limited the same way as a real one.
+    wait = await request.app.state.coordinator.rate_limit(
+        f"assistant_answers:{principal.rate_key}",
+        settings.assistant_answers_rate_limit_per_hour,
+        HOUR_SECONDS,
+    )
+    if wait:
+        raise RateLimitedError(
+            "assistant_answers_rate_limited", "too many answer reports in the last hour", wait
+        )
+    report = await request.app.state.assistant.record_answers(session_id, principal.key, payload.answers)
+    return AssistantAnswersResponse(recorded=report.recorded, duplicates=report.duplicates)

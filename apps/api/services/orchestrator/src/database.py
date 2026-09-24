@@ -9,6 +9,59 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+# How long an answer report waits for another report of the same session to commit. Past it,
+# Postgres raises LockNotAvailableError, so waiting reports cannot hold every pool connection.
+ANSWER_LOCK_TIMEOUT_SECONDS = 2
+
+_USAGE_INSERT = """
+    INSERT INTO provider_usage
+      (provider,operation,provider_resource_id,model,characters,estimated_duration_ms,cache_hit,metadata)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+"""
+
+
+def _usage_values(data: dict[str, Any]) -> tuple[Any, ...]:
+    """The columns of one usage row. Keys that are not named here never reach the table."""
+    return (
+        data["provider"],
+        data["operation"],
+        data.get("provider_resource_id"),
+        data.get("model"),
+        data.get("characters"),
+        data.get("estimated_duration_ms"),
+        data.get("cache_hit", False),
+        json.dumps(data.get("metadata", {})),
+    )
+
+
+def new_answers_that_fit(
+    rows: list[dict[str, Any]],
+    *,
+    stored_indexes: set[int],
+    stored_count: int,
+    stored_duration_ms: int,
+    max_count: int,
+    max_duration_ms: int,
+) -> list[dict[str, Any]] | None:
+    """The answer rows of a report that are new, or None when they do not fit the session's caps.
+
+    A row whose answer_index the session already holds, or that repeats an earlier row of the same
+    report, is a re-sent answer and is dropped. A report of only such rows writes nothing, so it
+    always fits. Shared with the test fake, so both decide the same way.
+    """
+    seen = set(stored_indexes)
+    fresh = []
+    for row in rows:
+        index = row["metadata"]["answer_index"]
+        if index not in seen:
+            seen.add(index)
+            fresh.append(row)
+    count = stored_count + len(fresh)
+    duration_ms = stored_duration_ms + sum(row["estimated_duration_ms"] for row in fresh)
+    if fresh and (count > max_count or duration_ms > max_duration_ms):
+        return None
+    return fresh
+
 
 class Database:
     def __init__(self, url: str, migrations_dir: Path):
@@ -272,21 +325,59 @@ class Database:
         return {key: int(value) for key, value in dict(row).items()}
 
     async def record_usage(self, data: dict[str, Any]) -> None:
-        await self._pool().execute(
-            """
-            INSERT INTO provider_usage
-              (provider,operation,provider_resource_id,model,characters,estimated_duration_ms,cache_hit,metadata)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
-            """,
-            data["provider"],
-            data["operation"],
-            data.get("provider_resource_id"),
-            data.get("model"),
-            data.get("characters"),
-            data.get("estimated_duration_ms"),
-            data.get("cache_hit", False),
-            json.dumps(data.get("metadata", {})),
-        )
+        await self._pool().execute(_USAGE_INSERT, *_usage_values(data))
+
+    async def record_assistant_answers(
+        self,
+        provider_resource_id: str,
+        rows: list[dict[str, Any]],
+        *,
+        max_count: int,
+        max_duration_ms: int,
+    ) -> int | None:
+        """Write the answer rows of one assistant session that are new and still fit its caps.
+
+        Everything runs in one transaction under an advisory lock on the session, so two
+        concurrent reports cannot both read the old totals and both pass the caps. Returns how
+        many rows were written, or None when the new rows do not fit; then nothing is written.
+        Raises asyncpg's LockNotAvailableError when the lock stays taken for longer than
+        ANSWER_LOCK_TIMEOUT_SECONDS; the transaction then rolls back and the connection goes back.
+        """
+        async with self._pool().acquire() as conn:
+            async with conn.transaction():
+                # SET LOCAL ends with the transaction. Without it a waiting report would hold its
+                # pool connection until command_timeout.
+                await conn.execute(f"SET LOCAL lock_timeout = '{ANSWER_LOCK_TIMEOUT_SECONDS}s'")
+                # Held until the transaction ends. A second report for the same session waits here.
+                await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", provider_resource_id)
+                totals = await conn.fetchrow(
+                    """
+                    SELECT count(*) AS count,
+                      coalesce(sum(estimated_duration_ms),0)::bigint AS duration_ms,
+                      coalesce(
+                        array_agg((metadata->>'answer_index')::int)
+                          FILTER (WHERE metadata ? 'answer_index'),
+                        '{}'::int[]
+                      ) AS indexes
+                    FROM provider_usage
+                    WHERE provider='liveavatar' AND operation='assistant_answer'
+                      AND provider_resource_id=$1
+                    """,
+                    provider_resource_id,
+                )
+                fresh = new_answers_that_fit(
+                    rows,
+                    stored_indexes=set(totals["indexes"]),
+                    stored_count=int(totals["count"]),
+                    stored_duration_ms=int(totals["duration_ms"]),
+                    max_count=max_count,
+                    max_duration_ms=max_duration_ms,
+                )
+                if fresh is None:
+                    return None
+                if fresh:
+                    await conn.executemany(_USAGE_INSERT, [_usage_values(row) for row in fresh])
+                return len(fresh)
 
     async def usage_summary(self) -> list[dict[str, Any]]:
         rows = await self._pool().fetch(

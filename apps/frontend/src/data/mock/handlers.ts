@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { AssistantAgentType } from '@/entities/assistant-session';
 import type { User } from '@/entities/user';
 import { mockSession } from './session';
@@ -154,6 +155,38 @@ export const MOCK_ASSISTANT_AGENT_TYPE: AssistantAgentType = 'elevenlabs';
 export const mockAssistant: { agentType: AssistantAgentType } = {
   agentType: MOCK_ASSISTANT_AGENT_TYPE,
 };
+
+/** The mock session is 60 s long, so neither one answer nor all of them together can be longer. */
+const MOCK_SESSION_LIMIT_MS = 60_000;
+/** Mirrors the backend default of `ASSISTANT_ANSWERS_PER_SESSION_MAX`. */
+const MOCK_ANSWERS_PER_SESSION_MAX = 200;
+const ASSISTANT_ANSWERS_PATH = /^\/api\/assistant\/session\/([^/]+)\/answers$/;
+
+/** Mirrors the backend's closed request model: two integers per answer, nothing text-shaped. */
+const answersReportSchema = z.strictObject({
+  answers: z
+    .array(
+      z.strictObject({
+        index: z.number().int().min(0).max(10_000),
+        durationMs: z.number().int().min(1).max(3_600_000),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
+/**
+ * What the mock backend remembers about the one session it hands out: whether it was closed, and
+ * the duration of each answer index reported for it. Creating a session starts both over.
+ */
+const mockAssistantSession = {
+  closed: false,
+  answerDurations: new Map<number, number>(),
+};
+
+function totalDuration(durations: Map<number, number>): number {
+  return [...durations.values()].reduce((sum, duration) => sum + duration, 0);
+}
 
 /**
  * The assistant accepts either a logged-in user or the widget's embed key.
@@ -420,6 +453,9 @@ export const routes: MockRoute[] = [
             ? requestedLanguage
             : MOCK_ASSISTANT_LANGUAGES[0];
 
+      mockAssistantSession.closed = false;
+      mockAssistantSession.answerDurations.clear();
+
       return {
         body: {
           id: MOCK_ASSISTANT_SESSION_ID,
@@ -441,8 +477,83 @@ export const routes: MockRoute[] = [
     path: /^\/api\/assistant\/session\/[^/]+\/close$/,
     handle(request) {
       requireAssistantPrincipal(request);
+      if (
+        request.url.pathname ===
+        `/api/assistant/session/${MOCK_ASSISTANT_SESSION_ID}/close`
+      ) {
+        mockAssistantSession.closed = true;
+      }
       // The real backend is idempotent, so closing twice is still a 200.
       return { body: { status: 'closed' } };
+    },
+  },
+  {
+    method: 'post',
+    path: ASSISTANT_ANSWERS_PATH,
+    handle(request) {
+      // Same order and codes as the backend, with four differences a caller must not rely on:
+      // no 429 (no hourly limit, as for session creation, and no assistant_answers_busy, because
+      // the mock never waits for a lock); no 409 for a session past its length
+      // (only close makes it 409); a non-UUID id is 404 here, because the mock's own id is not a
+      // UUID, where the API answers 422; and the per-answer 422 has no details.limitMs.
+      requireAssistantPrincipal(request);
+      const report = answersReportSchema.safeParse(request.body);
+      if (!report.success) {
+        throw new MockHttpError(
+          422,
+          'validation_error',
+          'Send 1 to 20 answers, each with an index and a duration.',
+        );
+      }
+      const id = ASSISTANT_ANSWERS_PATH.exec(request.url.pathname)?.[1];
+      if (id !== MOCK_ASSISTANT_SESSION_ID) {
+        throw new MockHttpError(
+          404,
+          'not_found',
+          'The assistant session was not found.',
+        );
+      }
+      if (mockAssistantSession.closed) {
+        throw new MockHttpError(
+          409,
+          'assistant_session_closed',
+          'The assistant session is not open.',
+        );
+      }
+      const { answers } = report.data;
+      if (
+        answers.some(({ durationMs }) => durationMs > MOCK_SESSION_LIMIT_MS)
+      ) {
+        throw new MockHttpError(
+          422,
+          'validation_error',
+          'An answer cannot be longer than the session.',
+        );
+      }
+
+      const stored = mockAssistantSession.answerDurations;
+      // A repeated index is a re-sent report. The first one wins, the rest are dropped.
+      const fresh = new Map<number, number>();
+      for (const { index, durationMs } of answers) {
+        if (!stored.has(index) && !fresh.has(index)) {
+          fresh.set(index, durationMs);
+        }
+      }
+      const isOverBudget =
+        stored.size + fresh.size > MOCK_ANSWERS_PER_SESSION_MAX ||
+        totalDuration(stored) + totalDuration(fresh) > MOCK_SESSION_LIMIT_MS;
+      if (fresh.size > 0 && isOverBudget) {
+        throw new MockHttpError(
+          409,
+          'assistant_answers_limit',
+          'The session has no room for more answers.',
+        );
+      }
+      for (const [index, durationMs] of fresh) stored.set(index, durationMs);
+
+      return {
+        body: { recorded: fresh.size, duplicates: answers.length - fresh.size },
+      };
     },
   },
 ];

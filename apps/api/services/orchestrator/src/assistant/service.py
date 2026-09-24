@@ -3,14 +3,25 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
+
+from asyncpg.exceptions import LockNotAvailableError
 
 from services.liveavatar.client import LiveAvatarClient
 
 from ..config import Settings
-from ..database import Database
-from ..errors import ConfigurationError, NotFoundError, ProviderError
+from ..database import ANSWER_LOCK_TIMEOUT_SECONDS, Database
+from ..errors import (
+    AppError,
+    ConfigurationError,
+    NotFoundError,
+    ProviderError,
+    RateLimitedError,
+    ValidationError,
+)
+from ..schemas import AssistantAnswerItem
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +55,12 @@ class AssistantSession:
     requested_language: str
     max_session_duration_seconds: int
     agent_type: str
+
+
+@dataclass
+class AnswerReport:
+    recorded: int
+    duplicates: int
 
 
 class AssistantSessionService:
@@ -195,6 +212,79 @@ class AssistantSessionService:
                 "metadata": {"principal": principal, "provider_stop": bool(held)},
             }
         )
+
+    async def record_answers(
+        self, session_id: UUID, principal: str, answers: list[AssistantAnswerItem]
+    ) -> AnswerReport:
+        """Write one usage row per avatar answer the browser measured.
+
+        The backend never sees an answer: the browser drives the conversation. So the browser
+        reports each speech segment's index and duration, and nothing else of the request reaches
+        a row. The duration is taken as given, within the bounds of the session.
+        """
+        row = await self.database.get_session(session_id)
+        metadata = _metadata(row) if row else {}
+        if not row or metadata.get("principal") != principal:
+            # Someone else's session looks the same as a session that does not exist.
+            raise NotFoundError("assistant session")
+        max_seconds = int(metadata["max_session_duration"])
+        # A tab that dies never calls close, so the row can stay TOKEN_ISSUED for ever. The
+        # session's own length plus the token grace closes it here as well.
+        deadline = row["started_at"] + timedelta(seconds=max_seconds + TOKEN_GRACE_SECONDS)
+        if row["status"] != "TOKEN_ISSUED" or datetime.now(UTC) > deadline:
+            raise AppError("assistant_session_closed", "assistant session is not open", 409, False)
+        limit_ms = max_seconds * 1000
+        if any(answer.duration_ms > limit_ms for answer in answers):
+            raise ValidationError("an answer cannot be longer than the session", {"limitMs": limit_ms})
+
+        rows = [
+            {
+                "provider": "liveavatar",
+                "operation": "assistant_answer",
+                "provider_resource_id": row["provider_session_id"],
+                # No text reaches the backend, and the backend picks no speech model.
+                "model": None,
+                "characters": None,
+                "estimated_duration_ms": answer.duration_ms,
+                # Only the playback of a stored answer can know it was a hit.
+                "cache_hit": False,
+                "metadata": {
+                    "principal": principal,
+                    "sandbox": row["sandbox"],
+                    "provider_mode": metadata.get("provider_mode"),
+                    "answer_index": answer.index,
+                    "source": "browser",
+                },
+            }
+            for answer in answers
+        ]
+        # The database drops re-sent indexes and checks both caps under a per-session lock, in the
+        # same transaction as the insert. A check here would race with a concurrent report.
+        try:
+            recorded = await self.database.record_assistant_answers(
+                row["provider_session_id"],
+                rows,
+                max_count=self.settings.assistant_answers_per_session_max,
+                max_duration_ms=limit_ms,
+            )
+        except LockNotAvailableError as exc:
+            # Another report of this session held the lock too long. Nothing was written, and
+            # sending the same batch again is safe: a stored index counts as a duplicate.
+            raise RateLimitedError(
+                "assistant_answers_busy",
+                "another report for this session is being written, retry shortly",
+                ANSWER_LOCK_TIMEOUT_SECONDS,
+            ) from exc
+        if recorded is None:
+            raise AppError(
+                "assistant_answers_limit", "assistant session has no room for more answers", 409, False
+            )
+        duplicates = len(answers) - recorded
+        logger.info(
+            "assistant_answers_recorded",
+            extra={"session_id": str(session_id), "recorded": recorded, "duplicates": duplicates},
+        )
+        return AnswerReport(recorded=recorded, duplicates=duplicates)
 
     def _forget_old_tokens(self) -> None:
         """Drop tokens of sessions that cannot be running any more, so the map stays small."""

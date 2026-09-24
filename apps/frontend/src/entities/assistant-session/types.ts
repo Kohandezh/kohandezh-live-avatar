@@ -47,6 +47,31 @@ export type AssistantSessionCloseResult = z.infer<
   typeof assistantSessionCloseSchema
 >;
 
+/**
+ * The avatar speech segments the browser measured, each from `AVATAR_SPEAK_STARTED` to
+ * `AVATAR_SPEAK_ENDED` (POST /api/assistant/session/{id}/answers). Only the position and the
+ * length go out, never any text of the question or the answer.
+ *
+ * 1 to 20 items. `index` is 0 to 10000 and counts the segments of the session. `durationMs` is at
+ * least 1 and at most the session's length.
+ */
+export interface ReportAssistantAnswersBody {
+  answers: { index: number; durationMs: number }[];
+}
+
+/**
+ * What the backend did with a report. An index the session already reported, or one repeated in
+ * the same batch, is dropped and counted in `duplicates`, so re-sending a batch is safe.
+ */
+export const assistantAnswersReportSchema = z.object({
+  recorded: z.number().int().nonnegative(),
+  duplicates: z.number().int().nonnegative(),
+});
+
+export type AssistantAnswersReport = z.infer<
+  typeof assistantAnswersReportSchema
+>;
+
 /** What the UI keeps about a session. The token is left out on purpose. */
 export type AssistantSessionInfo = Omit<AssistantSession, 'sessionToken'>;
 

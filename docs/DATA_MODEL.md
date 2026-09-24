@@ -118,11 +118,42 @@ providers or its ElevenLabs TTS model support Persian yet. The backend falls bac
 language (`LIVEAVATAR_ASSISTANT_LANGUAGES`, default `en`); `AssistantPanel` shows an inline notice
 when that fallback happened.
 
-- Endpoints: `POST /api/assistant/session`, `POST /api/assistant/session/{id}/close`
-- Functions: `createAssistantSession(body)`, `closeAssistantSession(id)`
+- Endpoints: `POST /api/assistant/session`, `POST /api/assistant/session/{id}/close`,
+  `POST /api/assistant/session/{id}/answers`
+- Functions: `createAssistantSession(body)`, `closeAssistantSession(id)`,
+  `reportAssistantAnswers(id, body)` (parsed with `assistantAnswersReportSchema`)
 - No query hook: a session is created by a user action and must never be cached or replayed,
   so the feature hook (`useAssistantSession`) owns it instead of TanStack Query.
 - Permissions: a signed-in user, or the website widget with a valid `X-Embed-Key` and origin
+
+### Provider usage in the backend (`provider_usage` table)
+
+Created by `apps/api/services/orchestrator/migrations/001_initial.sql`. One row per provider event
+we want to count. The frontend never reads it; `GET /usage` sums it per provider and operation.
+
+| Column                  | Type           | Notes                                                          |
+| ----------------------- | -------------- | -------------------------------------------------------------- |
+| `id`                    | uuid           | primary key                                                    |
+| `provider`              | text           | `liveavatar` on every assistant row                            |
+| `operation`             | text           | what happened. The assistant operations are listed below      |
+| `provider_resource_id`  | text (null)    | the provider's own id. Assistant rows: LiveAvatar's session id, never our `sessions.id` |
+| `model`                 | text (null)    | null on assistant rows                                         |
+| `characters`            | integer (null) | null on assistant rows: no text reaches the backend            |
+| `estimated_duration_ms` | bigint (null)  | `assistant_answer`: the answer's length, measured by the browser |
+| `cache_hit`             | boolean        | default `false`, and `false` on every assistant row today      |
+| `metadata`              | jsonb          | see below. Never any text of a question or an answer          |
+| `occurred_at`           | timestamptz    | insert time. For `assistant_answer`: when the report arrived, not when the avatar spoke |
+
+The assistant writes three operations. `principal` is `user:<id>` or `embed:<origin>`.
+
+- `assistant_token`: a session was minted (`POST /api/assistant/session`). Metadata: `avatar_id`,
+  `sandbox`, `language`, `requested_language`, `provider_mode`, `principal`.
+- `assistant_answer`: one avatar answer the browser reported
+  (`POST /api/assistant/session/{id}/answers`). Metadata: `principal`, `sandbox`, `provider_mode`,
+  `answer_index`, `source` (always `browser`). `docs/API.md` says what the row means and what it
+  does not mean.
+- `assistant_close`: the session was closed (`POST /api/assistant/session/{id}/close`). Metadata:
+  `principal`, `provider_stop`.
 
 ## Adding a model
 
