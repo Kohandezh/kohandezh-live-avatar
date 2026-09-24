@@ -24,6 +24,9 @@ import { apiClient } from '@/shared/api';
 import {
   AgentEventsEnum,
   AgentType,
+  FakeLiveAvatarSession,
+  SessionEvent,
+  SessionState,
   lastFakeSession,
   resetLiveAvatarSdkMock,
   sdkState,
@@ -40,7 +43,8 @@ type Answer = { index: number; durationMs: number };
 /** What a test can make the answers route do instead of the mock backend, once per request. */
 type InjectedOutcome =
   | { status: number; code: string; details?: unknown }
-  | 'network';
+  | 'network'
+  | 'hang';
 
 const log: string[] = [];
 const answerBodies: Answer[][] = [];
@@ -48,7 +52,7 @@ const injected: InjectedOutcome[] = [];
 
 function errorFor(
   config: InternalAxiosRequestConfig,
-  outcome: InjectedOutcome,
+  outcome: Exclude<InjectedOutcome, 'hang'>,
 ): AxiosError {
   if (outcome === 'network') {
     return new AxiosError('Network Error', AxiosError.ERR_NETWORK, config);
@@ -90,6 +94,8 @@ function installRecordingMockApi() {
         const body = JSON.parse(String(config.data)) as { answers: Answer[] };
         answerBodies.push(body.answers);
         const outcome = injected.shift();
+        // A request that never answers: the custom adapter has no timeout of its own.
+        if (outcome === 'hang') return await new Promise<never>(() => undefined);
         if (outcome) throw errorFor(config, outcome);
       }
       return await inner(config);
@@ -407,6 +413,91 @@ describe('useAssistantSession reports avatar answers', () => {
       `start POST ${CLOSE_URL}`,
       `end POST ${CLOSE_URL}`,
     ]);
+  });
+
+  it('drops a batch waiting to retry after a 429 when End is pressed', async () => {
+    const { result } = await renderStartedSession();
+    injected.push({
+      status: 429,
+      code: 'assistant_answers_busy',
+      details: { retryAfterSeconds: 2 },
+    });
+
+    await speak(1000);
+    await advance(600);
+    expect(answerRequestCount()).toBe(1);
+    log.length = 0;
+
+    // The retry is due 2 s after the 429. End comes first, and the batch is not sent early.
+    await act(async () => {
+      await result.current.stop();
+    });
+    await advance(5000);
+
+    expect(log).toEqual([`start POST ${CLOSE_URL}`, `end POST ${CLOSE_URL}`]);
+  });
+
+  it('starts close within 10 s when a report never answers, and sends no batch after that', async () => {
+    const { result } = await renderStartedSession();
+    injected.push('hang');
+
+    await speak(1000);
+    await advance(600);
+    expect(answerRequestCount()).toBe(1);
+    // A second segment waits behind the request that hangs.
+    emit(AgentEventsEnum.AVATAR_SPEAK_STARTED);
+    await advance(700);
+
+    let stopped: Promise<void> = Promise.resolve();
+    act(() => {
+      stopped = result.current.stop();
+    });
+    await advance(9_900);
+    expect(log).not.toContain(`start POST ${CLOSE_URL}`);
+
+    await advance(200);
+    expect(log).toContain(`start POST ${CLOSE_URL}`);
+    await act(async () => {
+      await stopped;
+    });
+    await advance(10_000);
+
+    expect(answerRequestCount()).toBe(1);
+    expect(result.current.status).toBe('ended');
+  });
+
+  it('does not add the SDK stop time to the last answer', async () => {
+    vi.spyOn(FakeLiveAvatarSession.prototype, 'stop').mockImplementation(
+      () => new Promise<void>((resolve) => window.setTimeout(resolve, 800)),
+    );
+    const { result } = await renderStartedSession();
+
+    emit(AgentEventsEnum.AVATAR_SPEAK_STARTED);
+    await advance(3000);
+    let stopped: Promise<void> = Promise.resolve();
+    act(() => {
+      stopped = result.current.stop();
+    });
+    await advance(1000);
+    await act(async () => {
+      await stopped;
+    });
+
+    expect(answerBodies).toEqual([[{ index: 0, durationMs: 3000 }]]);
+  });
+
+  it('closes an open segment when the session state turns disconnected', async () => {
+    vi.spyOn(FakeLiveAvatarSession.prototype, 'stop').mockImplementation(
+      () => new Promise<void>((resolve) => window.setTimeout(resolve, 800)),
+    );
+    await renderStartedSession();
+
+    emit(AgentEventsEnum.AVATAR_SPEAK_STARTED);
+    await advance(2200);
+    emit(SessionEvent.SESSION_STATE_CHANGED, SessionState.DISCONNECTED);
+    await advance(2000);
+
+    expect(answerBodies).toEqual([[{ index: 0, durationMs: 2200 }]]);
   });
 
   it('keeps every report outcome out of the hook state (criterion 6)', async () => {

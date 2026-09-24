@@ -196,6 +196,8 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
       // from overwriting the reason the user actually sees.
       session.voiceChat.removeAllListeners();
       session.removeAllListeners();
+      // Measured now, so the time the SDK takes to stop is not added to the last answer.
+      answerReporter?.segmentEnded();
       try {
         await session.stop();
       } catch {
@@ -236,6 +238,7 @@ export function useAssistantSession(options: UseAssistantSessionOptions = {}) {
           dispatch({ type: 'connected', at: Date.now() });
         }
         if (next === SessionState.DISCONNECTED) {
+          answerReporter.segmentEnded();
           dispatch({ type: 'ended', reason: 'provider' });
         }
       });

@@ -10,6 +10,8 @@ const MAX_HOLD_MS = 2000;
 const NETWORK_RETRY_DELAY_MS = 1000;
 /** Used when a 429 does not say how long to wait. */
 const BUSY_RETRY_FALLBACK_MS = 2000;
+/** The whole wait before `close`, the same as one report's own timeout. */
+const FINISH_DEADLINE_MS = 10_000;
 
 interface Answer {
   index: number;
@@ -22,9 +24,10 @@ export interface AnswerReporter {
   /** `AVATAR_SPEAK_ENDED`, the ElevenLabs `interruption`, or the provider ending the session. */
   segmentEnded(): void;
   /**
-   * Closes the open segment and sends everything still queued, one attempt per batch. Resolves
-   * when the last request settled, so the caller can close the session after it: a report that
-   * arrives after `close` is refused. Never rejects.
+   * Closes the open segment and sends everything still queued, one attempt per batch. A batch
+   * waiting to retry is dropped. Resolves when the last request settled, or after 10 s in total,
+   * so the caller can close the session after it: a report that arrives after `close` is refused.
+   * No batch is sent after the deadline. Never rejects.
    */
   finish(): Promise<void>;
 }
@@ -75,6 +78,7 @@ export function createAnswerReporter(
   // first is still being written.
   let inFlight: Promise<void> | null = null;
   let isFinishing = false;
+  let isPastDeadline = false;
   let finished: Promise<void> | null = null;
   // Ends the wait before a retry early, so the pre-close flush does not sit out a 429 delay.
   let cutRetryWait: (() => void) | null = null;
@@ -107,6 +111,9 @@ export function createAnswerReporter(
       const delayMs = retryDelayMs(error);
       if (delayMs === null || isFinishing) return;
       await waitBeforeRetry(delayMs);
+      // Cut short by `finish()`. Sending at once would most likely earn another 429 and spend a
+      // report of the hourly limit, so the batch is dropped.
+      if (isFinishing) return;
     }
     try {
       await reportAssistantAnswers(sessionId, { answers });
@@ -121,7 +128,9 @@ export function createAnswerReporter(
     if (pending.length === 0) return Promise.resolve();
     inFlight = (async () => {
       // A segment that ends while a request runs goes out right after it.
-      while (pending.length > 0) await send(pending.splice(0, BATCH_MAX));
+      while (pending.length > 0 && !isPastDeadline) {
+        await send(pending.splice(0, BATCH_MAX));
+      }
     })().finally(() => {
       inFlight = null;
       // Queued between the last check of the loop and here.
@@ -190,9 +199,21 @@ export function createAnswerReporter(
       isFinishing = true;
       clearFlushTimer();
       cutRetryWait?.();
-      finished = (async () => {
-        while (inFlight || pending.length > 0) await flush();
-      })();
+      finished = new Promise<void>((resolve) => {
+        // One deadline for the whole wait: a request that hangs must not hold `close` back for
+        // its own timeout and then another one per queued batch.
+        const deadline = window.setTimeout(() => {
+          isPastDeadline = true;
+          resolve();
+        }, FINISH_DEADLINE_MS);
+        void (async () => {
+          while (!isPastDeadline && (inFlight || pending.length > 0)) {
+            await flush();
+          }
+          window.clearTimeout(deadline);
+          resolve();
+        })();
+      });
       return finished;
     },
   };
