@@ -2,11 +2,16 @@
 
 ## Unreleased
 
+- The assistant now reports each avatar answer, so `provider_usage` gets one `assistant_answer`
+  row per answer on mobile, web and the widget. The hook measures each speech segment, from
+  `AVATAR_SPEAK_STARTED` to its end, and sends the index and the length in batches of up to 20. The
+  last batch goes out before `close`, because the backend refuses a report for a closed session.
+  A failed report is retried at most once and is never shown to the user.
 - The backend can record one usage row per avatar answer. The backend never observes an answer
   (the browser drives the conversation), so a saving from cached answers could not be measured
   from `provider_usage` at all. `POST /api/assistant/session/{id}/answers` takes the index and the
   length of each speech segment the browser measured and writes an `assistant_answer` row. Only
-  numbers are sent, never text. Nothing calls it yet: the assistant reports in a later change.
+  numbers are sent, never text.
 - A LiveAvatar validation error is no longer reported as a billing problem. The provider answers a
   bad request with a 422 whose message lists every valid value for the field, and one valid stop
   reason is `NO_CREDITS`. The client matched "credit" anywhere in the message, so "reason must be

@@ -123,7 +123,8 @@ when that fallback happened.
 - Functions: `createAssistantSession(body)`, `closeAssistantSession(id)`,
   `reportAssistantAnswers(id, body)` (parsed with `assistantAnswersReportSchema`)
 - No query hook: a session is created by a user action and must never be cached or replayed,
-  so the feature hook (`useAssistantSession`) owns it instead of TanStack Query.
+  so the feature hook (`useAssistantSession`) owns it instead of TanStack Query. The same hook
+  owns the answer reports: it measures each avatar speech segment and sends it, before `close`.
 - Permissions: a signed-in user, or the website widget with a valid `X-Embed-Key` and origin
 
 ### Provider usage in the backend (`provider_usage` table)
