@@ -236,3 +236,27 @@ class AssistantSessionResponse(CamelModel):
     # Which SDK session class can drive this token. "elevenlabs" needs ElevenLabsAgentSession,
     # "full" needs LiveAvatarSession.
     agent_type: Literal["elevenlabs", "full"]
+
+
+# The report is closed (extra="forbid") and strict: only these two integers may reach a usage row,
+# so no text-shaped key can ever arrive, and "5", 1.5 or true is not taken for a number.
+class AssistantAnswerItem(CamelModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Where the speech segment sits in the session, counted by the browser. It only exists so a
+    # re-sent batch is not counted twice.
+    index: int = Field(strict=True, ge=0, le=10_000)
+    duration_ms: int = Field(strict=True, ge=1, le=3_600_000)
+
+
+# A plain BaseModel, like AssistantSessionBody: "answers" is one word, so camelCase changes
+# nothing, and FastAPI warns about the generated alias on a top-level body field.
+class AssistantAnswersBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answers: list[AssistantAnswerItem] = Field(min_length=1, max_length=20)
+
+
+class AssistantAnswersResponse(CamelModel):
+    recorded: int
+    duplicates: int

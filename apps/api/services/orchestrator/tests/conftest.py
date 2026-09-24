@@ -170,6 +170,7 @@ class FakeDatabase:
             "status": "TOKEN_ISSUED",
             "user_id": data.get("user_id"),
             "session_token_hash": data["session_token_hash"],
+            "started_at": datetime.now(UTC),
             # asyncpg hands jsonb back as text, so the fake stores text too.
             "metadata": json.dumps(data.get("metadata", {})),
         }
@@ -186,6 +187,23 @@ class FakeDatabase:
 
     async def record_usage(self, data: dict[str, Any]):
         self.usage.append(data)
+
+    async def record_usage_batch(self, rows: list[dict[str, Any]]):
+        self.usage.extend(rows)
+
+    async def assistant_answer_totals(self, provider_resource_id: str):
+        rows = [
+            item
+            for item in self.usage
+            if item["provider"] == "liveavatar"
+            and item["operation"] == "assistant_answer"
+            and item.get("provider_resource_id") == provider_resource_id
+        ]
+        return {
+            "count": len(rows),
+            "duration_ms": sum(row.get("estimated_duration_ms") or 0 for row in rows),
+            "indexes": {row["metadata"]["answer_index"] for row in rows},
+        }
 
     def operations(self) -> list[str]:
         return [item["operation"] for item in self.usage]

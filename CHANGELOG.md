@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The backend can record one usage row per avatar answer. The backend never observes an answer
+  (the browser drives the conversation), so a saving from cached answers could not be measured
+  from `provider_usage` at all. `POST /api/assistant/session/{id}/answers` takes the index and the
+  length of each speech segment the browser measured and writes an `assistant_answer` row. Only
+  numbers are sent, never text. Nothing calls it yet: the assistant reports in a later change.
 - A LiveAvatar validation error is no longer reported as a billing problem. The provider answers a
   bad request with a 422 whose message lists every valid value for the field, and one valid stop
   reason is `NO_CREDITS`. The client matched "credit" anywhere in the message, so "reason must be

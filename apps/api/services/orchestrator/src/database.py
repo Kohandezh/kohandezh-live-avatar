@@ -9,6 +9,26 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+_USAGE_INSERT = """
+    INSERT INTO provider_usage
+      (provider,operation,provider_resource_id,model,characters,estimated_duration_ms,cache_hit,metadata)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+"""
+
+
+def _usage_values(data: dict[str, Any]) -> tuple[Any, ...]:
+    """The columns of one usage row. Keys that are not named here never reach the table."""
+    return (
+        data["provider"],
+        data["operation"],
+        data.get("provider_resource_id"),
+        data.get("model"),
+        data.get("characters"),
+        data.get("estimated_duration_ms"),
+        data.get("cache_hit", False),
+        json.dumps(data.get("metadata", {})),
+    )
+
 
 class Database:
     def __init__(self, url: str, migrations_dir: Path):
@@ -272,21 +292,38 @@ class Database:
         return {key: int(value) for key, value in dict(row).items()}
 
     async def record_usage(self, data: dict[str, Any]) -> None:
-        await self._pool().execute(
+        await self._pool().execute(_USAGE_INSERT, *_usage_values(data))
+
+    async def record_usage_batch(self, rows: list[dict[str, Any]]) -> None:
+        """Insert several usage rows in one transaction: all of them are written, or none."""
+        async with self._pool().acquire() as conn:
+            async with conn.transaction():
+                await conn.executemany(_USAGE_INSERT, [_usage_values(data) for data in rows])
+
+    async def assistant_answer_totals(self, provider_resource_id: str) -> dict[str, Any]:
+        """What one assistant session has reported so far.
+
+        The count and the summed duration bound the session. The stored answer indexes let a
+        re-sent batch be recognised without any text, and without a unique index.
+        """
+        row = await self._pool().fetchrow(
             """
-            INSERT INTO provider_usage
-              (provider,operation,provider_resource_id,model,characters,estimated_duration_ms,cache_hit,metadata)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+            SELECT count(*) AS count,
+              coalesce(sum(estimated_duration_ms),0)::bigint AS duration_ms,
+              coalesce(
+                array_agg((metadata->>'answer_index')::int) FILTER (WHERE metadata ? 'answer_index'),
+                '{}'::int[]
+              ) AS indexes
+            FROM provider_usage
+            WHERE provider='liveavatar' AND operation='assistant_answer' AND provider_resource_id=$1
             """,
-            data["provider"],
-            data["operation"],
-            data.get("provider_resource_id"),
-            data.get("model"),
-            data.get("characters"),
-            data.get("estimated_duration_ms"),
-            data.get("cache_hit", False),
-            json.dumps(data.get("metadata", {})),
+            provider_resource_id,
         )
+        return {
+            "count": int(row["count"]),
+            "duration_ms": int(row["duration_ms"]),
+            "indexes": set(row["indexes"]),
+        }
 
     async def usage_summary(self) -> list[dict[str, Any]]:
         rows = await self._pool().fetch(

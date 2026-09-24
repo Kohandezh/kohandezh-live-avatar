@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assistantAnswersReportSchema,
   assistantSessionCloseSchema,
   assistantSessionSchema,
   toAssistantSessionInfo,
@@ -66,5 +67,26 @@ describe('assistantSessionSchema', () => {
     expect(() =>
       assistantSessionCloseSchema.parse({ status: 'open' }),
     ).toThrow();
+  });
+});
+
+describe('assistantAnswersReportSchema', () => {
+  it('accepts the documented report result', () => {
+    expect(
+      assistantAnswersReportSchema.parse({ recorded: 2, duplicates: 1 }),
+    ).toEqual({ recorded: 2, duplicates: 1 });
+    // A re-sent batch records nothing and is still a success.
+    expect(
+      assistantAnswersReportSchema.parse({ recorded: 0, duplicates: 3 }),
+    ).toEqual({ recorded: 0, duplicates: 3 });
+  });
+
+  it.each([
+    ['a missing count', { recorded: 1 }],
+    ['a negative count', { recorded: -1, duplicates: 0 }],
+    ['a fractional count', { recorded: 1.5, duplicates: 0 }],
+    ['a count as text', { recorded: '1', duplicates: 0 }],
+  ])('rejects %s', (_, result) => {
+    expect(() => assistantAnswersReportSchema.parse(result)).toThrow();
   });
 });

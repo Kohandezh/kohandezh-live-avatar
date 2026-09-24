@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     assistant_embed_key: SecretStr = SecretStr("")
     assistant_embed_allowed_origins: str = ""
     assistant_rate_limit_per_hour: int = 20
+    # Answer reports (POST /assistant/session/{id}/answers) count on their own key, so a report
+    # never spends a session mint. The per-session cap is what really bounds one session.
+    assistant_answers_rate_limit_per_hour: int = 600
+    assistant_answers_per_session_max: int = 200
 
     # Phone login. "console" writes the code to the log instead of sending an SMS. It stays the
     # default so tests and CI can never send a real message. "asanak" sends the code by SMS.

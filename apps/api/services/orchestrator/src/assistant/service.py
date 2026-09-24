@@ -3,6 +3,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -10,7 +11,8 @@ from services.liveavatar.client import LiveAvatarClient
 
 from ..config import Settings
 from ..database import Database
-from ..errors import ConfigurationError, NotFoundError, ProviderError
+from ..errors import AppError, ConfigurationError, NotFoundError, ProviderError, ValidationError
+from ..schemas import AssistantAnswerItem
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,12 @@ class AssistantSession:
     requested_language: str
     max_session_duration_seconds: int
     agent_type: str
+
+
+@dataclass
+class AnswerReport:
+    recorded: int
+    duplicates: int
 
 
 class AssistantSessionService:
@@ -195,6 +203,77 @@ class AssistantSessionService:
                 "metadata": {"principal": principal, "provider_stop": bool(held)},
             }
         )
+
+    async def record_answers(
+        self, session_id: UUID, principal: str, answers: list[AssistantAnswerItem]
+    ) -> AnswerReport:
+        """Write one usage row per avatar answer the browser measured.
+
+        The backend never sees an answer: the browser drives the conversation. So the browser
+        reports each speech segment's index and duration, and nothing else of the request reaches
+        a row. The duration is taken as given, within the bounds of the session.
+        """
+        row = await self.database.get_session(session_id)
+        metadata = _metadata(row) if row else {}
+        if not row or metadata.get("principal") != principal:
+            # Someone else's session looks the same as a session that does not exist.
+            raise NotFoundError("assistant session")
+        max_seconds = int(metadata["max_session_duration"])
+        # A tab that dies never calls close, so the row can stay TOKEN_ISSUED for ever. The
+        # session's own length plus the token grace closes it here as well.
+        deadline = row["started_at"] + timedelta(seconds=max_seconds + TOKEN_GRACE_SECONDS)
+        if row["status"] != "TOKEN_ISSUED" or datetime.now(UTC) > deadline:
+            raise AppError("assistant_session_closed", "assistant session is not open", 409, False)
+        limit_ms = max_seconds * 1000
+        if any(answer.duration_ms > limit_ms for answer in answers):
+            raise ValidationError("an answer cannot be longer than the session", {"limitMs": limit_ms})
+
+        totals = await self.database.assistant_answer_totals(row["provider_session_id"])
+        seen = set(totals["indexes"])
+        fresh: list[AssistantAnswerItem] = []
+        for answer in answers:
+            # A repeated index is a re-sent report. The first one wins, the rest are dropped.
+            if answer.index not in seen:
+                seen.add(answer.index)
+                fresh.append(answer)
+        duplicates = len(answers) - len(fresh)
+        count = totals["count"] + len(fresh)
+        duration_ms = totals["duration_ms"] + sum(answer.duration_ms for answer in fresh)
+        # A batch of only duplicates writes nothing, so it has nothing to refuse.
+        if fresh and (count > self.settings.assistant_answers_per_session_max or duration_ms > limit_ms):
+            raise AppError(
+                "assistant_answers_limit", "assistant session has no room for more answers", 409, False
+            )
+
+        if fresh:
+            await self.database.record_usage_batch(
+                [
+                    {
+                        "provider": "liveavatar",
+                        "operation": "assistant_answer",
+                        "provider_resource_id": row["provider_session_id"],
+                        # No text reaches the backend, and the backend picks no speech model.
+                        "model": None,
+                        "characters": None,
+                        "estimated_duration_ms": answer.duration_ms,
+                        # Only the playback of a stored answer can know it was a hit.
+                        "cache_hit": False,
+                        "metadata": {
+                            "principal": principal,
+                            "sandbox": row["sandbox"],
+                            "provider_mode": metadata.get("provider_mode"),
+                            "answer_index": answer.index,
+                            "source": "browser",
+                        },
+                    }
+                    for answer in fresh
+                ]
+            )
+        logger.info(
+            "assistant_answers_recorded",
+            extra={"session_id": str(session_id), "recorded": len(fresh), "duplicates": duplicates},
+        )
+        return AnswerReport(recorded=len(fresh), duplicates=duplicates)
 
     def _forget_old_tokens(self) -> None:
         """Drop tokens of sessions that cannot be running any more, so the map stays small."""
