@@ -240,8 +240,11 @@ class AssistantSessionResponse(CamelModel):
 
 # The report is closed (extra="forbid") and strict: only these two integers may reach a usage row,
 # so no text-shaped key can ever arrive, and "5", 1.5 or true is not taken for a number.
+# Only the wire name durationMs is known, so duration_ms is an unknown key. validate_by_name is the
+# setting that decides: pydantic resolves the parent's populate_by_name=True into
+# validate_by_name=True, and the child would inherit that.
 class AssistantAnswerItem(CamelModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=False, validate_by_name=False)
 
     # Where the speech segment sits in the session, counted by the browser. It only exists so a
     # re-sent batch is not counted twice.

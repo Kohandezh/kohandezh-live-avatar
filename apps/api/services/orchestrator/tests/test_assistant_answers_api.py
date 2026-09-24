@@ -534,6 +534,20 @@ async def test_a_report_is_logged_once_and_without_its_body(api, caplog):
 
 
 @pytest.mark.asyncio
+async def test_only_the_camel_case_duration_is_accepted(api):
+    await api.login(PHONE)
+    session_id = await open_session(api)
+
+    snake_case = await api.client.post(answers_url(session_id), json=one_answer(index=0, duration_ms=1000))
+    camel_case = await api.client.post(answers_url(session_id), json=one_answer(index=0, durationMs=1000))
+
+    assert snake_case.status_code == 422, snake_case.text
+    assert snake_case.json()["error"]["code"] == "validation_error"
+    assert camel_case.status_code == 200, camel_case.text
+    assert [row["estimated_duration_ms"] for row in answer_rows(api)] == [1000]
+
+
+@pytest.mark.asyncio
 async def test_concurrent_reports_cannot_pass_the_count_cap_together(api):
     api.settings.assistant_answers_per_session_max = 1
     await api.login(PHONE)
