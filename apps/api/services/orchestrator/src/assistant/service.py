@@ -7,11 +7,20 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from asyncpg.exceptions import LockNotAvailableError
+
 from services.liveavatar.client import LiveAvatarClient
 
 from ..config import Settings
-from ..database import Database
-from ..errors import AppError, ConfigurationError, NotFoundError, ProviderError, ValidationError
+from ..database import ANSWER_LOCK_TIMEOUT_SECONDS, Database
+from ..errors import (
+    AppError,
+    ConfigurationError,
+    NotFoundError,
+    ProviderError,
+    RateLimitedError,
+    ValidationError,
+)
 from ..schemas import AssistantAnswerItem
 
 logger = logging.getLogger(__name__)
@@ -251,12 +260,21 @@ class AssistantSessionService:
         ]
         # The database drops re-sent indexes and checks both caps under a per-session lock, in the
         # same transaction as the insert. A check here would race with a concurrent report.
-        recorded = await self.database.record_assistant_answers(
-            row["provider_session_id"],
-            rows,
-            max_count=self.settings.assistant_answers_per_session_max,
-            max_duration_ms=limit_ms,
-        )
+        try:
+            recorded = await self.database.record_assistant_answers(
+                row["provider_session_id"],
+                rows,
+                max_count=self.settings.assistant_answers_per_session_max,
+                max_duration_ms=limit_ms,
+            )
+        except LockNotAvailableError as exc:
+            # Another report of this session held the lock too long. Nothing was written, and
+            # sending the same batch again is safe: a stored index counts as a duplicate.
+            raise RateLimitedError(
+                "assistant_answers_busy",
+                "another report for this session is being written, retry shortly",
+                ANSWER_LOCK_TIMEOUT_SECONDS,
+            ) from exc
         if recorded is None:
             raise AppError(
                 "assistant_answers_limit", "assistant session has no room for more answers", 409, False

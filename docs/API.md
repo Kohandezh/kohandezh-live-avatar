@@ -225,6 +225,9 @@ The batch is written as a whole or not at all. The checks, in the order they run
 - `409 assistant_session_closed`, `retryable: false`: the session was closed, failed to start, or
   is older than its length plus 300 seconds (a tab that dies never calls close).
 - `422 validation_error` with `details.limitMs`: one `durationMs` is longer than the session.
+- `429 assistant_answers_busy`, `retryAfterSeconds: 2`, `retryable: true`: another report for the
+  same session was still being written after 2 seconds. Nothing was written. Sending the same
+  batch again is safe: an `index` already stored counts as a duplicate.
 - `409 assistant_answers_limit`, `retryable: false`: after the duplicates are dropped, the session
   would hold more than `ASSISTANT_ANSWERS_PER_SESSION_MAX` answers (default 200), or answers longer
   than the session in total. A batch of only duplicates writes nothing and answers `200`.

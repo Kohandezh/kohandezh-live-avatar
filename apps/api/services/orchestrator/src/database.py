@@ -9,6 +9,10 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+# How long an answer report waits for another report of the same session to commit. Past it,
+# Postgres raises LockNotAvailableError, so waiting reports cannot hold every pool connection.
+ANSWER_LOCK_TIMEOUT_SECONDS = 2
+
 _USAGE_INSERT = """
     INSERT INTO provider_usage
       (provider,operation,provider_resource_id,model,characters,estimated_duration_ms,cache_hit,metadata)
@@ -336,9 +340,14 @@ class Database:
         Everything runs in one transaction under an advisory lock on the session, so two
         concurrent reports cannot both read the old totals and both pass the caps. Returns how
         many rows were written, or None when the new rows do not fit; then nothing is written.
+        Raises asyncpg's LockNotAvailableError when the lock stays taken for longer than
+        ANSWER_LOCK_TIMEOUT_SECONDS; the transaction then rolls back and the connection goes back.
         """
         async with self._pool().acquire() as conn:
             async with conn.transaction():
+                # SET LOCAL ends with the transaction. Without it a waiting report would hold its
+                # pool connection until command_timeout.
+                await conn.execute(f"SET LOCAL lock_timeout = '{ANSWER_LOCK_TIMEOUT_SECONDS}s'")
                 # Held until the transaction ends. A second report for the same session waits here.
                 await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", provider_resource_id)
                 totals = await conn.fetchrow(

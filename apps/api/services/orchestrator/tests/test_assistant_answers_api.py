@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from asyncpg.exceptions import LockNotAvailableError
 
 from .conftest import EMBED_KEY, EMBED_ORIGIN
 
@@ -586,3 +587,38 @@ async def test_concurrent_reports_cannot_pass_the_session_length_together(api):
 
     assert sorted(response.status_code for response in responses) == [200, 409]
     assert sum(row["estimated_duration_ms"] for row in answer_rows(api)) == 40_000
+
+
+@pytest.mark.asyncio
+async def test_a_report_that_cannot_get_the_session_lock_is_asked_to_retry(api):
+    """The fake cannot block on a lock, so it raises what Postgres raises after lock_timeout."""
+    await api.login(PHONE)
+    session_id = await open_session(api)
+    record = api.database.record_assistant_answers
+    calls = 0
+
+    async def busy_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise LockNotAvailableError("canceling statement due to lock timeout")
+        return await record(*args, **kwargs)
+
+    api.database.record_assistant_answers = busy_once
+
+    busy = await api.client.post(answers_url(session_id), json=body((0, 1000)))
+
+    assert busy.status_code == 429, busy.text
+    error = busy.json()["error"]
+    assert error["code"] == "assistant_answers_busy"
+    assert error["message"] == "another report for this session is being written, retry shortly"
+    assert error["retryable"] is True
+    assert error["details"] == {"retryAfterSeconds": 2}
+    assert answer_rows(api) == []
+
+    # The same batch again, once the lock is free, is written.
+    retry = await api.client.post(answers_url(session_id), json=body((0, 1000)))
+
+    assert retry.status_code == 200, retry.text
+    assert retry.json() == {"recorded": 1, "duplicates": 0}
+    assert len(answer_rows(api)) == 1

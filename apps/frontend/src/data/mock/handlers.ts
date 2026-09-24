@@ -492,7 +492,8 @@ export const routes: MockRoute[] = [
     path: ASSISTANT_ANSWERS_PATH,
     handle(request) {
       // Same order and codes as the backend, with four differences a caller must not rely on:
-      // no 429 (no hourly limit, as for session creation); no 409 for a session past its length
+      // no 429 (no hourly limit, as for session creation, and no assistant_answers_busy, because
+      // the mock never waits for a lock); no 409 for a session past its length
       // (only close makes it 409); a non-UUID id is 404 here, because the mock's own id is not a
       // UUID, where the API answers 422; and the per-answer 422 has no details.limitMs.
       requireAssistantPrincipal(request);
