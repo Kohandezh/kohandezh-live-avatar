@@ -1,6 +1,6 @@
 # 0015. Background jobs
 
-Status: Accepted in part (2026-09-25). Items 1, 2 and 3 are decided. Items 4 and 5 stay Proposed.
+Status: Accepted in part (2026-09-25). Items 1, 2, 3 and 5 are decided. Item 4 stays Proposed.
 Date: 2026-09-24
 
 ## Context
@@ -11,7 +11,7 @@ service (`docker-compose.yml:91-127`). Its only background work is `asyncio.crea
 Redis is locks and rate limits, not a queue (`.../src/coordination.py:30-107`).
 
 The spike (`docs/features/response-caching/RESEARCH.md`, "§" below) sent the question here
-(`RESEARCH.md:1434-1436`), and ADR 0014 lists what to settle (`0014:275-282`). Four facts force it:
+(`RESEARCH.md:1434-1436`), and ADR 0014 lists what to settle (`0014:289-296`). Four facts force it:
 
 - `docs/API.md:20-22` says long work answers `202` with a job id, polled at `GET /api/jobs/{jobId}`.
   That endpoint does not exist (§4.1 row 5).
@@ -28,10 +28,10 @@ The owner answered each item on 2026-09-25. Each item's "Owner decision" line re
 | Item | Owner's answer | Result |
 | ---- | -------------- | ------ |
 | 1 | Accepted. | Accepted |
-| 2 | Accepted. | Accepted |
+| 2 | Accepted, then changed with item 5: failed jobs are never deleted. | Accepted, changed |
 | 3 | Accepted. A strong audit log for all features is needed later. For now, log each failure. | Accepted, with a logging rule |
-| 4 | Asked for a plainer description. | Open, rewritten in plain words |
-| 5 | Asked for a plainer description. | Open, rewritten in plain words |
+| 4 | Asked for a plainer description, then who "staff" means. | Open, rewritten in plain words |
+| 5 | Failed jobs are not deleted. The rest is accepted. | Accepted, changed |
 
 Code is cited at `536be20` (= `main@eb05da0`); `.../` is `apps/api/services/orchestrator/`.
 
@@ -82,8 +82,9 @@ existing `jobId`. The runner writes `error_code` and `error_message`, unused (`R
 
 **Rejected:** a Redis lock as the lease. It vanishes with its key and keeps no failure record.
 
-**Owner decision, 2026-09-25: accepted.** `done` and `failed` rows are kept 30 days, then item 5
-deletes them. They hold ids, a user id among them. The lease is 60 seconds, renewed every 20.
+**Owner decision, 2026-09-25: accepted with a change.** `done` rows are kept 30 days, then item 5
+deletes them. `failed` rows are never deleted (item 5). They hold ids, a user id among them. The
+lease is 60 seconds, renewed every 20.
 
 ### 3. Retry after the process dies
 
@@ -101,7 +102,7 @@ asset with an Egress id, `main.py:374-380`) and a new Egress. On reclaim the run
 Egress by its id (`main.py:393,404`); a failed stop counts as stopped, since `stop_egress` turns
 every error into `egress_failure` (`.../src/livekit_gateway.py:103-109`). The old row gets
 `RENDER_FAILED`, a new value no reviewer sets (`TEXT` column, `001_initial.sql:50`), and loses its
-file. `REJECTED` stays the staff outcome with its audit row (`0014:166-168`). The next attempt
+file. `REJECTED` stays the staff outcome with its audit row (`0014:165-167`). The next attempt
 waits five minutes (`run_after`), so the old session has ended at the provider.
 
 **What keeps a half-rendered asset invisible.** A new row starts `DRAFT` (`.../src/database.py:134`)
@@ -142,16 +143,20 @@ scope here. It will cover this runner too.
 
 ### 4. `GET /api/jobs/{jobId}` and `finalize`
 
-**In plain words.** A staff member records a video in the workbench. When they press stop, the
-app calls `finalize`. `finalize` tells LiveKit's recorder (Egress) to stop, then waits for the MP4
-file to appear on the server's disk, then checks the file. Today the request waits up to 15
+**In plain words.** Someone records an avatar video in the workbench, the `/avatar` page of the
+`web` target (`apps/frontend/src/app/web/router.tsx:29`). This record calls that person "staff".
+Who that is should be an admin, and this item makes `finalize` admin only. Today it is anyone: the
+page sits outside `RequireAuth` (`router.tsx:29-32`), and the `/assets` endpoints check no login
+(`.../src/main.py:359,397,444`). Closing that gap is §8 production item 6. When they press stop,
+the app calls `finalize`. `finalize` tells LiveKit's recorder (Egress) to stop, then waits for
+the MP4 file to appear on the server's disk, then checks the file. Today the request waits up to 15
 seconds with the browser's request held open (`.../src/main.py:406-409`). If the file is late, the
 recording fails even when it was only slow.
 
 The change: `finalize` answers at once with a job id. A background job waits for the file, and the
 app asks "is it done?" every few seconds with `GET /api/jobs/{jobId}`. The job gives up after 60
 seconds in total. The only choice for the owner is that number. A longer wait saves a slow
-recording. A shorter wait tells staff sooner that the recording failed.
+recording. A shorter wait tells the admin sooner that the recording failed.
 
 **Decision.** `GET /api/jobs/{jobId}` returns the shape in `docs/API.md:20-21`: `status`, `result`
 from `output` when `done`, `error` from `error_code` and `error_message` when `failed`. The caller
@@ -175,10 +180,11 @@ measured how long Egress takes to write the file. Client polling is the spec's.
 
 ### 5. The deletion job
 
-**In plain words.** Some rows and files must be removed after a while: old job rows (item 2),
-recordings that failed to render, and videos staff withdrew or replaced. A small job, the
-"sweep", does this cleanup. It runs inside the same runner, once a day. The only choice for the
-owner is how often it runs. Once a day means a row can outlive its period by one day at most.
+**In plain words.** Some rows and files must be removed after a while: finished job rows older
+than 30 days (item 2), and videos an admin withdrew or replaced. A small job, the "sweep", does
+this cleanup. It runs inside the same runner, once a day, so a row can outlive its period by one
+day at most. It keeps every failure: failed job rows and `RENDER_FAILED` video rows stay, so the
+failure history is never lost.
 
 It never deletes a draft. ADR 0014 item 1, as the owner decided it, keeps a draft until an admin
 approves or rejects it (`0014:61-68`).
@@ -186,15 +192,16 @@ approves or rejects it (`0014:61-68`).
 **Decision.** The runner runs the cleanup as `retention_sweep` with a fixed `dedupe_key`. On
 startup the runner enqueues it if none is queued or running. The next run, a day ahead, is
 enqueued in the transaction that closes the current run, whatever its outcome. A failed sweep
-writes `job_failed` (item 3). Each run deletes `done` and `failed` jobs and `RENDER_FAILED` rows
-past item 2's period, and a withdrawn or replaced MP4 with its row (`0014:74`). The media period
-stays ADR 0014's. With a queue library (item 1), the sweep is its scheduled job, if it can
-schedule jobs; the spike does not say.
+writes `job_failed` (item 3). Each run deletes `done` jobs past item 2's period, and a withdrawn
+or replaced MP4 with its row (`0014:74`). It never deletes a `failed` job or a `RENDER_FAILED`
+row. A `RENDER_FAILED` row has already lost its file (item 3), so keeping it keeps no media.
+The media period stays ADR 0014's. With a queue library (item 1), the sweep is its scheduled job,
+if it can schedule jobs; the spike does not say.
 
 **Rejected:** a cron container or a database scheduler extension, a new process or dependency.
 
-**Owner decision: open.** The owner asked for a plainer description (2026-09-25); it is above.
-Default proposed: one sweep a day.
+**Owner decision, 2026-09-25: accepted with a change.** One sweep a day. Failed jobs and
+`RENDER_FAILED` rows are never deleted; the proposal deleted them after 30 days.
 
 ## Consequences
 
@@ -208,6 +215,9 @@ not: it needs `LIVEAVATAR_TRANSPORT=byo` and a public `wss://` endpoint (`main.p
 - Jobs share a process with requests. Retry covers a crash, not load: fine while approvals are rare.
   A deploy or shutdown closes every LITE session (`main.py:122`, `manager.py:223-230`), so a render
   in flight uses up an attempt and a paid session. The migration is one-way (C4).
+- Failed job rows are kept with no end date (item 5). Each holds the `created_by` user id, so a
+  user's deletion request must also clear that column on their failed jobs. The phase 2 spec
+  covers it with ADR 0014 item 1's deletion request.
 - `finalize` answers `202`, not `200`, and needs an admin session. The workbench polls. These change:
   `useRecording.ts:57`, `apps/frontend/src/shared/api/assets.ts:39-42`, `VideoFinalizeDto`
   (`apps/frontend/src/shared/api/dto.ts:98`), `apps/frontend/tests/utils/server.ts:71`, and the test

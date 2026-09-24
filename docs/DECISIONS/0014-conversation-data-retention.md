@@ -1,7 +1,7 @@
 # 0014. Conversation data retention
 
-Status: Accepted in part (2026-09-25). Items 1, 2, 5 and 6 and the storage part of item 3 are
-decided. The playback part of item 3, item 4 and item 7 stay Proposed.
+Status: Accepted in part (2026-09-25). Items 1, 2, 4, 5 and 6 and the storage part of item 3 are
+decided. The playback part of item 3 and item 7 stay Proposed.
 Date: 2026-09-23
 
 ## Context
@@ -39,10 +39,10 @@ Where the owner changed the proposal, the item's text now says what the owner de
 | 1 | No automatic deletion after 30 days. Only an admin decides. | Accepted, changed |
 | 2 | Once an admin approves it, it can be shown to all users. | Accepted |
 | 3 | Store questions from the website widget too. | Storage part accepted, changed. Playback part open |
-| 4 | Asked why ElevenLabs and not LiveAvatar. | Open, the answer is in item 4 |
+| 4 | Asked why ElevenLabs and not LiveAvatar, then accepted. | Accepted |
 | 5 | Accepted. | Accepted |
 | 6 | Accepted. | Accepted |
-| 7 | Asked what BYO means. | Open, the answer is in item 7 |
+| 7 | Asked what BYO and Option D mean, and what to do. | Open, the answer is in item 7 |
 
 Code is cited at `35f6154`, whose code is identical to `main@eb05da0`. `.../` is
 `apps/api/services/orchestrator/`.
@@ -151,10 +151,9 @@ install transcribes locally too, or skips phase 3 (C7).
 **Rejected:** a hosted embedding API such as `text-embedding-3-large`. It sends every question,
 hits included, to a vendor that sees nothing today, and it fails C7 (§5 Option E, "Which matcher").
 
-**Owner decision: open.** The owner asked why ElevenLabs (2026-09-25); the answer is above.
-Default proposed: the live agent's own ElevenLabs workspace only, internet installs only, local
-embeddings. Persian accuracy is unmeasured either way (U11, U14). Only phase 3 of E needs this, so
-Option B does not wait for it.
+**Owner decision, 2026-09-25: accepted.** The owner asked why ElevenLabs; the answer is above.
+The live agent's own ElevenLabs workspace only, internet installs only, local embeddings. Persian
+accuracy is unmeasured either way (U11, U14).
 
 ### 5. Provenance of drafts, approval, and audit
 
@@ -203,6 +202,21 @@ through our own LiveKit server instead, so our backend could record a live answe
 reason this item exists: recording live answers is Option D. The workbench already uses BYO to
 record staff videos (§4.1 row 7).
 
+**Option D, in short.** The first user asks a question and the live avatar answers. Our server
+records that answer. When a later user asks the same question, the server plays the recording
+instead of starting a new live answer. The recording has the real live face and voice, which is
+its one advantage. It has four problems:
+
+- It needs BYO, and nobody knows if LiveAvatar allows BYO for the assistant (U1). Our code never
+  tried it (`apps/api/services/liveavatar/client.py:88,132-138`).
+- It stores one user's live conversation and shows it to another user. Item 2 says no to that.
+- BYO needs a public media server on the internet, so it cannot work on a no-internet install.
+- We would run and pay for the media server of every live session, not only of recordings.
+
+Option B gets the same result without these problems: staff write the answers, and the
+workbench renders them offline. Its one risk is the voice. A rendered answer may not sound like
+the live voice (U10). Only if that check fails does Option D become worth a paid test (U1).
+
 **Decision.** Deferred on U1, in three parts.
 
 - **Meanwhile:** no BYO transport for the assistant. It keeps the `managed` transport it
@@ -217,9 +231,10 @@ record staff videos (§4.1 row 7).
 **Rejected:** deciding yes now. It rests on an unverified capability, and makes a public media
 endpoint a per-session requirement, which breaks the installs ADR 0006 names (§5 Option D, C7).
 
-**Owner decision: open.** The owner asked what BYO means (2026-09-25); the answer is above.
-Default proposed: no BYO transport, with the paid U1 check made only if voice parity by rendering
-fails (U10), the only reason the spike keeps C or D open (§6). Option B does not wait for it.
+**Owner decision: open.** The owner asked what BYO and Option D mean, and what to do
+(2026-09-25); the answers are above. Recommended: no BYO transport now. Build Option B. Run the
+paid U1 check only if the U10 voice check fails, the only reason the spike keeps C or D open (§6).
+Option B does not wait for this item.
 
 ## Consequences
 
@@ -256,7 +271,7 @@ items 1 and 2, and only if rendering cannot reach voice parity (U10).
 | C | items 1 and 2 | closed: no live media is stored or replayed |
 | D | items 1, 2 and 7 | closed, and item 7 waits on U1 |
 | E, phase 2 | items 1, 2, 3 and 5 | open for questions; the answer side waits on U9 |
-| E, phase 3 | item 4 | waits for item 4; then open on internet installs, once U11, U12, U15 and U6 have evidence and the owner has set U13 |
+| E, phase 3 | item 4 | open on internet installs, once U11, U12, U15 and U6 have evidence and the owner has set U13 |
 
 If the owner says no to storing user text, E's loop stops, C and D stay closed, and B stays. B's
 measured hit rate then decides between keeping B and Option A (§6, the diagram).
