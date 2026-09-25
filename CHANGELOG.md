@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A BYO LiveAvatar session (`LIVEAVATAR_TRANSPORT=byo`) can start. The avatar's LiveKit token
+  had `canSubscribe` off, and LiveAvatar refuses such a token with a 422, so every BYO session, and
+  with it every recording, failed. The token now allows subscribing.
 - Approving a recording needs the finished media, and every decision is recorded. The status
   endpoint set any status from any status, so a video that was still recording (`DRAFT`) could be
   approved, and a rejected one approved again. Approval now needs `VIDEO_GENERATED` (or
