@@ -1,9 +1,11 @@
-"""Fakes that let the API be tested without Postgres, Redis, or LiveAvatar."""
+"""Fakes that let the API be tested without Postgres, Redis, LiveAvatar, ElevenLabs, or LiveKit."""
 
 import json
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -11,12 +13,14 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from services.elevenlabs.service import GenerationResult
 from services.orchestrator.src.assistant.service import AssistantSessionService
 from services.orchestrator.src.auth.otp import OtpService
 from services.orchestrator.src.auth.sessions import SessionService
 from services.orchestrator.src.config import Settings
 from services.orchestrator.src.coordination import Coordinator
 from services.orchestrator.src.database import new_answers_that_fit
+from services.orchestrator.src.errors import NotFoundError
 from services.orchestrator.src.main import app
 
 ADMIN_PHONE = "+989120000001"
@@ -87,6 +91,8 @@ class FakeDatabase:
         self.users: list[dict[str, Any]] = []
         self.sessions: dict[UUID, dict[str, Any]] = {}
         self.usage: list[dict[str, Any]] = []
+        self.audio_assets: dict[UUID, dict[str, Any]] = {}
+        self.video_assets: dict[UUID, dict[str, Any]] = {}
 
     async def get_user(self, user_id: UUID):
         return next((user for user in self.users if user["id"] == user_id), None)
@@ -217,6 +223,76 @@ class FakeDatabase:
     def operations(self) -> list[str]:
         return [item["operation"] for item in self.usage]
 
+    async def get_audio_asset(self, asset_id: UUID):
+        return self.audio_assets.get(asset_id)
+
+    async def get_video_asset(self, asset_id: UUID):
+        return self.video_assets.get(asset_id)
+
+    async def set_asset_status(self, table: str, asset_id: UUID, status: str):
+        rows = {"audio_assets": self.audio_assets, "video_assets": self.video_assets}[table]
+        row = rows.get(asset_id)
+        if row:
+            row["status"] = status
+        return row
+
+    async def usage_summary(self):
+        return []
+
+
+class FakeTts:
+    """Stands in for the ElevenLabs service. Records every generation it was asked for."""
+
+    def __init__(self) -> None:
+        self.calls: list[Any] = []
+
+    async def generate(self, request):
+        self.calls.append(request)
+        asset = {"id": uuid4(), "status": "AUDIO_GENERATED"}
+        return GenerationResult(asset, Path("unused.pcm"), "0" * 64, 1000, False)
+
+
+class FakeAvatarManager:
+    """Stands in for the LiveAvatar LITE session manager. It holds no session, so any session id
+    is unknown, the way the real manager answers after a restart."""
+
+    def __init__(self) -> None:
+        self.sessions: dict[UUID, Any] = {}
+        self.calls: list[tuple[str, Any]] = []
+
+    async def create(self, **kwargs):
+        self.calls.append(("create", kwargs))
+        return SimpleNamespace(
+            id=uuid4(),
+            provider_session_id="provider-lite-1",
+            room_name="room-1",
+            livekit_url="wss://livekit.test",
+            browser_token="browser-token",  # noqa: S106 - a fake value, never a real token
+            sandbox=kwargs["sandbox"],
+        )
+
+    def get(self, session_id: UUID):
+        self.calls.append(("get", session_id))
+        raise NotFoundError("active avatar session")
+
+    async def close(self, session_id: UUID):
+        self.calls.append(("close", session_id))
+        raise NotFoundError("active avatar session")
+
+
+class FakeLiveKit:
+    """Stands in for the LiveKit gateway. Records every Egress call."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+
+    async def start_mp4_egress(self, room_name: str, asset_id: str) -> str:
+        self.calls.append(("start_mp4_egress", room_name))
+        return "egress-1"
+
+    async def stop_egress(self, egress_id: str) -> None:
+        self.calls.append(("stop_egress", egress_id))
+
 
 class FakeLiveAvatarClient:
     """Records what the assistant asked for. It never reaches the network."""
@@ -261,6 +337,20 @@ class ApiContext:
     redis: FakeRedis
     liveavatar: FakeLiveAvatarClient
     sender: "RecordingOtpSender"
+    tts: FakeTts
+    avatar: FakeAvatarManager
+    livekit: FakeLiveKit
+
+    def provider_calls(self) -> list[Any]:
+        """Every call any provider fake received: ElevenLabs, LiveAvatar (LITE and FULL), LiveKit."""
+        return [
+            *self.tts.calls,
+            *self.avatar.calls,
+            *self.livekit.calls,
+            *self.liveavatar.token_calls,
+            *self.liveavatar.voice_agent_calls,
+            *self.liveavatar.stop_calls,
+        ]
 
     async def login(self, phone: str, *, platform: str = "web") -> str | None:
         """Walk the whole login flow and return the bearer token native clients receive."""
@@ -328,6 +418,9 @@ async def api():
     coordinator = Coordinator("redis://unused", redis=redis)
     liveavatar = FakeLiveAvatarClient()
     sender = RecordingOtpSender()
+    tts = FakeTts()
+    avatar = FakeAvatarManager()
+    livekit = FakeLiveKit()
 
     app.state.settings = settings
     app.state.database = database
@@ -335,6 +428,9 @@ async def api():
     app.state.sessions = SessionService(coordinator=coordinator, ttl_seconds=settings.session_ttl_seconds)
     app.state.otp = OtpService(coordinator=coordinator, sender=sender, settings=settings)
     app.state.assistant = AssistantSessionService(client=liveavatar, database=database, settings=settings)
+    app.state.tts = tts
+    app.state.avatar = avatar
+    app.state.livekit = livekit
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         yield ApiContext(
@@ -345,4 +441,7 @@ async def api():
             redis=redis,
             liveavatar=liveavatar,
             sender=sender,
+            tts=tts,
+            avatar=avatar,
+            livekit=livekit,
         )

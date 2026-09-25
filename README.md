@@ -6,7 +6,8 @@ PWA, or a script embedded on the customer's own website. Everything runs in Live
 no credits are spent, and every session ends after about 60 seconds.
 
 The repository also still has the Phase 1 workbench: a local, Dockerized proof for a hybrid
-cached/live Persian avatar, kept working at `/avatar` on the web target. See the Phase 1 section
+cached/live Persian avatar, at `/avatar` on the web target. The page still opens, but every API call
+it makes needs an admin session. See the Phase 1 section
 below. WordPress, CRM, RAG, and payments are permanently out of scope for this repository.
 
 ## Architecture
@@ -128,8 +129,8 @@ One codebase builds four targets: `mobile` (`http://localhost:5173`), `web`
 (`http://localhost:5174`), `admin` (`http://localhost:5175`), and `widget`
 (`http://localhost:5176`, the demo page for the website widget). The assistant lives at
 `/assistant` on the mobile and web targets, and it is the screen a user lands on after login. The
-Phase 1 workbench, kept working, lives on the web target at `/avatar` as a development tool; it
-is not part of the product a user sees.
+Phase 1 workbench lives on the web target at `/avatar` as a development tool; it is not part of
+the product a user sees. The page still opens, but every API call it makes needs an admin session.
 
 ```text
 apps/frontend/src
@@ -299,6 +300,8 @@ Run this only after all tests pass, provider credentials are configured, and `PU
 REAL_PROVIDER_TESTS=true CONFIRM_CREDIT_USAGE=YES ./scripts/real-provider-smoke
 ```
 
+Both scripts here call admin-only routes. They read an admin bearer token from `ADMIN_TOKEN` and stop if it is empty. Get one the way the native app signs in, with a phone listed in `ADMIN_PHONES`: `POST /api/auth/otp/request` with `{"phone": "..."}`, then `POST /api/auth/otp/verify` with `{"phone": "...", "code": "..."}` and the header `X-Client-Platform: native`. The answer's `accessToken` is the token. `read -rs ADMIN_TOKEN; export ADMIN_TOKEN` keeps it out of the shell history, and `POST /api/auth/logout` with `Authorization: Bearer <token>` revokes it afterwards.
+
 The script is deliberately gated twice and uses one short Persian sentence. It creates one LiveAvatar session, starts Egress, streams one ElevenLabs utterance, waits for avatar completion, finalizes and downloads the MP4, runs `ffprobe`, closes the session, and prints the usage endpoint. Its trap attempts explicit session teardown on every failure.
 
 To test only ElevenLabs (also consumes credits):
@@ -306,6 +309,8 @@ To test only ElevenLabs (also consumes credits):
 ```bash
 CONFIRM_CREDIT_USAGE=YES ./scripts/generate-test-audio
 ```
+
+It needs the same `ADMIN_TOKEN` as the smoke test above.
 
 Repeating the identical request must return `cache_hit: true` and must not make a second provider call.
 

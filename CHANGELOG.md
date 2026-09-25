@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The recording endpoints need an admin session. `/tts/generate`, `/avatar/*`, `/assets/*` and
+  `/usage` had no check at all, so anyone who reached the API could start paid LiveAvatar
+  sessions, spend ElevenLabs characters, record, approve and download assets. They now answer
+  `401` without a session and `403` for a user who is not an admin or whose account is disabled,
+  before the request is validated, so a body that fails validation gets `401` too. A body that is
+  not valid JSON is the exception and answers `422`. `/ws/status` stays open; it shows only a
+  session count. The
+  web `/avatar` page still opens, but every API call it makes needs an admin session, because
+  recording moves into the admin target.
 - The assistant now reports each avatar answer, so `provider_usage` gets one `assistant_answer`
   row per answer on mobile, web and the widget. The hook measures each speech segment, from
   `AVATAR_SPEAK_STARTED` to its end, and sends the index and the length in batches of up to 20. The

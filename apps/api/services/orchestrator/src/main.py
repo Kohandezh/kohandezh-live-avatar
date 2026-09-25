@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -23,6 +23,7 @@ from .assistant.router import router as assistant_router
 from .assistant.service import AssistantSessionService
 from .auth.admin import router as admin_router
 from .auth.asanak import AsanakOtpSender, build_otp_sender
+from .auth.dependencies import require_admin
 from .auth.otp import OtpService
 from .auth.router import router as auth_router
 from .auth.sessions import SessionService
@@ -240,6 +241,12 @@ async def health(request: Request):
     return HealthResponse(status=overall, timestamp=datetime.now(UTC), dependencies=dependencies)
 
 
+# The recording (authoring) workbench. Every route here starts paid provider work or serves media
+# that is not published yet, so the whole router needs the admin role. It is included after its
+# last route, further down.
+authoring = APIRouter(tags=["authoring"], dependencies=[Depends(require_admin)])
+
+
 def _audio_response(result) -> AudioAssetResponse:
     return AudioAssetResponse(
         id=result.asset["id"],
@@ -251,13 +258,13 @@ def _audio_response(result) -> AudioAssetResponse:
     )
 
 
-@app.post("/tts/generate", response_model=AudioAssetResponse)
+@authoring.post("/tts/generate", response_model=AudioAssetResponse)
 async def generate_tts(payload: TTSRequest, request: Request):
     result = await request.app.state.tts.generate(payload)
     return _audio_response(result)
 
 
-@app.post("/avatar/session", response_model=AvatarSessionResponse)
+@authoring.post("/avatar/session", response_model=AvatarSessionResponse)
 async def create_avatar_session(payload: AvatarSessionRequest, request: Request):
     config: Settings = request.app.state.settings
     sandbox = config.liveavatar_sandbox if payload.sandbox is None else payload.sandbox
@@ -277,7 +284,7 @@ async def create_avatar_session(payload: AvatarSessionRequest, request: Request)
     )
 
 
-@app.post("/avatar/speak")
+@authoring.post("/avatar/speak")
 async def avatar_speak(payload: AvatarSpeakRequest, request: Request):
     manager: LiveAvatarManager = request.app.state.avatar
     tts: ElevenLabsService = request.app.state.tts
@@ -334,14 +341,14 @@ async def avatar_speak(payload: AvatarSpeakRequest, request: Request):
         }
 
 
-@app.post("/avatar/interrupt")
+@authoring.post("/avatar/interrupt")
 async def avatar_interrupt(payload: AvatarActionRequest, request: Request):
     managed = request.app.state.avatar.get(payload.session_id)
     await managed.connection.interrupt()
     return {"status": "interrupted"}
 
 
-@app.post("/avatar/listening/{state}")
+@authoring.post("/avatar/listening/{state}")
 async def avatar_listening(state: str, payload: AvatarActionRequest, request: Request):
     if state not in {"start", "stop"}:
         raise AppError("validation_error", "state must be start or stop", 422)
@@ -350,13 +357,13 @@ async def avatar_listening(state: str, payload: AvatarActionRequest, request: Re
     return {"event_id": event_id, "state": state}
 
 
-@app.post("/avatar/close")
+@authoring.post("/avatar/close")
 async def avatar_close(payload: AvatarActionRequest, request: Request):
     await request.app.state.avatar.close(payload.session_id)
     return {"status": "closed"}
 
 
-@app.post("/assets/generate-video")
+@authoring.post("/assets/generate-video")
 async def generate_video(payload: GenerateVideoRequest, request: Request):
     if request.app.state.settings.managed_livekit:
         raise AppError(
@@ -394,7 +401,7 @@ async def generate_video(payload: GenerateVideoRequest, request: Request):
         return {"id": str(row["id"]), "egress_id": egress_id, "status": "RECORDING"}
 
 
-@app.post("/assets/video/{asset_id}/finalize")
+@authoring.post("/assets/video/{asset_id}/finalize")
 async def finalize_video(asset_id: UUID, request: Request):
     row = await request.app.state.database.get_video_asset(asset_id)
     if not row:
@@ -421,7 +428,7 @@ async def finalize_video(asset_id: UUID, request: Request):
     }
 
 
-@app.get("/assets/audio/{asset_id}")
+@authoring.get("/assets/audio/{asset_id}")
 async def get_audio(asset_id: UUID, request: Request):
     row = await request.app.state.database.get_audio_asset(asset_id)
     if not row or not Path(row["file_path"]).is_file():
@@ -433,7 +440,7 @@ async def get_audio(asset_id: UUID, request: Request):
     )
 
 
-@app.get("/assets/video/{asset_id}")
+@authoring.get("/assets/video/{asset_id}")
 async def get_video(asset_id: UUID, request: Request):
     row = await request.app.state.database.get_video_asset(asset_id)
     if not row or not Path(row["video_path"]).is_file():
@@ -441,7 +448,7 @@ async def get_video(asset_id: UUID, request: Request):
     return FileResponse(row["video_path"], media_type="video/mp4", filename=f"{row['external_id']}.mp4")
 
 
-@app.patch("/assets/{kind}/{asset_id}/status")
+@authoring.patch("/assets/{kind}/{asset_id}/status")
 async def review_asset(kind: str, asset_id: UUID, payload: ApprovalRequest, request: Request):
     table = {"audio": "audio_assets", "video": "video_assets"}.get(kind)
     if not table:
@@ -458,9 +465,14 @@ async def review_asset(kind: str, asset_id: UUID, payload: ApprovalRequest, requ
     return {"id": str(asset_id), "status": row["status"]}
 
 
-@app.get("/usage")
+@authoring.get("/usage")
 async def usage(request: Request):
     return {"items": await request.app.state.database.usage_summary()}
+
+
+# include_router copies the routes the router holds at this point, so this stays after the last
+# authoring route.
+app.include_router(authoring)
 
 
 @app.websocket("/ws/status")

@@ -254,7 +254,8 @@ says the same). Nothing in the app calls this endpoint yet.
 
 - Frontend depends on public API contracts, not backend implementation details.
 - All API calls pass through `src/shared/api/client.ts`.
-- The backend must enforce the admin role on `/api/admin/*`. The frontend guard is UX only.
+- The backend must enforce the admin role on `/api/admin/*` and on the Phase 1 workbench routes
+  below. The frontend guard is UX only.
 - CORS must list the web, admin and widget origins explicitly and allow credentials
   (`CORS_ALLOWED_ORIGINS` plus `ASSISTANT_EMBED_ALLOWED_ORIGINS`).
 
@@ -263,3 +264,19 @@ says the same). Nothing in the app calls this endpoint yet.
 `/tts/*`, `/avatar/*`, `/assets/*`, `/usage` and `/ws/status` belong to the Phase 1 LITE mode
 workbench. They use snake_case bodies and are not part of the contract above. See
 `apps/api/README.md`.
+
+Every one of these routes except `/ws/status` needs a signed-in admin, the same check as
+`/api/admin/*` (`require_admin`). They start paid provider work (ElevenLabs, LiveAvatar, LiveKit
+Egress) or serve media that is not published yet. The check runs before the request is validated,
+so a refused request never reaches a provider:
+
+- `401 unauthorized` without a session, even when the body or a path value fails validation. A
+  body that is not valid JSON still answers `422`, because FastAPI parses the JSON before it runs
+  the check.
+- `403 forbidden` for a signed-in user whose role is not `admin`.
+- `403 account_disabled` for a disabled account.
+
+An admin gets the route's own answer, including its `404`, `409` and `422` errors. `/ws/status`
+stays open: it sends only the number of active LITE sessions. The web `/avatar` workbench now
+gets `401` or `403` for anyone who is not an admin, because recording moves into the admin target
+(ADR 0014, item 7: Option B first).
