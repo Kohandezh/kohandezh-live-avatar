@@ -19,7 +19,7 @@ Update the row in the same commit as the document it describes.
 
 | Slug | Spec status | Research | Domain | Targets | Created | Updated |
 | ---- | ----------- | -------- | ------ | ------- | ------- | ------- |
-| `response-caching` | Draft | Resolved | assistant | mobile, web, widget, admin | 2026-09-19 | 2026-09-25 |
+| `response-caching` | Draft | Resolved | assistant | mobile, web, admin | 2026-09-19 | 2026-09-25 |
 
 ## What goes where
 
