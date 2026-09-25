@@ -18,7 +18,7 @@ start at `apps/frontend/`.
 Every answer the assistant gives is generated live, so a repeated question costs full price
 every time. The assistant pipeline runs in the browser against LiveAvatar's cloud. Our backend
 mints a session token and sees nothing else: no question text, no answer text, no answer media
-(`apps/api/services/orchestrator/src/assistant/service.py:50-54`). There is no answer to keep
+(`apps/api/services/orchestrator/src/assistant/service.py:69`, `:221`). There is no answer to keep
 and no way to serve one again. Caching is not missing from this system, but the one cache that
 exists is a deterministic TTS audio cache consulted before the provider is called
 (`apps/api/services/elevenlabs/service.py:59-60`), and it sits on the Phase 1 workbench path,
@@ -271,7 +271,10 @@ Requirements carry ids. Each group is one pull request (section 11).
     `duration_ms`, or the row fails with `duration_mismatch` (a larger gap means the wrong file).
     The target name is `LIB_<key>.mp4`: a file of that name already in `VIDEO_CACHE_DIR` fails
     with `file_exists`, and a `video_assets` row with `external_id` = `LIB_<key>` fails with
-    `external_id_taken` (the column is unique, `.../migrations/001_initial.sql:41`).
+    `external_id_taken` (the column is unique, `.../migrations/001_initial.sql:41`). Inside one
+    sheet, a `key` that appears on more than one row fails each of those rows with
+    `duplicate_key`, and an `external_id` that appears on more than one row fails each of them
+    with `duplicate_external_id`.
   - **Phase 2, write (only when every row passed phase 1, and never with `--dry-run`).** For each
     row the import copies the source file to `VIDEO_CACHE_DIR/LIB_<key>.mp4`. `VIDEO_CACHE_DIR` is
     `/media/video` in the compose file (`docker-compose.yml:104`; setting at `.../src/config.py:127`).
@@ -280,7 +283,7 @@ Requirements carry ids. Each group is one pull request (section 11).
     new `id`, `external_id` = `LIB_<key>`, `video_path` = the absolute path of the copy (for
     example `/media/video/LIB_q01.mp4`, the same form as `.../src/main.py:371`), `text` = the sheet's
     `answer` whitespace-normalized the way `TTSRequest.normalize_text` does
-    (`.../src/schemas.py:39-45`), the given `avatar_id` and `voice_id`, status `VIDEO_GENERATED`,
+    (`.../src/schemas.py:40-46`), the given `avatar_id` and `voice_id`, status `VIDEO_GENERATED`,
     `duration_ms` and `metadata.ffprobe` from the phase 1 probe, and
     `metadata.imported_from` `{sheet_video_asset_id, sheet_external_id}`. If a copy or the
     transaction fails, the import deletes every file it copied in this run, reports
@@ -410,8 +413,10 @@ Requirements carry ids. Each group is one pull request (section 11).
   the orb with the "Recorded answer" label.
 - **REQ-059.** The tap is the user gesture. If `play()` still rejects with `NotAllowedError` (the
   download took the gesture's time, common on iOS), the phase becomes `blocked` and a "Tap to play
-  the answer" button covers the player, the same idea as the live screen's
-  `assistant.video.enableAudio` overlay (`VideoConversationPage.tsx:195-202`).
+  the answer" button appears, the same idea as the live screen's `assistant.video.enableAudio`
+  overlay (`VideoConversationPage.tsx:195-202`). On `/video` it covers the player. On `/audio` the
+  player is inside the `sr-only` wrapper and cannot be seen or tapped, so the button shows in place
+  of the caption, under the orb.
 - **REQ-060.** Pressing Start while a recorded answer loads or plays stops it and revokes its URL
   first, then calls the live `start()` as today. Two voices never play at once.
 - **REQ-061.** When playback ends or is stopped, the screen returns to the `idle` layout and focus
@@ -540,7 +545,10 @@ long work of an answer (the render and `finalize`) stays in the workbench chain 
 - `src/data/mock/handlers.ts`: the nine routes. It has no `/api/assets` or library route today. The
   mock suggestions route answers two Persian entries. The mock video route answers
   `404 not_found`, because the in-browser mock carries no media file; the tests that play a video
-  intercept the request with a fixture instead (section 12).
+  intercept the request with a fixture instead (section 12). The mock also answers
+  `GET /api/assets/video/{videoAssetId}`, which the admin review player uses (REQ-032), with the same
+  `404 not_found`; `tests/integration/adminLibraryPage.test.tsx` intercepts that request with the
+  same fixture MP4.
 - `apps/api/README.md`: the import command and its arguments.
 
 ## 7. Data model and persistence
@@ -727,7 +735,8 @@ running is never lost either: REQ-042 lists it once the job is `done`.
 
 The import prints reason codes, not translated text: `bad_header`, `bad_key`, `bad_question`,
 `bad_answer`, `bad_video_asset_id`, `bad_duration`, `file_missing`, `file_exists`,
-`external_id_taken`, `probe_failed`, `duration_mismatch`, `write_failed` (phase 2), and
+`external_id_taken`, `duplicate_key`, `duplicate_external_id`, `probe_failed`,
+`duration_mismatch`, `write_failed` (phase 2), and
 `already_imported` (not a failure). A failure writes
 nothing (REQ-027), so a fixed sheet can simply be run again.
 
@@ -755,7 +764,8 @@ nothing (REQ-027), so a fixed sheet can simply be run again.
 - **Tokens.** No new token. The video goes through `apiClient`, which adds the same cookie or Bearer
   as every request (`src/shared/api/interceptors.ts:11-17`, `src/shared/api/client.ts:19`). The
   object URL is a `blob:` URL local to the page and carries no credential. No media URL is put in
-  the DOM, which `src/shared/api/urls.ts:3-6` warns against.
+  the DOM: ADR 0014 item 6 rejects a public URL, a signed URL and a `<video src>`
+  (`docs/DECISIONS/0014-conversation-data-retention.md:211-214`).
 - **What a public response exposes.** The allowlist of SEC-003. Unpublished and withdrawn
   entries are indistinguishable from missing ones (SEC-004).
 - **Abuse.** The video route is rate limited per user (REQ-014), so one account cannot inflate the
@@ -983,6 +993,22 @@ code; each is named where it applies.
 6. **Merge timing.** Group C removes `/avatar`, which the render sprint uses today (section 11).
 7. **The dev mock plays nothing.** Its video route answers `404` (section 6); tests use a fixture.
 8. **Dependencies (a) and (b)** are not merged at `a366451`.
+9. **No feature switch.** There is no setting that turns the library off. The way back is to
+   unpublish every entry (REQ-007); the suggestions list is then empty and the screens look as they
+   do today.
+10. **No expiry.** Answers do not expire and have no review date. A published answer stays until
+    staff unpublish or withdraw it, even if the facts behind it change (spike open question,
+    `docs/features/response-caching/RESEARCH.md:1511-1513`).
+11. **The live agent does not know what the user heard.** A recorded answer plays with no session,
+    so if the user then presses Start, the live agent has no record of the recorded question or
+    answer.
+12. **One session at a time.** ADR 0015 item 3 leaves it to this spec whether an admin recording
+    and a live user session can run at the same time if the LiveAvatar account allows only one
+    session (`docs/DECISIONS/0015-background-jobs.md:125`). This spec does not schedule recordings
+    around live users. It is unverified whether the account has that limit.
+13. **Reading the hit ratio.** The ratio is read through `GET /usage` (`.../src/main.py:461`).
+    Dependency (a) puts that route behind `require_admin`, so it is not an open auth hole once (a)
+    lands. It is listed here only because it has no screen: an admin reads it from the API.
 
 **Status.** No product question is open. The status stays `Draft` until the owner approves the
 spec.
