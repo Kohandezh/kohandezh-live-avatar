@@ -280,3 +280,25 @@ An admin gets the route's own answer, including its `404`, `409` and `422` error
 stays open: it sends only the number of active LITE sessions. The web `/avatar` workbench now
 gets `401` or `403` for anyone who is not an admin, because recording moves into the admin target
 (ADR 0014, item 7: Option B first).
+
+### PATCH /api/assets/{kind}/{id}/status
+
+Request: `{ "status": "AUDIO_APPROVED" | "VIDEO_APPROVED" | "REJECTED" }`. `kind` is `audio` or
+`video`. Response `200`: `{ "id": string, "status": string }`. Each decision needs the asset in
+one of these statuses:
+
+| Kind    | Decision         | Allowed from                        |
+| ------- | ---------------- | ----------------------------------- |
+| `audio` | `AUDIO_APPROVED` | `AUDIO_GENERATED`                   |
+| `audio` | `REJECTED`       | `AUDIO_GENERATED`, `AUDIO_APPROVED` |
+| `video` | `VIDEO_APPROVED` | `VIDEO_GENERATED`                   |
+| `video` | `REJECTED`       | `VIDEO_GENERATED`, `VIDEO_APPROVED` |
+
+- `409 invalid_status_transition` from any other status, with
+  `details: { "currentStatus": string }`. The asset does not change. A `DRAFT` video is still
+  recording, so it cannot be approved. A rejection is final.
+- `404 not_found` for an unknown id.
+- `422 validation_error` for another `kind`, or for a status of the other kind.
+- The status check is part of the update statement, so two reviews at once cannot both pass it.
+  Every accepted decision writes one `asset_reviews` row in the same transaction
+  (`docs/DATA_MODEL.md`). A refused decision writes nothing.

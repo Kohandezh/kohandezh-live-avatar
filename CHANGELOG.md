@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Approving a recording needs the finished media, and every decision is recorded. The status
+  endpoint set any status from any status, so a video that was still recording (`DRAFT`) could be
+  approved, and a rejected one approved again. Approval now needs `VIDEO_GENERATED` (or
+  `AUDIO_GENERATED`), a rejection needs the generated or the approved status, and anything else
+  answers `409 invalid_status_transition` with no change. The check and the change are one
+  database statement, so two reviewers at once cannot both pass it. Each accepted decision writes
+  one `asset_reviews` row: the reviewer's user id, the decision, the previous status and the time,
+  never the asset text.
 - The recording endpoints need an admin session. `/tts/generate`, `/avatar/*`, `/assets/*` and
   `/usage` had no check at all, so anyone who reached the API could start paid LiveAvatar
   sessions, spend ElevenLabs characters, record, approve and download assets. They now answer
