@@ -4,9 +4,18 @@ if [ "${CONFIRM_CREDIT_USAGE:-NO}" != "YES" ]; then
   echo "CREDIT-SAFE STOP: this command may call ElevenLabs. Re-run with CONFIRM_CREDIT_USAGE=YES." >&2
   exit 2
 fi
-curl --fail --silent --show-error \
+# /tts/generate needs an admin session (docs/API.md, Phase 1 workbench endpoints).
+# ${ADMIN_TOKEN:+set} tests the token without expanding it, so a `set -x` trace never shows it.
+if [ -z "${ADMIN_TOKEN:+set}" ]; then
+  echo "ADMIN_TOKEN is empty: set it to an admin bearer token first (README.md, One real smoke test)." >&2
+  exit 1
+fi
+# The token reaches curl on stdin, never on its command line, so it stays out of the process list
+# and out of a `set -x` trace.
+curl --config - --fail --silent --show-error \
   -H 'Content-Type: application/json' \
   -d '{"text":"سلام، این یک تست کوتاه صدا است."}' \
-  "${API_URL:-http://localhost:8088/api}/tts/generate"
+  "${API_URL:-http://localhost:8088/api}/tts/generate" <<CONFIG
+header = "Authorization: Bearer $ADMIN_TOKEN"
+CONFIG
 printf '\n'
-

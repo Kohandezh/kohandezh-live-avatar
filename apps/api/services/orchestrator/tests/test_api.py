@@ -3,6 +3,8 @@ import pytest
 
 from services.orchestrator.src.main import app
 
+from .conftest import ADMIN_PHONE
+
 
 @pytest.mark.asyncio
 async def test_liveness_does_not_leak_configuration():
@@ -15,11 +17,15 @@ async def test_liveness_does_not_leak_configuration():
 
 
 @pytest.mark.asyncio
-async def test_validation_happens_before_provider_access():
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post("/tts/generate", json={"text": "   "})
+async def test_validation_happens_before_provider_access(api):
+    # Generation needs the admin role; without it the answer would be 401 before validation.
+    await api.login(ADMIN_PHONE)
+
+    response = await api.client.post("/tts/generate", json={"text": "   "})
+
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+    assert api.tts.calls == []
 
 
 def test_frontend_has_no_server_secrets():

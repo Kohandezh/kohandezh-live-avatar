@@ -80,7 +80,7 @@ same way. The admin router guards almost everything behind the admin role instea
 | `/onboarding`                                             | name capture (auth)                | name capture (auth)                |                                  |
 | `/video`, `/audio`                                        | conversation (auth + profile)      | conversation (auth + profile)      |                                  |
 | `/settings`, `/settings/personal`, `/settings/appearance` | account (auth + profile)           | account (auth + profile)           |                                  |
-| `/avatar`                                                 |                                     | Phase 1 workbench (public; linked from `/settings` for admins) |                                  |
+| `/avatar`                                                 |                                     | Phase 1 workbench (page public; its API calls need an admin session; linked from `/settings` for admins) |                                  |
 | `/users`                                                  |                                     |                                     | user table (auth + admin)       |
 | anything else                                             | not found (public)                 | not found (public)                 | not found (auth + admin)        |
 
