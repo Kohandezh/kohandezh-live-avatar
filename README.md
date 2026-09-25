@@ -314,6 +314,8 @@ It needs the same `ADMIN_TOKEN` as the smoke test above.
 
 Repeating the identical request must return `cache_hit: true` and must not make a second provider call.
 
+To record many answer videos on a rented server (BYO LiveKit), see [apps/api/setup/server/README.md](apps/api/setup/server/README.md).
+
 ## Troubleshooting
 
 - **Compose fails before startup:** copy `.env.example` to `.env`; required database and LiveKit secrets cannot be blank.
