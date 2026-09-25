@@ -51,7 +51,9 @@ with `cache_hit=true` (section 5, REQ-015), so `GET /usage` shows the ratio.
   MP4 files into new rows and library entries waiting for review, on whichever install runs it.
 - **C. The admin screens.** An "Answer library" screen in the `admin` target (list, review, publish,
   unpublish, withdraw) and a "Record answer" screen that holds the recording workbench, moved from
-  the `web` route `/avatar`. The `web` route `/avatar` is removed.
+  the `web` route `/avatar`, with polling of the `finalize` job, a list of finished recordings not
+  yet in the library, and one message per recording failure. The `web` route `/avatar` is
+  removed. A small backend change gives ElevenLabs' unpaid-plan answer its own error code.
 - **D. Playback on `mobile` and `web`.** On `/video` and `/audio`, while the conversation status is
   `idle`, the screen lists suggested questions under Start. A tap fetches the MP4 as a blob through
   the shared axios client and plays it. `/video` shows the video. `/audio` plays its sound with the
@@ -146,7 +148,7 @@ sequenceDiagram
 ```
 
 Every participant marked proposed is new. The page, `apiClient`
-(`src/shared/api/client.ts:19`) and the session door exist today. The takeaway: the whole file is
+(`src/shared/api/client.ts:14`) and the session door exist today. The takeaway: the whole file is
 downloaded through the same client and the same credential as every other request, before one
 frame plays. No media URL leaves the app.
 
@@ -218,13 +220,20 @@ Requirements carry ids. Each group is one pull request (section 11).
 - **REQ-015.** A `200` from the video endpoint writes one `provider_usage` row before the body is
   sent: `provider='liveavatar'`, `operation='assistant_answer'`, `provider_resource_id` null,
   `model` null, `characters` null, `estimated_duration_ms` the video's `duration_ms`,
-  `cache_hit=true`, `metadata` `{principal: "user:<id>", library_entry_id, video_asset_id,
-  language, source: "library"}`. A response other than `200` writes no row. The row counts a
-  delivered file, not a watched one: a user who closes the screen mid-download is still counted.
+  `cache_hit=true`, `occurred_at` the time of the request, and `metadata`
+  `{library_entry_id, source: "library"}`. Nothing else. The row carries **no user id, no
+  principal and no session id**. The reason is in section 9 ("The playback usage row"). A response
+  other than `200` writes no row. The row counts a delivered file, not a watched one: a user who
+  closes the screen mid-download is still counted.
 - **REQ-016.** The ADR 0015 `retention_sweep` gains one step. For each `withdrawn` entry whose
   `video_asset_id` is not null, it deletes the MP4 file (a missing file is not an error), then in one
   transaction sets the entry's `video_asset_id` to null and deletes the `video_assets` row. The
   entry and its review rows stay, so the audit history survives (ADR 0014 item 5, owner decision).
+  The sweep never deletes an `asset_reviews` row. Dependency (a) defines that table as
+  `asset_reviews(id, asset_kind, asset_id, reviewer_user_id, decision, previous_status,
+  created_at)`, append-only, with no foreign key from `asset_id` to `video_assets` (foreman
+  decision for dependency (a), 2026-09-25). So deleting a `video_assets` row leaves its audit rows
+  in place: they keep the bare `asset_id` of a row that no longer exists.
 - **REQ-017.** No library log line carries question text or answer text. Events log ids only:
   `library_entry_created`, `library_entry_published`, `library_entry_unpublished`,
   `library_entry_withdrawn`, `library_media_deleted`, each with the entry id and the admin id in
@@ -234,7 +243,9 @@ Requirements carry ids. Each group is one pull request (section 11).
 
 - **REQ-020.** A command, `python -m services.orchestrator.src.library_import`, runs inside the
   orchestrator container of any install, with that install's settings and database. Arguments, all
-  required except the last: `--sheet <csv>`, `--media-dir <dir>` (the MP4 files),
+  required except the last: `--sheet <csv>`, `--media-dir <dir>` (the MP4 files, a path inside
+  the container: the compose file mounts the host's `./media` at `/media`, `docker-compose.yml:108`,
+  so a host folder `./media/import/<batch>` is `/media/import/<batch>`),
   `--language fa|en` (the sheet has no language column), `--avatar-id` and `--voice-id` (the values
   the render used; they fill the `NOT NULL` columns of `video_assets`,
   `.../migrations/001_initial.sql:44-45`), `--dry-run`.
@@ -250,22 +261,36 @@ Requirements carry ids. Each group is one pull request (section 11).
   and never reuses one, even when the render server and the target are the same install. The
   sheet's `video_asset_id` and `external_id` are kept only as provenance in the new row's
   `metadata.imported_from`.
-- **REQ-024.** For each row the import reads `<media-dir>/<external_id>.mp4`, the name Egress gave
-  the file (`.../src/main.py:371`, `.../src/livekit_gateway.py:81`). It copies it to
-  `VIDEO_CACHE_DIR` as `LIB_<key>.mp4` and refuses to overwrite a file that is already there
-  (`file_exists`). It probes the copy with `probe_avatar_mp4` (`.../src/media_probe.py:8`) and
-  inserts a `video_assets` row with a new `id`, `external_id` = `LIB_<key>` (unique,
-  `.../migrations/001_initial.sql:41`; a taken one fails with `external_id_taken`), `text` = the
-  sheet's `answer` whitespace-normalized the way `.../src/schemas.py:40-44` normalizes text, the
-  given `avatar_id` and `voice_id`, status `VIDEO_GENERATED`, the probed duration, and `metadata`
-  `{ffprobe, imported_from: {sheet_video_asset_id, sheet_external_id}}`.
-- **REQ-025.** The probed duration must be within 1000 ms of the sheet's `duration_ms`. A larger gap
-  means the wrong file, and the row fails with `duration_mismatch`.
+- **REQ-024.** The import has two phases, in this order. This is the only import flow.
+  - **Phase 1, check (writes nothing).** A row whose `key` already has an entry is
+    `already_imported` (REQ-028) and skips the checks below. For every other row the source file is
+    `<media-dir>/<external_id>.mp4`, the name Egress gave it (`.../src/main.py:371`,
+    `.../src/livekit_gateway.py:81`); a missing one fails with `file_missing`. The import probes the
+    source file where it is, with `probe_avatar_mp4` (`.../src/media_probe.py:8`); a rejected file
+    fails with `probe_failed`. The probed duration must be within 1000 ms of the sheet's
+    `duration_ms`, or the row fails with `duration_mismatch` (a larger gap means the wrong file).
+    The target name is `LIB_<key>.mp4`: a file of that name already in `VIDEO_CACHE_DIR` fails
+    with `file_exists`, and a `video_assets` row with `external_id` = `LIB_<key>` fails with
+    `external_id_taken` (the column is unique, `.../migrations/001_initial.sql:41`).
+  - **Phase 2, write (only when every row passed phase 1, and never with `--dry-run`).** For each
+    row the import copies the source file to `VIDEO_CACHE_DIR/LIB_<key>.mp4`. `VIDEO_CACHE_DIR` is
+    `/media/video` in the compose file (`docker-compose.yml:104`; setting at `.../src/config.py:127`).
+    The copy is not probed again: it must have the source's byte size, or the run fails. Then, in
+    one database transaction, it inserts every `video_assets` row and every entry. Each row has a
+    new `id`, `external_id` = `LIB_<key>`, `video_path` = the absolute path of the copy (for
+    example `/media/video/LIB_q01.mp4`, the same form as `.../src/main.py:371`), `text` = the sheet's
+    `answer` whitespace-normalized the way `TTSRequest.normalize_text` does
+    (`.../src/schemas.py:39-45`), the given `avatar_id` and `voice_id`, status `VIDEO_GENERATED`,
+    `duration_ms` and `metadata.ffprobe` from the phase 1 probe, and
+    `metadata.imported_from` `{sheet_video_asset_id, sheet_external_id}`. If a copy or the
+    transaction fails, the import deletes every file it copied in this run, reports
+    `write_failed`, and exits with status 1.
+- **REQ-025.** The source files are only read. The import never moves or deletes them.
 - **REQ-026.** Every valid row creates a `pending` entry: `key`, `question`, `--language`, the video,
   `created_by` null. The import never publishes. An admin publishes in the Answer library screen.
-- **REQ-027.** The import is all or nothing. It validates every row first. If any row fails it
-  writes nothing, copies nothing, prints one line per failed row (row number, key, reason code) and
-  exits with status 1. `--dry-run` validates and prints the same report, and writes nothing.
+- **REQ-027.** The import is all or nothing. If any row fails phase 1, it never starts phase 2: it
+  copies no file and writes no row, prints one line per failed row (row number, key, reason code)
+  and exits with status 1. `--dry-run` runs phase 1 only and prints the same report.
 - **REQ-028.** A second run with the same sheet changes nothing. A row whose `key` already has an
   entry is reported `already_imported` and skipped, with no file copied. To replace an answer, staff
   withdraw the old entry and import or record the new one under a new key.
@@ -310,6 +335,41 @@ Requirements carry ids. Each group is one pull request (section 11).
   avatar token sets `can_subscribe=False` (`.../src/livekit_gateway.py:67-71`). If the render
   sprint's fix is not on `main` when Group C starts, it lands first as its own pull request, with
   `tests/test_livekit_gateway.py` updated.
+- **REQ-039.** Recording needs two paid provider accounts, and the Record answer screen says so in
+  one line above the steps (`library.record.needsAccounts`): an active LiveAvatar account for the
+  avatar session, and a paid ElevenLabs plan for the speech. The render sprint (2026-09-25) found
+  that an unpaid ElevenLabs plan answers `payment_issue` (code 1008) on every speech call. Playback
+  needs neither (REQ-010).
+- **REQ-040.** The ElevenLabs client maps that answer to its own error code. When the speech
+  WebSocket reports `payment_issue` or closes with code 1008, the client raises
+  `ProviderError("elevenlabs_payment", ..., 502, False)` (not retryable) instead of the generic
+  `elevenlabs_stream_error`, in both WebSocket paths that `/avatar/speak` can take
+  (`_stream_dialogue` and `_stream_tts`, `apps/api/services/elevenlabs/client.py:123-170,172-211`).
+  The HTTP TTS path keeps its mapping (`client.py:95-111`), because the render sprint saw the
+  payment answer only on the WebSocket.
+- **REQ-041.** `finalize` answers `202` with `{ "jobId" }` once dependency (b) lands (ADR 0015 item
+  4, which leaves client polling to this spec). The Record answer screen polls it like this:
+  - The `jobId` is kept in the existing recording slice (`src/features/recording/recordingSlice.ts`),
+    next to the recording handle it belongs to. It is client state; the job's status is not.
+  - The status is server state: a TanStack Query hook `useJob(jobId)` calls `GET /api/jobs/{jobId}`
+    through `apiClient`, with `refetchInterval` 2000 ms while the status is `queued` or `running`.
+  - Polling stops when the status is `done` or `failed`, and after 180 s from the `202` (a chosen
+    value: the job's own file wait is 30 s by default and at most 60, ADR 0015 item 4, plus queue
+    time and retries). A network error does not stop it; the next interval tries again.
+  - What the admin sees, as a status line under the recording controls (`aria-live="polite"`):
+    `queued`: `library.record.job.queued`; `running`: `library.record.job.running`; `done`:
+    `library.record.job.done`, and Save to library becomes enabled; `failed`: the message for the
+    job's `error.code` (section 8); stopped at 180 s: `library.record.job.slow` with a "Check
+    again" button that restarts polling for another 180 s.
+  - Leaving the screen stops polling (the query unmounts). The job runs on the server anyway.
+    Returning within the same tab resumes it, because the `jobId` is still in the recording slice.
+  - After a reload or in a new tab the slice is empty. The recording is not lost: REQ-042 lists it.
+- **REQ-042.** `GET /api/admin/library/recordings?page=&pageSize=` lists finished recordings that no
+  entry uses yet: `video_assets` rows with status `VIDEO_GENERATED`, a file on disk, and no
+  `library_entries` row, newest first. The Record answer screen shows them under the heading
+  `library.record.unsaved`, each with its answer text, duration and a Save to library action (the
+  same form as REQ-034). This is how an admin saves a recording after a reload, a closed tab or a
+  poll that timed out.
 
 ### Group D: playback on `mobile` and `web`
 
@@ -388,8 +448,10 @@ Requirements carry ids. Each group is one pull request (section 11).
 | workbench session, composer, recording handle | Redux, as today (`src/app/store.ts:12-16`) |
 | entry status, reviews, usage rows | PostgreSQL |
 
-The MP4 blob is not put in the Query cache. It can be tens of megabytes, and one object URL at a
-time bounds the memory.
+The MP4 blob is not put in the Query cache, and one object URL at a time bounds the memory. The
+file size of a real answer is not measured yet. The one test render was 25.1 s at 1280x720 and
+about 1.8 MB (render sprint 2026-09-25). At that rate a 270 s answer would be near 20 MB, but that
+is arithmetic on one file, not a measurement.
 
 ### Entry lifecycle
 
@@ -455,7 +517,16 @@ closed (an unknown key is `422`). `201` with the entry. `404 not_found` (video),
 **`POST /api/admin/library/entries/{id}/withdraw`**: `200`. `409 library_entry_withdrawn` when it
 already is.
 
+**`GET /api/admin/library/recordings?page=1&pageSize=10`** (REQ-042): finished recordings no entry
+uses yet. Paged like the entries list. `200`: `{ "items": [{ "videoAssetId", "answerText",
+"durationMs", "createdAt" }], "total", "page", "pageSize" }`, newest first.
+
 All admin routes: `401` without a session, `403` for a non-admin.
+
+The Record answer screen also calls `GET /api/jobs/{jobId}` (REQ-041). That route belongs to
+dependency (b) and is not specified here.
+
+That makes nine library routes: two for signed-in users and seven for admins.
 
 Publish, unpublish and withdraw are quick database writes, so they answer at once, not `202`. The
 long work of an answer (the render and `finalize`) stays in the workbench chain and in dependency
@@ -463,10 +534,10 @@ long work of an answer (the render and `finalize`) stays in the workbench chain 
 
 ### What changes with the code
 
-- `docs/API.md`: the seven routes in the "Endpoints used by the frontend" table
+- `docs/API.md`: the nine routes in the "Endpoints used by the frontend" table
   (`docs/API.md:26-39`) and a section each, with the error codes above.
 - `src/entities/library-entry/types.ts`: the Zod schemas, which parse every response.
-- `src/data/mock/handlers.ts`: the seven routes. It has no `/api/assets` or library route today. The
+- `src/data/mock/handlers.ts`: the nine routes. It has no `/api/assets` or library route today. The
   mock suggestions route answers two Persian entries. The mock video route answers
   `404 not_found`, because the in-browser mock carries no media file; the tests that play a video
   intercept the request with a fixture instead (section 12).
@@ -537,13 +608,24 @@ the status is `withdrawn`.
 No text column. ADR 0014 item 5 asks for "reviewer, decision, time, no user text". The video's own
 approval audit is dependency (a)'s `asset_reviews`; this table audits the entry.
 
+**`asset_reviews`** is dependency (a)'s table, not this spec's:
+`asset_reviews(id, asset_kind, asset_id, reviewer_user_id, decision, previous_status, created_at)`.
+Its `asset_id` has no foreign key to `video_assets` or `audio_assets`, and `reviewer_user_id`
+references `users(id)`. Its rows are append-only and never deleted. When the sweep deletes a
+withdrawn entry's `video_assets` row (REQ-016), the `asset_reviews` rows of that video stay and
+keep the bare id. The sweep never deletes from `asset_reviews`.
+
 **Lifecycle and retention.** An entry lives until it is withdrawn. Its media is deleted by the next
 daily sweep (REQ-016, ADR 0014 item 1 table, ADR 0015 item 5). The entry row and its review rows
 are kept as long as the library exists (ADR 0014 item 5, owner decision). Usage rows follow
-`provider_usage`, which has no deletion today.
+`provider_usage`, which has no deletion today. A library usage row holds the entry id, the
+duration and the time, and no user id or session id (REQ-015). So the hit ratio is read per
+entry (how often each answer was played), never per person.
 
-**Media.** Files stay under `VIDEO_CACHE_DIR` (`.../src/config.py:127`), the directory Egress writes
-through the compose mount. Imported files land there under their Egress name.
+**Media.** Files stay under `VIDEO_CACHE_DIR` (`.../src/config.py:127`), `/media/video` in the
+orchestrator. Egress writes the same host folder through its own mount (`docker-compose.yml:74`,
+`:104`). A recorded answer's file is `<external_id>.mp4` (`.../src/main.py:371`). An imported
+answer's file is `LIB_<key>.mp4`, and its `video_path` points at it (REQ-024).
 
 `docs/DATA_MODEL.md` gains both tables, the `video_assets` columns and statuses this feature
 reads, and the library `assistant_answer` row (with `source: "library"`) in the provider usage
@@ -592,7 +674,7 @@ Other cases:
 
 | Case | Key | `en` | `fa` |
 | ---- | --- | ---- | ---- |
-| nav item | `library.nav` | Answer library | کتابخانه پاسخ‌ها |
+| nav item | `nav.library` (next to `nav.dashboard` and `nav.users`) | Answer library | کتابخانه پاسخ‌ها |
 | status `pending` | `library.status.pending` | Waiting for review | در انتظار بررسی |
 | status `published` | `library.status.published` | Published | منتشرشده |
 | status `withdrawn` | `library.status.withdrawn` | Withdrawn | حذف‌شده |
@@ -607,12 +689,46 @@ Other cases:
 A `409` after a concurrent change (two admins on one entry) shows the matching message and refetches
 the entry. The admin's edited question stays in the field, so nothing typed is lost.
 
+### Admin recording flow (`admin.json`, REQ-039 to REQ-042)
+
+Recording needs an active LiveAvatar account and a paid ElevenLabs plan (REQ-039, render sprint
+2026-09-25). The screen maps each backend error code to one message. The code itself is shown under
+the message as a small left-to-right line, as the assistant screens do
+(`VideoConversationPage.tsx:218-222`), so an admin can quote it.
+
+| Step and code | Key | `en` | `fa` |
+| ------------- | --- | ---- | ---- |
+| screen notice | `library.record.needsAccounts` | Recording needs an active LiveAvatar account and a paid ElevenLabs plan. | ضبط به حساب فعال LiveAvatar و اشتراک پرداخت‌شده ElevenLabs نیاز دارد. |
+| session start, any error of `POST /api/avatar/session` | `library.record.errors.sessionFailed` | The avatar session could not start. Check that the LiveAvatar account is active, then try again. | جلسه آواتار شروع نشد. بررسی کنید که حساب LiveAvatar فعال باشد و دوباره امتحان کنید. |
+| speech, `elevenlabs_payment` (REQ-040) | `library.record.errors.speechPayment` | ElevenLabs refused the speech because the plan is not paid. Pay the ElevenLabs plan, then try again. | ElevenLabs صدا را نساخت چون هزینه اشتراک پرداخت نشده است. اشتراک ElevenLabs را پرداخت کنید و دوباره امتحان کنید. |
+| speech, `elevenlabs_quota` | `library.record.errors.speechBusy` | ElevenLabs is busy or its quota is used up. Wait a minute, then try again. | ElevenLabs مشغول است یا سهمیه آن تمام شده است. یک دقیقه صبر کنید و دوباره امتحان کنید. |
+| speech, any other error of TTS or speak (`elevenlabs_auth`, `elevenlabs_error`, `elevenlabs_stream_error`, `elevenlabs_timeout`, ...) | `library.record.errors.speechFailed` | The avatar could not speak the answer. Check that the ElevenLabs plan is paid and active, then try again. | آواتار نتوانست پاسخ را بگوید. بررسی کنید که اشتراک ElevenLabs پرداخت‌شده و فعال باشد و دوباره امتحان کنید. |
+| recording start, `409 recording_unavailable` (`.../src/main.py:361-369`) | `library.record.errors.recordingUnavailable` | Recording is not available on this server. It needs the BYO transport and a public LiveKit address. | ضبط روی این سرور در دسترس نیست. به حالت BYO و یک نشانی عمومی LiveKit نیاز دارد. |
+| recording start, `409 duplicate_generation` (`.../src/main.py:375-380`) | `library.record.errors.recordingDuplicate` | This recording has already started. Stop it, or start a new avatar session. | این ضبط قبلاً شروع شده است. آن را متوقف کنید یا جلسه آواتار تازه‌ای شروع کنید. |
+| recording start, any other error | `library.record.errors.recordingFailed` | The recording could not start. Try again. | ضبط شروع نشد. دوباره امتحان کنید. |
+| finalize job `failed`, `egress_failure` (the file did not appear in the wait, ADR 0015 item 4) | `library.record.errors.finalizeFileMissing` | The video file did not appear in time. Record the answer again. | فایل ویدیو به‌موقع آماده نشد. پاسخ را دوباره ضبط کنید. |
+| finalize job `failed`, `egress_invalid_mp4` (`.../src/media_probe.py:23-26,35-38`) | `library.record.errors.finalizeInvalid` | The video file is damaged or has no sound. Record the answer again. | فایل ویدیو خراب است یا صدا ندارد. پاسخ را دوباره ضبط کنید. |
+| finalize job `failed`, `worker_lost` (ADR 0015 item 3) | `library.record.errors.finalizeLost` | The server restarted while it processed the recording. Record the answer again. | سرور هنگام پردازش ضبط دوباره راه‌اندازی شد. پاسخ را دوباره ضبط کنید. |
+| finalize request refused, or job `failed` with any other code | `library.record.errors.finalizeFailed` | Processing the recording failed. Record the answer again. | پردازش ضبط ناموفق بود. پاسخ را دوباره ضبط کنید. |
+| job `queued` | `library.record.job.queued` | Waiting to process the recording | در انتظار پردازش ضبط |
+| job `running` | `library.record.job.running` | Processing the recording | در حال پردازش ضبط |
+| job `done` | `library.record.job.done` | The recording is ready. Save it to the library. | ضبط آماده است. آن را در کتابخانه ذخیره کنید. |
+| polling stopped at 180 s (not an error) | `library.record.job.slow` | The recording is still being processed. Check again in a minute. | ضبط هنوز در حال پردازش است. یک دقیقه دیگر دوباره بررسی کنید. |
+| button after `slow` | `library.record.job.checkAgain` | Check again | بررسی دوباره |
+| REQ-042 heading | `library.record.unsaved` | Finished recordings not in the library | ضبط‌های آماده‌ای که در کتابخانه نیستند |
+
+Retry safety. A session start or a speech call that failed can be retried. A new recording spends
+paid LiveAvatar minutes and ElevenLabs characters again, so the messages that end in "Record the
+answer again" are the only ones that ask for that. The answer text stays in the composer (its
+Redux slice, `src/app/store.ts:15`), so nothing typed is lost. A recording whose job is still
+running is never lost either: REQ-042 lists it once the job is `done`.
+
 ### Import (operator, English only)
 
 The import prints reason codes, not translated text: `bad_header`, `bad_key`, `bad_question`,
 `bad_answer`, `bad_video_asset_id`, `bad_duration`, `file_missing`, `file_exists`,
-`external_id_taken`, `probe_failed`, `duration_mismatch`, and `already_imported` (not a
-failure). A failure writes
+`external_id_taken`, `probe_failed`, `duration_mismatch`, `write_failed` (phase 2), and
+`already_imported` (not a failure). A failure writes
 nothing (REQ-027), so a fixed sheet can simply be run again.
 
 ## 9. Security and privacy
@@ -623,8 +739,19 @@ nothing (REQ-027), so a fixed sheet can simply be run again.
 - **No new user data.** Nothing a user says or types reaches the library. Questions and answers are
   staff text. ADR 0014 items 1 to 3 are not touched, and `docs/SECURITY.md:26-27` (item 17, "Today
   the backend stores none") stays true.
-- **Logging.** Ids only (REQ-017, REQ-029, SEC-005). The usage row holds ids, a language and a
-  duration: metadata that `docs/SECURITY.md:16` permits.
+- **Logging.** Ids only (REQ-017, REQ-029, SEC-005).
+- **The playback usage row.** It holds the library entry id, `cache_hit=true`, the duration and
+  the time, and no user id, principal or session id (REQ-015, foreman decision 2026-09-25). The
+  reason: every entry is a health question. A row that joins a user id to an entry id records
+  which person chose which health question. That is more than the metadata ADR 0014 allows
+  ("a count, a duration, `cache_hit`",
+  `docs/DECISIONS/0014-conversation-data-retention.md:58-59`), and more than
+  `docs/SECURITY.md:16` lists (user, model, token counts, latency, for a gateway call, not for a
+  choice of topic). The live `assistant_answer` rows carry a principal
+  (`.../src/assistant/service.py:252`), but they say nothing about the topic. So the hit ratio is
+  read per entry, not per person. The rate limit of REQ-014 does key on the user id, but only as a
+  Redis counter that expires with its one-hour window (`.../src/coordination.py:48`) and holds no
+  entry id.
 - **Tokens.** No new token. The video goes through `apiClient`, which adds the same cookie or Bearer
   as every request (`src/shared/api/interceptors.ts:11-17`, `src/shared/api/client.ts:19`). The
   object URL is a `blob:` URL local to the page and carries no credential. No media URL is put in
@@ -651,10 +778,10 @@ Record answer screens.
 | State | Behaviour |
 | ----- | --------- |
 | default | User: status `idle`, Start as today, and under it up to six suggested questions as full-width glass buttons. Admin: the Answer library list, newest first, with filters. |
-| loading | User, list: a compact `LoadingState` with a label under Start; Start stays usable. User, answer: the tapped button shows `isPending`, the `library.loading` line is announced politely, Stop is shown. Admin: `LoadingState` in the table body, as `AdminUsersPage`. |
+| loading | User, list: a compact `LoadingState` with a label under Start; Start stays usable. User, answer: the tapped button shows `isPending`, the `library.loading` line is announced politely, Stop is shown. Admin: `LoadingState` in the table body, as `AdminUsersPage`. Record answer: the job status line of REQ-041 (`library.record.job.queued`, `.running`). |
 | success | User: the answer plays with the "Recorded answer" label and its caption (REQ-057, REQ-058); at the end the `idle` layout returns with focus on the played question. Admin: the list shows; an action updates the row and shows a HeroUI toast. |
 | empty | User: nothing is rendered under Start, on purpose. An empty library is normal for an `en` user (only `fa` answers exist) or before the first publish, and an "empty" message about a feature the user never saw would be noise. Admin: `EmptyState` with `library.empty`. |
-| error (with retry) | User, list: a compact `ErrorState` with `library.suggestionsError` and `onRetry`; Start still works. User, answer: the error line of section 8 in place of the player, with Retry, and the list returns. Admin: `ErrorState` with `onRetry` for the list; action errors as section 8. |
+| error (with retry) | User, list: a compact `ErrorState` with `library.suggestionsError` and `onRetry`; Start still works. User, answer: the error line of section 8 in place of the player, with Retry, and the list returns. Admin: `ErrorState` with `onRetry` for the list; action errors as section 8. Record answer: one message per failure, from the recording table in section 8, with the error code under it. |
 | disabled | User: suggestion buttons are disabled while offline. Admin: actions not allowed by the status are not rendered; Save to library is disabled until the finalize job is `done`; Record is disabled for audio over 270 000 ms with `library.errors.tooLong`. |
 | unauthorized (401) | User: the routes sit behind `RequireAuth` (`src/app/mobile/router.tsx:35`, `src/app/web/router.tsx:32`); a `401` from the library follows the existing session handling to `/login`. Admin: `RequireAuth` (`src/app/admin/router.tsx:21`). |
 | forbidden (403) | User: cannot happen, the user routes need no role. Admin: a non-admin is sent to `/forbidden` by `RequireRole` (`src/app/admin/router.tsx:22`); a `403` from the API shows the same page. |
@@ -689,9 +816,11 @@ admin screen. `tests/e2e/web.contrast.spec.ts:261-265` opens `/avatar` and moves
 3. Group A, sweep step (REQ-016). Needs (b).
 4. Group B, the import. Needs group A's tables.
 5. Group C, the admin library screen (REQ-030 to REQ-033). Needs group A.
-6. Group C, the Record answer screen and the removal of `/avatar` (REQ-034 to REQ-037). Needs (a) and
-   (b), since the workbench calls then need an admin session and `finalize` answers `202`.
-7. Group D, playback on `mobile` and `web`. Needs group A.
+6. The ElevenLabs payment error code (REQ-040), backend only. Needs nothing.
+7. Group C, the Record answer screen, the job polling, the unsaved-recordings list and the removal
+   of `/avatar` (REQ-034 to REQ-037, REQ-039, REQ-041, REQ-042). Needs (a) and (b), since the
+   workbench calls then need an admin session and `finalize` answers `202`.
+8. Group D, playback on `mobile` and `web`. Needs group A.
 
 **Running the import.** Once groups A and B are deployed, the operator runs the import with
 `--dry-run`, fixes the sheet until the report is clean, runs it for real, and an admin publishes
@@ -727,8 +856,9 @@ our own files (HANDOFF, Step 0).
 - [ ] **SC-004** (REQ-013, SEC-004). The video route returns `200 video/mp4` for a servable entry and
   the same `404` body for each of the four others and for a random id.
 - [ ] **SC-005** (REQ-015). Each `200` from the video route adds exactly one `provider_usage` row with
-  `cache_hit=true`, `operation='assistant_answer'` and `metadata.source='library'`; a `404` and a
-  `429` add none; `GET /usage` counts it under `cache_hits`.
+  `cache_hit=true`, `operation='assistant_answer'`, `provider_resource_id` null, and `metadata`
+  equal to exactly `{library_entry_id, source: "library"}` (no user id, no principal, no session
+  id); a `404` and a `429` add none; `GET /usage` counts it under `cache_hits`.
 - [ ] **SC-006** (REQ-014). The 61st video request of one user within an hour answers
   `429 library_rate_limited` with `Retry-After`.
 - [ ] **SC-007** (SEC-001, SEC-002). Every admin library route answers `401` without a session and
@@ -737,7 +867,8 @@ our own files (HANDOFF, Step 0).
 - [ ] **SC-008** (SEC-003). The suggestion response parses with a strict schema of exactly `id`,
   `question`, `answerText`, `durationMs`.
 - [ ] **SC-009** (REQ-016). After a sweep, a withdrawn entry has `video_asset_id` null, its
-  `video_assets` row and MP4 are gone, and its review rows remain; a published entry is untouched.
+  `video_assets` row and MP4 are gone, its `library_entry_reviews` rows and the video's
+  `asset_reviews` rows remain; a published entry is untouched.
 - [ ] **SC-010** (REQ-020 to REQ-028). The import of a sheet with one bad row writes nothing and exits
   1 with that row's code; after fixing it, the import creates one `pending` entry and one new
   `video_assets` row per row, whose `id` differs from the sheet's `video_asset_id`; a second
@@ -766,26 +897,40 @@ our own files (HANDOFF, Step 0).
   entry from a finished recording.
 - [ ] **SC-021** (REQ-035, REQ-036). The Record answer screen sends `max_session_duration: 300`, and
   Record is disabled for a TTS result with `duration_ms` 270 001.
-- [ ] **SC-022** (section 8). Every new key exists in `en` and `fa` (`tests/unit` i18n parity check),
-  and the admin and user screens pass the RTL layout check in `fa`.
+- [ ] **SC-022** (section 8). Every new `library.*` and `nav.library` key exists in both `en` and
+  `fa` (a new unit test, since the repo has no parity check today), and the admin and user screens pass the RTL layout check in `fa`.
+- [ ] **SC-023** (REQ-041). After a `202` from `finalize`, the screen requests `GET /api/jobs/{jobId}`
+  every 2000 ms while the job is `queued` or `running`, stops at `done` (Save to library enabled)
+  and at `failed` (the mapped message of section 8), and stops at 180 s with
+  `library.record.job.slow`; leaving the screen stops the requests and returning resumes them.
+- [ ] **SC-024** (REQ-042). A `VIDEO_GENERATED` video with a file and no entry is listed by
+  `GET /api/admin/library/recordings`; once an entry uses it, it is not.
+- [ ] **SC-025** (REQ-040). A speech WebSocket that closes with code 1008 raises
+  `elevenlabs_payment`, not retryable, on both WebSocket paths; the admin screen shows
+  `library.record.errors.speechPayment`.
+- [ ] **SC-026** (REQ-016). After the sweep deletes a withdrawn entry's video
+  row, the video's `asset_reviews` rows still exist with the same `asset_id`.
 
 ### Tests
 
-- `apps/api/services/orchestrator/tests/test_library_api.py` (new): SC-002 to SC-008, SC-011 for the API.
+- `apps/api/services/orchestrator/tests/test_library_api.py` (new): SC-002 to SC-008, SC-011 for the
+  API, SC-024.
 - `apps/api/services/orchestrator/tests/test_library_import.py` (new): SC-010, SC-011 for the import.
-- The runner's sweep tests from dependency (b), extended: SC-009.
+- The runner's sweep tests from dependency (b), extended: SC-009, SC-026.
 - `apps/api/services/orchestrator/tests/test_livekit_gateway.py` (updated if REQ-038 lands here).
 - `apps/frontend/tests/unit/entities/library-entry/types.test.ts` (new): SC-008 on the client side.
 - `apps/frontend/tests/unit/features/answer-library/useRecordedAnswer.test.ts` (new): SC-015, SC-016.
 - `apps/frontend/tests/unit/features/assistant/orb.test.ts` (extended): the `isRecordingPlaying` signal.
-- `apps/frontend/tests/unit/data/mock/` (extended): the seven mock routes.
+- `apps/frontend/tests/unit/data/mock/` (extended): the nine mock routes.
 - `apps/frontend/tests/integration/conversationRoutes.test.tsx` (extended): SC-012, SC-017.
 - `apps/frontend/tests/integration/recordedAnswerPlayback.test.tsx` (new): SC-013, SC-014, with a
   fixture MP4 under `apps/frontend/tests/fixtures/`.
 - `apps/frontend/tests/integration/adminLibraryPage.test.tsx` (new, modelled on
   `adminUsersPage.test.tsx`): SC-020.
 - `apps/frontend/tests/integration/settingsPages.test.tsx` (extended): SC-019.
-- `apps/frontend/src/features/recording/useRecording.test.tsx` (extended): SC-021.
+- `apps/frontend/src/features/recording/useRecording.test.tsx` (extended): SC-021, SC-023.
+- `apps/frontend/tests/unit/i18n/libraryKeys.test.ts` (new): SC-022.
+- `apps/api/services/elevenlabs/tests/test_client.py` (extended): SC-025.
 - `apps/frontend/tests/e2e/mobile.conversation.spec.ts` (extended): tap, play, label, caption, Stop,
   Start during playback, `fa`.
 - `apps/frontend/tests/e2e/admin.library.spec.ts` (new): review and publish; the dark-theme check
@@ -817,5 +962,27 @@ import creates new rows on any install and trusts no render-server id (REQ-023).
 language and a user sees only their own (REQ-011). The library shows in sandbox mode and after the
 subscription ends (REQ-010).
 
-**Status.** No product question is left open. The status stays `Draft` until the owner approves
-the spec.
+**Open items.** This is the one list of everything this spec leaves open. None blocks writing the
+code; each is named where it applies.
+
+1. **Persona change.** The spike asks what happens to stored answers when the avatar, the voice or
+   the persona changes at the provider (`docs/features/response-caching/RESEARCH.md:1500-1506`).
+   Under REQ-010 the library does not compare avatars, so an answer recorded with an old face or
+   voice keeps playing until staff withdraw it. Each video keeps its `avatar_id` and `voice_id`
+   (`.../migrations/001_initial.sql:44-45`), so such entries can be found. No automatic check is
+   built in this phase. Whether one is needed is the owner's call, later.
+2. **Voice parity (spike U10).** The rendered voice may not sound like the live agent's voice. The
+   render sprint planned a listening check after the first render (HANDOFF, Step 0, item 4). Its
+   result is not recorded in the repository.
+3. **MP4 size.** Not measured beyond one 25.1 s test render of about 1.8 MB (section 5, State
+   ownership).
+4. **Chosen values, not measured.** The 270 s audio limit (REQ-036), the 1000 ms import tolerance
+   (REQ-024), the 2000 ms poll interval and the 180 s poll cap (REQ-041), 60 plays per user per
+   hour (REQ-014), and six suggestions by default (REQ-012).
+5. **The `canSubscribe` fix (REQ-038).** It may exist on the render server and not on `main`.
+6. **Merge timing.** Group C removes `/avatar`, which the render sprint uses today (section 11).
+7. **The dev mock plays nothing.** Its video route answers `404` (section 6); tests use a fixture.
+8. **Dependencies (a) and (b)** are not merged at `a366451`.
+
+**Status.** No product question is open. The status stays `Draft` until the owner approves the
+spec.
