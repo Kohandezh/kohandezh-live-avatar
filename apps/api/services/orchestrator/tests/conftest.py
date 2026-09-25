@@ -93,6 +93,7 @@ class FakeDatabase:
         self.usage: list[dict[str, Any]] = []
         self.audio_assets: dict[UUID, dict[str, Any]] = {}
         self.video_assets: dict[UUID, dict[str, Any]] = {}
+        self.asset_reviews: list[dict[str, Any]] = []
 
     async def get_user(self, user_id: UUID):
         return next((user for user in self.users if user["id"] == user_id), None)
@@ -229,12 +230,32 @@ class FakeDatabase:
     async def get_video_asset(self, asset_id: UUID):
         return self.video_assets.get(asset_id)
 
-    async def set_asset_status(self, table: str, asset_id: UUID, status: str):
-        rows = {"audio_assets": self.audio_assets, "video_assets": self.video_assets}[table]
-        row = rows.get(asset_id)
-        if row:
-            row["status"] = status
-        return row
+    async def review_asset(
+        self,
+        kind: str,
+        asset_id: UUID,
+        *,
+        decision: str,
+        allowed_from: list[str],
+        reviewer_user_id: UUID,
+    ):
+        # One step with no await inside: in memory that is what the guarded UPDATE and the
+        # transaction give the real method.
+        row = {"audio": self.audio_assets, "video": self.video_assets}[kind].get(asset_id)
+        if not row or row["status"] not in allowed_from:
+            return None
+        previous_status = row["status"]
+        row["status"] = decision
+        self.asset_reviews.append(
+            {
+                "asset_kind": kind,
+                "asset_id": asset_id,
+                "reviewer_user_id": reviewer_user_id,
+                "decision": decision,
+                "previous_status": previous_status,
+            }
+        )
+        return {**row, "previous_status": previous_status}
 
     async def usage_summary(self):
         return []

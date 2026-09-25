@@ -20,6 +20,31 @@ _USAGE_INSERT = """
 """
 
 
+# Move one asset to a review decision, only from an allowed status ($3), and return the status it
+# had. The check is part of the UPDATE, so two reviews of the same asset cannot both pass it. The
+# subquery locks the row before the update, so `previous_status` is the status this update
+# replaced, even when another review committed while this one waited for the lock.
+_REVIEW_UPDATES = {
+    "audio": """
+        UPDATE audio_assets AS asset SET status=$2, updated_at=now()
+        FROM (SELECT id, status FROM audio_assets WHERE id=$1 FOR UPDATE) AS previous
+        WHERE asset.id=$1 AND asset.id=previous.id AND asset.status = ANY($3::text[])
+        RETURNING asset.*, previous.status AS previous_status
+    """,
+    "video": """
+        UPDATE video_assets AS asset SET status=$2, updated_at=now()
+        FROM (SELECT id, status FROM video_assets WHERE id=$1 FOR UPDATE) AS previous
+        WHERE asset.id=$1 AND asset.id=previous.id AND asset.status = ANY($3::text[])
+        RETURNING asset.*, previous.status AS previous_status
+    """,
+}
+
+_REVIEW_INSERT = """
+    INSERT INTO asset_reviews (asset_kind, asset_id, reviewer_user_id, decision, previous_status)
+    VALUES ($1,$2,$3,$4,$5)
+"""
+
+
 def _usage_values(data: dict[str, Any]) -> tuple[Any, ...]:
     """The columns of one usage row. Keys that are not named here never reach the table."""
     return (
@@ -221,18 +246,32 @@ class Database:
     async def get_video_asset(self, asset_id: UUID) -> asyncpg.Record | None:
         return await self._pool().fetchrow("SELECT * FROM video_assets WHERE id=$1", asset_id)
 
-    async def set_asset_status(self, table: str, asset_id: UUID, status: str) -> asyncpg.Record | None:
-        queries = {
-            "audio_assets": ("UPDATE audio_assets SET status=$2,updated_at=now() WHERE id=$1 RETURNING *"),
-            "video_assets": ("UPDATE video_assets SET status=$2,updated_at=now() WHERE id=$1 RETURNING *"),
-        }
-        if table not in queries:
-            raise ValueError("invalid asset table")
-        return await self._pool().fetchrow(
-            queries[table],
-            asset_id,
-            status,
-        )
+    async def review_asset(
+        self,
+        kind: str,
+        asset_id: UUID,
+        *,
+        decision: str,
+        allowed_from: list[str],
+        reviewer_user_id: UUID,
+    ) -> asyncpg.Record | None:
+        """Move an asset to a review decision and write its audit row, in one transaction.
+
+        Returns the updated row plus `previous_status`, or None when no asset with this id is in
+        one of the `allowed_from` statuses; then nothing is written. If the audit row cannot be
+        written, the status change rolls back with it.
+        """
+        if kind not in _REVIEW_UPDATES:
+            raise ValueError("invalid asset kind")
+        async with self._pool().acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(_REVIEW_UPDATES[kind], asset_id, decision, allowed_from)
+                if row is None:
+                    return None
+                await conn.execute(
+                    _REVIEW_INSERT, kind, asset_id, reviewer_user_id, decision, row["previous_status"]
+                )
+                return row
 
     async def get_user(self, user_id: UUID) -> asyncpg.Record | None:
         return await self._pool().fetchrow("SELECT * FROM users WHERE id=$1", user_id)
