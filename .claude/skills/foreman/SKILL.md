@@ -227,6 +227,18 @@ the gates pass. Get the user's approval of the exact content and destination bef
 these: a ready-for-review PR, flipping a draft to ready, a PR or Linear comment, or any
 other Linear write. Ask again if the content or destination changes.
 
+**Stacked PRs land in their parent branch, not in `main`.** A PR whose base is another PR's
+branch merges into that branch. GitHub retargets it to `main` only when the parent branch is
+deleted on merge. On 2026-09-24 the owner merged a stack of seven and four of them never reached
+`main`: two landed in parent branches that had already merged, and one base was still open.
+Three re-landing PRs fixed it. So, whenever Foreman reports a stack:
+
+- give the merge order, parents first, and say that each child must show base `main` before it
+  is merged (retarget with `gh pr edit <n> --base main`, or delete the parent branch on merge);
+- after the owner merges, check every commit reached `main`
+  (`git merge-base --is-ancestor <sha> origin/main`) before cleanup, and report anything
+  stranded with the exact PR that would land it.
+
 ## Escalation
 
 When the two-round cap in a type reference is hit, first check the triggers in
@@ -299,3 +311,45 @@ Keep these controls on every task type:
 case that was red on the base and green on the patch. A debugging entry names the failing
 test and the command the verifier ran. Without that evidence, the team produced opinions
 rather than acceptance proof.
+
+## Fan-out verification runs
+
+Foreman sometimes needs a wide fan-out that is not a team: an intake that checks a pasted
+document or a proposal against the repository before a contract is written, or a swarm of
+skeptics that tries to refute each finding. These runs are scripts, not sessions.
+
+They run on Claude models, through the Workflow tool or Agent subagents. The Antigravity CLI
+(`agy`) is not an option: its quota is used up and the auto-mode classifier blocks it from a
+session anyway (owner's decision, 2026-09-24). Because they share the owner's Claude limit with
+every Herdr session, they are the first thing to bound.
+
+**Why these rules exist.** On 2026-09-24 one intake ran 6 readers that returned 90 findings, gave
+each finding two skeptics, and let every skeptic re-read the cited files itself: 187 agents,
+about 10 million tokens, two usage-limit pauses, 68 verdicts and the critic lost. A capped run of
+the same shape is about 40 agents.
+
+**Hard ceilings, written into every fan-out script:**
+
+- At most **8 findings per reader**. The reader is told the cap and the script slices to it.
+- **One skeptic per finding.** A second skeptic only when the first says `REFUTED` or
+  `UNVERIFIABLE`. Never two by default.
+- At most **40 agents per intake**, counted in the script. Over the cap, the remaining findings
+  are returned unverified and labelled, never silently dropped.
+- **Models do not re-read files to check a quote.** The reader returns `file:line`; the script
+  extracts those lines itself and hands the text to the skeptic. The citation check is a small
+  prompt on `haiku`. The reasoning check runs on `opus`; readers and the critic run on `sonnet`.
+- Set `effort` per stage: `low` for extraction and citation checks, the session default only
+  for the reasoning skeptic and the critic.
+
+**Before launching:**
+
+- Skip the intake when Foreman can check the facts by hand in a few reads. Intake is for a
+  pasted document or a proposal Foreman cannot verify itself, not for every code change.
+- Write the token budget for the mission in `ledger.md` before the first fan-out, and record
+  the workflow's `totalTokens` when it returns. A second fan-out in one mission needs a reason
+  in the ledger.
+- Check the remaining quota (`/usage` in the CLI) and never launch a fan-out within an hour of
+  a limit reset. A run that pauses on the limit loses its in-flight agents.
+
+Herdr teams (maker plus checker) stay the unit for every deliverable. The fan-out only feeds
+the contract, and the contract is written from confirmed findings plus Foreman's own checks.
