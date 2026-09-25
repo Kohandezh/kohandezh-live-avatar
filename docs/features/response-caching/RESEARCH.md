@@ -3,8 +3,8 @@
 | Field   | Value                                      |
 | ------- | ------------------------------------------ |
 | Created | 2026-09-19                                 |
-| Updated | 2026-09-24                                 |
-| Status  | In Review                                  |
+| Updated | 2026-09-25                                 |
+| Status  | Resolved                                   |
 | Domain  | assistant                                  |
 | Author  | `respcache-t1-res` (Claude Opus 5), mission `20260919-respcache`; Option E amendment by `optione-t1-res` (Claude Opus 5.5), mission `20260923-respcache-e` |
 | Outcome | → ADR                                      |
@@ -23,12 +23,10 @@ on `web` only), Option C (`pgvector` without a dump and restore), §8 (the appro
 §6 with two cells of the side-by-side table and Option C's Cost line (turn 2's claim that every
 option shares B's authentication and `finalize` costs, narrowed using Option C's own description).
 
-**On the `Status` value.** `docs/templates/SPIKE.md` offers only `Open / Resolved`, and the
-`writing-spikes` skill's close-out step says to set `Resolved`. This document uses `In Review`
-deliberately, because promoting a spike to `Resolved` is the maintainer's call, not the author's.
-`docs/features/INDEX.md` therefore carries `Research: Open`, which is consistent: this is not
-resolved yet. Do not "fix" it back. Whether the template should gain `In Review` as a value is a
-separate question for whoever owns the templates.
+**On the `Status` value.** The author left this spike `In Review`, because promoting a spike to
+`Resolved` is the maintainer's call. The owner marked it `Resolved` on 2026-09-25, together with
+the answers to ADR 0014 and ADR 0015 (both accepted). The owner chose Option B first, then
+Option D (ADR 0014 item 7).
 
 ## 1. The question
 
