@@ -156,6 +156,26 @@ The assistant writes three operations. `principal` is `user:<id>` or `embed:<ori
 - `assistant_close`: the session was closed (`POST /api/assistant/session/{id}/close`). Metadata:
   `principal`, `provider_stop`.
 
+### Asset review in the backend (`asset_reviews` table)
+
+Created by `apps/api/services/orchestrator/migrations/004_asset_reviews.sql`. One row per accepted
+review decision on a recorded asset (ADR 0014, item 5). `PATCH /api/assets/{kind}/{id}/status`
+writes it in the same transaction as the status change, so there is never a decision without its
+row. A refused decision writes nothing. The frontend never reads it.
+
+| Column             | Type        | Notes                                                              |
+| ------------------ | ----------- | ------------------------------------------------------------------ |
+| `id`               | uuid        | primary key                                                        |
+| `asset_kind`       | text        | `audio` or `video`                                                 |
+| `asset_id`         | uuid        | `audio_assets.id` or `video_assets.id`, by `asset_kind`. No foreign key |
+| `reviewer_user_id` | uuid        | the admin who decided. References `users(id)`                      |
+| `decision`         | text        | the new status: `AUDIO_APPROVED`, `VIDEO_APPROVED` or `REJECTED`   |
+| `previous_status`  | text        | the status the decision replaced                                   |
+| `created_at`       | timestamptz | when the decision was made                                         |
+
+No asset text and no phone number. The index on `(asset_kind, asset_id)` serves the history of one
+asset. The allowed transitions are in `docs/API.md`.
+
 ## Adding a model
 
 1. Create `src/entities/<name>/types.ts` with a Zod schema and inferred type.

@@ -23,7 +23,7 @@ from .assistant.router import router as assistant_router
 from .assistant.service import AssistantSessionService
 from .auth.admin import router as admin_router
 from .auth.asanak import AsanakOtpSender, build_otp_sender
-from .auth.dependencies import require_admin
+from .auth.dependencies import UserRow, require_admin
 from .auth.otp import OtpService
 from .auth.router import router as auth_router
 from .auth.sessions import SessionService
@@ -448,21 +448,54 @@ async def get_video(asset_id: UUID, request: Request):
     return FileResponse(row["video_path"], media_type="video/mp4", filename=f"{row['external_id']}.mp4")
 
 
+# The statuses each review decision may start from. Approval needs the generated media (a DRAFT
+# video is still recording). A rejection can also withdraw an approval. A rejection is final.
+REVIEW_TRANSITIONS: dict[str, dict[AssetStatus, list[AssetStatus]]] = {
+    "audio": {
+        AssetStatus.AUDIO_APPROVED: [AssetStatus.AUDIO_GENERATED],
+        AssetStatus.REJECTED: [AssetStatus.AUDIO_GENERATED, AssetStatus.AUDIO_APPROVED],
+    },
+    "video": {
+        AssetStatus.VIDEO_APPROVED: [AssetStatus.VIDEO_GENERATED],
+        AssetStatus.REJECTED: [AssetStatus.VIDEO_GENERATED, AssetStatus.VIDEO_APPROVED],
+    },
+}
+
+
 @authoring.patch("/assets/{kind}/{asset_id}/status")
-async def review_asset(kind: str, asset_id: UUID, payload: ApprovalRequest, request: Request):
-    table = {"audio": "audio_assets", "video": "video_assets"}.get(kind)
-    if not table:
+async def review_asset(
+    kind: str,
+    asset_id: UUID,
+    payload: ApprovalRequest,
+    request: Request,
+    admin: UserRow = Depends(require_admin),
+):
+    transitions = REVIEW_TRANSITIONS.get(kind)
+    if not transitions:
         raise AppError("validation_error", "kind must be audio or video", 422)
-    valid_status = {
-        "audio": {AssetStatus.AUDIO_APPROVED, AssetStatus.REJECTED},
-        "video": {AssetStatus.VIDEO_APPROVED, AssetStatus.REJECTED},
-    }
-    if payload.status not in valid_status[kind]:
+    allowed_from = transitions.get(payload.status)
+    if allowed_from is None:
         raise AppError("validation_error", f"{payload.status.value} is not valid for {kind}", 422)
-    row = await request.app.state.database.set_asset_status(table, asset_id, payload.status.value)
-    if not row:
+    database = request.app.state.database
+    row = await database.review_asset(
+        kind,
+        asset_id,
+        decision=payload.status.value,
+        allowed_from=[status.value for status in allowed_from],
+        reviewer_user_id=admin["id"],
+    )
+    if row:
+        return {"id": str(asset_id), "status": row["status"]}
+    current = await (database.get_audio_asset if kind == "audio" else database.get_video_asset)(asset_id)
+    if not current:
         raise NotFoundError(f"{kind} asset")
-    return {"id": str(asset_id), "status": row["status"]}
+    raise AppError(
+        "invalid_status_transition",
+        f"a {kind} asset in {current['status']} cannot move to {payload.status.value}",
+        409,
+        False,
+        {"currentStatus": current["status"]},
+    )
 
 
 @authoring.get("/usage")
