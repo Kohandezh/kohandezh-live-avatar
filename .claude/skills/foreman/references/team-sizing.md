@@ -19,7 +19,7 @@ from the ticket label alone.
 | Task shape                                                                    | Teams            | Expansion planned                   |
 | ----------------------------------------------------------------------------- | ---------------- | ----------------------------------- |
 | One root cause in one workspace                                               | 1                | none                                |
-| Several root causes in different files                                        | 1 per root cause | none; dependent PRs land as a stack |
+| Several root causes in different files                                        | 1 per root cause | none; dependent PRs land one at a time |
 | Scope unclear after reading the ticket and named files                        | 0 at first       | scout, then size again              |
 | Authorization, sync write path, billing, migrations                           | 1 per root cause | final reviewer                      |
 | Symptom known, cause unknown                                                  | 1 debugging team | none                                |
@@ -36,7 +36,8 @@ instead of a test file, such as a rendered-string assertion with a control. `SPE
 names the check. It must still be red on the base and green on the patch.
 
 A work unit is one root cause, one question, or one document. Per the `scoped-pr` skill,
-one root cause is one PR. Dependent PRs land as a stack through `merge-stacks`.
+one root cause is one PR. Dependent PRs land one at a time against `main`, never as a stack
+(see "No stacked PRs" in `SKILL.md`).
 
 Never group two tickets into one team because they look alike. Group them only when they
 share one root cause, and record why in the ledger.

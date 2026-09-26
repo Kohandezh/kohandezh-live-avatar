@@ -21,7 +21,7 @@ not a trigger.
 | A checker times out or produces no report twice                               | a fresh checker replacing it    |
 
 An integrator is rare in this repository. Each root cause is its own PR, and dependent
-PRs land as a stack. Add an integrator only when the user asks for one PR, or when the
+PRs land one at a time against `main`. Add an integrator only when the user asks for one PR, or when the
 work units cannot build apart.
 
 ## Roles
