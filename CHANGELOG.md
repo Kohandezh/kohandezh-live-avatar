@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The API runs background jobs. A runner inside the API process claims one due job at a time from
+  `generation_jobs` with a 60 second lease, renewed every 20 seconds, so a job whose process died
+  is picked up again. Retryable failures are retried with backoff up to the job's attempt limit;
+  every failed attempt logs `job_attempt_failed` and a job that fails for good logs `job_failed`,
+  with ids and counts only. `GET /api/jobs/{jobId}` reports a job's status to the user who started
+  it or to an admin, and answers `404` to anyone else. A daily `retention_sweep` job deletes
+  finished jobs after 30 days and keeps every failed job.
 - A BYO LiveAvatar session (`LIVEAVATAR_TRANSPORT=byo`) can start. The avatar's LiveKit token
   had `canSubscribe` off, and LiveAvatar refuses such a token with a 422, so every BYO session, and
   with it every recording, failed. The token now allows subscribing.

@@ -31,6 +31,8 @@ from .config import Settings, get_settings
 from .coordination import Coordinator
 from .database import Database
 from .errors import AppError, NotFoundError, ProviderError
+from .jobs import HANDLERS, JobRunner, new_worker_id
+from .jobs.router import router as jobs_router
 from .livekit_gateway import LiveKitGateway
 from .logging import configure_logging, correlation_id_var
 from .media_probe import probe_avatar_mp4
@@ -99,6 +101,7 @@ def build_services(app: FastAPI, config: Settings) -> None:
     assistant = AssistantSessionService(client=liveavatar_client, database=database, settings=config)
     sessions = SessionService(coordinator=coordinator, ttl_seconds=config.session_ttl_seconds)
     otp = OtpService(coordinator=coordinator, sender=otp_sender, settings=config)
+    jobs = JobRunner(database, handlers=HANDLERS, worker_id=new_worker_id(), settings=config)
     app.state.settings = config
     app.state.database = database
     app.state.coordinator = coordinator
@@ -110,16 +113,20 @@ def build_services(app: FastAPI, config: Settings) -> None:
     app.state.sessions = sessions
     app.state.otp = otp
     app.state.otp_sender = otp_sender
+    app.state.jobs = jobs
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     build_services(app, settings)
     await app.state.database.connect()
+    await app.state.jobs.start()
     logger.info("orchestrator_started", extra={"environment": settings.app_env})
     try:
         yield
     finally:
+        # First, so a running job still has its database and its providers while it finishes.
+        await app.state.jobs.stop()
         await app.state.avatar.close_all()
         if isinstance(app.state.otp_sender, AsanakOtpSender):
             await app.state.otp_sender.close()
@@ -203,6 +210,7 @@ async def validation_error_handler(_: Request, exc: RequestValidationError):
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(assistant_router)
+app.include_router(jobs_router)
 
 
 @app.get("/health/live")

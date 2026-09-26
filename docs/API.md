@@ -37,6 +37,7 @@ contract between the two apps. Any backend that implements it works with this fr
 | POST   | `/api/assistant/session`              | Auth or key | `entities/assistant-session`  |
 | POST   | `/api/assistant/session/{id}/close`   | Auth or key | `entities/assistant-session`  |
 | POST   | `/api/assistant/session/{id}/answers` | Auth or key | `entities/assistant-session`  |
+| GET    | `/api/jobs/{jobId}`                   | Auth        | none yet                      |
 
 Login is a phone number plus a one-time code (OTP). There is no password anywhere in the system.
 
@@ -241,6 +242,31 @@ the real provider. `occurred_at` is when the report arrived, not when the avatar
 `cache_hit` is always `false` on these rows. No text of the question or the answer is sent or
 stored, only the index and the duration (`docs/SECURITY.md` item 13; ADR 0014, still pending,
 says the same). Nothing in the app calls this endpoint yet.
+
+### GET /api/jobs/{jobId}
+
+The poll for a long operation (see Conventions). Only the user who started the job, or an admin,
+may read it. A job the system started itself (the daily retention sweep) has no user, so only an
+admin may read it.
+
+Response `200`, by `status`:
+
+- `{ "status": "queued" }` and `{ "status": "running" }`: not finished. Poll again.
+- `{ "status": "done", "result": unknown }`: `result` is the job's output. The operation that
+  started the job defines its shape.
+- `{ "status": "failed", "error": { "code": string, "message": string } }`: `message` is a fixed
+  English text per `code`, never user text and never a server exception. Show a translated text
+  by `code`. `worker_lost` means the process running the job stopped on the job's last allowed
+  attempt; `internal_error` is an unexpected failure. The operation adds its own codes.
+
+A job can go back from `running` to `queued`: when it waits for something, or when a retryable
+error is retried later. `done` and `failed` are final. A second request for the same work while
+its job is `queued` or `running` gets the same `jobId`.
+
+- `401 unauthorized` without a session. `403 account_disabled` for a disabled account.
+- `404 not_found` for an unknown id, and for a job the caller may not read. Both answer the same
+  body, so a job id tells nothing about the job.
+- `422 validation_error` when the id is not a UUID.
 
 ## Backend requirements
 

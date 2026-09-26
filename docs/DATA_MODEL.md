@@ -176,6 +176,48 @@ row. A refused decision writes nothing. The frontend never reads it.
 No asset text and no phone number. The index on `(asset_kind, asset_id)` serves the history of one
 asset. The allowed transitions are in `docs/API.md`.
 
+### Background jobs in the backend (`generation_jobs` table)
+
+Created by `001_initial.sql`, with the runner columns from `005_generation_jobs_runner.sql`
+(ADR 0015). It is the only owner of job state; Redis holds none. The API process runs the jobs
+itself, one at a time per process, and `GET /api/jobs/{jobId}` reads them (`docs/API.md`).
+
+| Column             | Type          | Notes                                                              |
+| ------------------ | ------------- | ------------------------------------------------------------------ |
+| `id`               | uuid          | primary key, the `jobId` of the API                                |
+| `job_type`         | text          | see the job types below                                            |
+| `dedupe_key`       | text          | at most one `queued` or `running` job per key (unique partial index) |
+| `status`           | text          | `queued`, `running`, `done` or `failed`                            |
+| `input`            | jsonb         | ids of the rows the job works on. Never user text                  |
+| `output`           | jsonb         | the result of a `done` job, `{}` before that                       |
+| `error_code`       | text (null)   | the last failure. Kept when a retry later succeeds                 |
+| `error_message`    | text (null)   | a fixed text per `error_code`, never user text or an exception    |
+| `attempt_count`    | integer       | claims for real work so far. A job that waits does not count      |
+| `max_attempts`     | integer       | the retry limit, set per job type at enqueue                       |
+| `run_after`        | timestamptz   | when the job is next due: now, a retry backoff, or a schedule      |
+| `lease_expires_at` | timestamptz (null) | a `running` job past its lease lost its worker and is claimed again |
+| `worker_id`        | text (null)   | the process that claimed the job last: host name plus a per-boot id |
+| `created_by`       | uuid (null)   | the user who asked for the job. References `users(id)`. Null for a system job |
+| `created_at`       | timestamptz   | enqueue time                                                       |
+| `started_at`       | timestamptz (null) | the last claim                                                |
+| `completed_at`     | timestamptz (null) | when the job became `done` or `failed`                         |
+| `updated_at`       | timestamptz   | last change                                                        |
+
+A job moves `queued` to `running` when a worker claims it, and then to `done`, to `failed`, or
+back to `queued` (a retry, or a job that waits). An attempt is counted at each claim. A failure
+whose error is retryable goes back to `queued` with a later `run_after`, unless it was the last
+attempt. Any other failure is `failed` at once. A `running` job whose lease ran out is claimed
+again, or fails with `worker_lost` when its lost attempt was the last one.
+
+Job types:
+
+| `job_type`        | `max_attempts` | What it does                                                 |
+| ----------------- | -------------- | ------------------------------------------------------------ |
+| `retention_sweep` | 1              | Daily. Deletes `done` jobs finished more than 30 days ago. Never deletes a `failed` job. `created_by` is null. The next run is enqueued one day ahead when the current one closes, whatever its outcome |
+
+Failed jobs are kept with no end date, and each holds the `created_by` user id. A user deletion
+must also clear that column on their failed jobs (ADR 0015, consequences).
+
 ## Adding a model
 
 1. Create `src/entities/<name>/types.ts` with a Zod schema and inferred type.

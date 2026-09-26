@@ -1,6 +1,7 @@
 import json
 import logging
-from datetime import date
+from collections.abc import Awaitable, Callable, Iterable
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -43,6 +44,80 @@ _REVIEW_INSERT = """
     INSERT INTO asset_reviews (asset_kind, asset_id, reviewer_user_id, decision, previous_status)
     VALUES ($1,$2,$3,$4,$5)
 """
+
+# Background jobs (ADR 0015). The partial unique index of migration 005 allows one queued or
+# running job per dedupe_key. A conflict inserts nothing, and the caller reads the existing job.
+_JOB_INSERT = """
+    INSERT INTO generation_jobs (job_type, dedupe_key, status, input, created_by, max_attempts, run_after)
+    VALUES ($1, $2, 'queued', $3::jsonb, $4, $5, coalesce($6, now()))
+    ON CONFLICT (dedupe_key) WHERE status IN ('queued', 'running') DO NOTHING
+    RETURNING *
+"""
+
+_JOB_ACTIVE = "SELECT * FROM generation_jobs WHERE dedupe_key=$1 AND status IN ('queued', 'running')"
+
+# Claim the next due job in one statement: a queued job whose run_after has come, or a running job
+# whose lease ran out because its worker died. SKIP LOCKED makes a second worker take the next job
+# instead of waiting for this one, so two workers never claim the same job.
+#
+# Every claim counts an attempt, except the reclaim of a job whose lost attempt was its last one:
+# the runner fails that job with worker_lost and does not run it. `claimed_from` and `exhausted`
+# tell the runner which case it has.
+_JOB_CLAIM = """
+    WITH next AS (
+        SELECT id, status, attempt_count >= max_attempts AS exhausted
+        FROM generation_jobs
+        WHERE job_type = ANY($1::text[])
+          AND (
+            (status = 'queued' AND run_after <= now())
+            OR (status = 'running' AND (lease_expires_at IS NULL OR lease_expires_at < now()))
+          )
+        ORDER BY run_after, created_at, id
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+    )
+    UPDATE generation_jobs AS job SET
+        status = 'running',
+        worker_id = $2,
+        lease_expires_at = now() + make_interval(secs => $3),
+        started_at = now(),
+        attempt_count = CASE WHEN next.status = 'running' AND next.exhausted
+                             THEN job.attempt_count ELSE job.attempt_count + 1 END,
+        updated_at = now()
+    FROM next
+    WHERE job.id = next.id
+    RETURNING job.*, next.status AS claimed_from, (next.status = 'running' AND next.exhausted) AS exhausted
+"""
+
+# Renew and close change a job only while the claim ($2 worker_id, $3 started_at) still holds it.
+# A worker whose lease ran out, and whose job another claim took over, matches no row and changes
+# nothing.
+_JOB_RENEW = """
+    UPDATE generation_jobs SET lease_expires_at = now() + make_interval(secs => $4), updated_at = now()
+    WHERE id=$1 AND status='running' AND worker_id=$2 AND started_at=$3
+    RETURNING id
+"""
+
+# One statement for every outcome of a run: done, failed, queued again for a retry, or queued again
+# without counting the attempt (a handler that is waiting for something). The error and the output
+# keep their old value when this outcome has none, so the row keeps the last error.
+_JOB_CLOSE = """
+    UPDATE generation_jobs SET
+        status = $4,
+        output = coalesce($5::jsonb, output),
+        error_code = coalesce($6, error_code),
+        error_message = coalesce($7, error_message),
+        completed_at = CASE WHEN $4 IN ('done', 'failed') THEN now() END,
+        run_after = CASE WHEN $4 = 'queued' THEN now() + make_interval(secs => $8) ELSE run_after END,
+        attempt_count = attempt_count - $9,
+        lease_expires_at = NULL,
+        updated_at = now()
+    WHERE id=$1 AND status='running' AND worker_id=$2 AND started_at=$3
+    RETURNING *
+"""
+
+# A write that runs inside the transaction closing a job (see close_job).
+JobWrite = Callable[[asyncpg.Connection], Awaitable[Any]]
 
 
 def _usage_values(data: dict[str, Any]) -> tuple[Any, ...]:
@@ -429,3 +504,100 @@ class Database:
             """
         )
         return [dict(row) for row in rows]
+
+    async def enqueue_job(
+        self,
+        job_type: str,
+        dedupe_key: str,
+        input: dict[str, Any],
+        *,
+        created_by: UUID | None,
+        max_attempts: int,
+        run_after: datetime | None = None,
+        conn: asyncpg.Connection | None = None,
+    ) -> asyncpg.Record:
+        """Add a queued job, or return the queued or running job that already has `dedupe_key`.
+
+        `input` references rows by id and carries no user text (ADR 0015). `run_after` None means
+        now. `conn` runs the enqueue inside a transaction the caller holds.
+        """
+        executor = conn or self._pool()
+        # The existing job can finish between the refused insert and the read. Then the key is
+        # free again and the next insert goes through, so a few rounds are always enough.
+        for _ in range(3):
+            row = await executor.fetchrow(
+                _JOB_INSERT, job_type, dedupe_key, json.dumps(input), created_by, max_attempts, run_after
+            )
+            if row is None:
+                row = await executor.fetchrow(_JOB_ACTIVE, dedupe_key)
+            if row is not None:
+                return row
+        raise RuntimeError("the job could not be enqueued")
+
+    async def get_job(self, job_id: UUID) -> asyncpg.Record | None:
+        return await self._pool().fetchrow("SELECT * FROM generation_jobs WHERE id=$1", job_id)
+
+    async def claim_job(
+        self, job_types: list[str], *, worker_id: str, lease_seconds: float
+    ) -> asyncpg.Record | None:
+        """Claim the next due job of one of `job_types` for `worker_id`, or None when none is due.
+
+        The row carries two more fields: `claimed_from` (`queued`, or `running` for a job whose
+        worker died) and `exhausted` (that dead worker used the last attempt).
+        """
+        return await self._pool().fetchrow(_JOB_CLAIM, job_types, worker_id, lease_seconds)
+
+    async def renew_job_lease(self, job: asyncpg.Record, lease_seconds: float) -> bool:
+        """Extend the lease of a claim. False when the claim is no longer held."""
+        row = await self._pool().fetchrow(
+            _JOB_RENEW, job["id"], job["worker_id"], job["started_at"], lease_seconds
+        )
+        return row is not None
+
+    async def close_job(
+        self,
+        job: asyncpg.Record,
+        *,
+        status: str,
+        output: dict[str, Any] | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        delay_seconds: float = 0,
+        refund_attempt: bool = False,
+        writes: Iterable[JobWrite] = (),
+    ) -> asyncpg.Record | None:
+        """Record the outcome of a claim, and run `writes` in the same transaction.
+
+        Returns the updated row, or None when the claim is no longer held (its lease ran out and
+        another claim took the job over). Then nothing is written. If a write raises, the
+        transaction rolls back and the error reaches the caller.
+        """
+        async with self._pool().acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    _JOB_CLOSE,
+                    job["id"],
+                    job["worker_id"],
+                    job["started_at"],
+                    status,
+                    None if output is None else json.dumps(output),
+                    error_code,
+                    error_message,
+                    delay_seconds,
+                    1 if refund_attempt else 0,
+                )
+                if row is None:
+                    return None
+                for write in writes:
+                    await write(conn)
+                return row
+
+    async def delete_done_jobs(self, *, older_than_days: int) -> int:
+        """Delete done jobs finished more than `older_than_days` ago. Failed jobs are never
+        deleted (ADR 0015, item 5)."""
+        result = await self._pool().execute(
+            "DELETE FROM generation_jobs "
+            "WHERE status='done' AND completed_at < now() - make_interval(days => $1)",
+            older_than_days,
+        )
+        return int(result.split()[-1])
