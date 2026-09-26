@@ -30,12 +30,12 @@ from .auth.sessions import SessionService
 from .config import Settings, get_settings
 from .coordination import Coordinator
 from .database import Database
-from .errors import AppError, NotFoundError, ProviderError
+from .errors import AppError, NotFoundError
 from .jobs import HANDLERS, JobRunner, new_worker_id
+from .jobs.finalize import start_finalize
 from .jobs.router import router as jobs_router
 from .livekit_gateway import LiveKitGateway
 from .logging import configure_logging, correlation_id_var
-from .media_probe import probe_avatar_mp4
 from .schemas import (
     ApprovalRequest,
     AssetStatus,
@@ -409,31 +409,31 @@ async def generate_video(payload: GenerateVideoRequest, request: Request):
         return {"id": str(row["id"]), "egress_id": egress_id, "status": "RECORDING"}
 
 
-@authoring.post("/assets/video/{asset_id}/finalize")
-async def finalize_video(asset_id: UUID, request: Request):
-    row = await request.app.state.database.get_video_asset(asset_id)
+@authoring.post("/assets/video/{asset_id}/finalize", status_code=202)
+async def finalize_video(asset_id: UUID, request: Request, admin: UserRow = Depends(require_admin)):
+    """Stop Egress and hand the wait for the MP4 to a finalize_video job (ADR 0015, item 4)."""
+    database = request.app.state.database
+    row = await database.get_video_asset(asset_id)
     if not row:
         raise NotFoundError("video asset")
     if not row["egress_id"]:
         raise AppError("egress_failure", "video asset has no active egress", 409)
-    await request.app.state.livekit.stop_egress(row["egress_id"])
-    path = Path(row["video_path"])
-    for _ in range(30):
-        if path.is_file() and path.stat().st_size > 0:
-            break
-        await asyncio.sleep(0.5)
-    if not path.is_file() or path.stat().st_size == 0:
-        raise ProviderError(
-            "egress_failure", "Egress stopped but the MP4 did not appear in the media cache", 502, True
+    if row["status"] != AssetStatus.DRAFT.value:
+        raise AppError(
+            "invalid_status_transition",
+            f"a video asset in {row['status']} cannot be finalized",
+            409,
+            False,
+            {"currentStatus": row["status"]},
         )
-    probe = await probe_avatar_mp4(path)
-    updated = await request.app.state.database.complete_video_asset(asset_id, probe["duration_ms"], probe)
-    return {
-        "id": str(asset_id),
-        "status": updated["status"],
-        "media_url": f"/api/assets/video/{asset_id}",
-        "probe": probe,
-    }
+    job = await start_finalize(
+        database,
+        request.app.state.livekit,
+        asset_id=asset_id,
+        egress_id=row["egress_id"],
+        created_by=admin["id"],
+    )
+    return {"jobId": str(job["id"])}
 
 
 @authoring.get("/assets/audio/{asset_id}")

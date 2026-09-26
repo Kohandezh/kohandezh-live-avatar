@@ -307,16 +307,24 @@ class Database:
             egress_id,
         )
 
-    async def complete_video_asset(
-        self, asset_id: UUID, duration_ms: int, probe: dict[str, Any]
-    ) -> asyncpg.Record:
-        return await self._pool().fetchrow(
+    async def mark_video_generated(
+        self,
+        asset_id: UUID,
+        duration_ms: int,
+        probe: dict[str, Any],
+        *,
+        conn: asyncpg.Connection | None = None,
+    ) -> bool:
+        """Move a DRAFT video to VIDEO_GENERATED with its probe. False when the row is no longer a
+        draft: the status check is part of the UPDATE, so a rejection that landed first wins."""
+        row = await (conn or self._pool()).fetchrow(
             "UPDATE video_assets SET status='VIDEO_GENERATED',duration_ms=$2,metadata=$3::jsonb,"
-            "updated_at=now() WHERE id=$1 RETURNING *",
+            "updated_at=now() WHERE id=$1 AND status='DRAFT' RETURNING id",
             asset_id,
             duration_ms,
             json.dumps({"ffprobe": probe}),
         )
+        return row is not None
 
     async def get_video_asset(self, asset_id: UUID) -> asyncpg.Record | None:
         return await self._pool().fetchrow("SELECT * FROM video_assets WHERE id=$1", asset_id)
@@ -521,6 +529,30 @@ class Database:
         `input` references rows by id and carries no user text (ADR 0015). `run_after` None means
         now. `conn` runs the enqueue inside a transaction the caller holds.
         """
+        job, _ = await self.enqueue_or_join_job(
+            job_type,
+            dedupe_key,
+            input,
+            created_by=created_by,
+            max_attempts=max_attempts,
+            run_after=run_after,
+            conn=conn,
+        )
+        return job
+
+    async def enqueue_or_join_job(
+        self,
+        job_type: str,
+        dedupe_key: str,
+        input: dict[str, Any],
+        *,
+        created_by: UUID | None,
+        max_attempts: int,
+        run_after: datetime | None = None,
+        conn: asyncpg.Connection | None = None,
+    ) -> tuple[asyncpg.Record, bool]:
+        """Like enqueue_job, and also says whether this call created the job (True) or joined the
+        queued or running job that already had `dedupe_key` (False)."""
         executor = conn or self._pool()
         # The existing job can finish between the refused insert and the read. Then the key is
         # free again and the next insert goes through, so a few rounds are always enough.
@@ -528,14 +560,48 @@ class Database:
             row = await executor.fetchrow(
                 _JOB_INSERT, job_type, dedupe_key, json.dumps(input), created_by, max_attempts, run_after
             )
-            if row is None:
-                row = await executor.fetchrow(_JOB_ACTIVE, dedupe_key)
             if row is not None:
-                return row
+                return row, True
+            row = await executor.fetchrow(_JOB_ACTIVE, dedupe_key)
+            if row is not None:
+                return row, False
         raise RuntimeError("the job could not be enqueued")
 
     async def get_job(self, job_id: UUID) -> asyncpg.Record | None:
         return await self._pool().fetchrow("SELECT * FROM generation_jobs WHERE id=$1", job_id)
+
+    async def make_job_due(self, job_id: UUID, *, input_update: dict[str, Any] | None = None) -> bool:
+        """Set a queued job's run_after to now and merge `input_update` into its input. False when
+        the job is no longer queued."""
+        row = await self._pool().fetchrow(
+            "UPDATE generation_jobs SET run_after=now(), input = input || $2::jsonb, updated_at=now() "
+            "WHERE id=$1 AND status='queued' RETURNING id",
+            job_id,
+            json.dumps(input_update or {}),
+        )
+        return row is not None
+
+    async def has_started_job(self, dedupe_key: str, *, other_than: UUID) -> bool:
+        """Whether a job with `dedupe_key`, other than `other_than`, was ever claimed by a worker."""
+        return await self._pool().fetchval(
+            "SELECT EXISTS (SELECT 1 FROM generation_jobs "
+            "WHERE dedupe_key=$1 AND id<>$2 AND started_at IS NOT NULL)",
+            dedupe_key,
+            other_than,
+        )
+
+    async def fail_queued_job(
+        self, job_id: UUID, *, error_code: str, error_message: str
+    ) -> asyncpg.Record | None:
+        """Fail a job that no worker has claimed yet. None when a worker claimed it meanwhile."""
+        return await self._pool().fetchrow(
+            "UPDATE generation_jobs SET status='failed', error_code=$2, error_message=$3, "
+            "completed_at=now(), updated_at=now() "
+            "WHERE id=$1 AND status='queued' AND started_at IS NULL RETURNING *",
+            job_id,
+            error_code,
+            error_message,
+        )
 
     async def claim_job(
         self, job_types: list[str], *, worker_id: str, lease_seconds: float

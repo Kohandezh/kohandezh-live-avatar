@@ -250,6 +250,44 @@ function toInt(
   return Math.min(parsed, max);
 }
 
+/** The ids of the fixture jobs below, for tests and for trying the poll by hand. */
+export const mockJobIds = {
+  done: 'mock-job-done',
+  failed: 'mock-job-failed',
+  running: 'mock-job-running',
+  system: 'mock-job-system',
+} as const;
+
+const MOCK_FINALIZED_VIDEO_ID = '33333333-3333-4333-8333-333333333333';
+
+/**
+ * Fixture jobs, each with the user who started it (null: a system job, admin only). The mock
+ * has no recording routes, so nothing enqueues a job here: finalize is backend only.
+ */
+const mockJobs: Record<string, { createdBy: string | null; body: unknown }> = {
+  [mockJobIds.done]: {
+    createdBy: 'u-admin',
+    body: {
+      status: 'done',
+      result: {
+        id: MOCK_FINALIZED_VIDEO_ID,
+        status: 'VIDEO_GENERATED',
+        media_url: `/api/assets/video/${MOCK_FINALIZED_VIDEO_ID}`,
+        probe: { video_codec: 'h264', audio_codec: 'aac', width: 1280, height: 720, duration_ms: 4200 },
+      },
+    },
+  },
+  [mockJobIds.failed]: {
+    createdBy: 'u-admin',
+    body: {
+      status: 'failed',
+      error: { code: 'egress_failure', message: 'The recording file did not appear in time.' },
+    },
+  },
+  [mockJobIds.running]: { createdBy: 'u-user', body: { status: 'running' } },
+  [mockJobIds.system]: { createdBy: null, body: { status: 'queued' } },
+};
+
 export const routes: MockRoute[] = [
   {
     method: 'post',
@@ -554,6 +592,21 @@ export const routes: MockRoute[] = [
       return {
         body: { recorded: fresh.size, duplicates: answers.length - fresh.size },
       };
+    },
+  },
+  {
+    method: 'get',
+    path: /^\/api\/jobs\/[^/]+$/,
+    handle(request) {
+      const user = requireUser(request);
+      const jobId = decodeURIComponent(request.url.pathname.split('/').pop() ?? '');
+      const job = mockJobs[jobId];
+      // Same rule as the backend: the job's creator or an admin. Anyone else gets the same 404
+      // as an unknown id.
+      const mayRead =
+        job !== undefined && (user.role === 'admin' || job.createdBy === user.id);
+      if (!mayRead) throw new MockHttpError(404, 'not_found', 'job was not found');
+      return { body: job.body };
     },
   },
 ];

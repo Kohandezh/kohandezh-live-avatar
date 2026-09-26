@@ -3,7 +3,6 @@ import type {
   AudioAssetDto,
   GenerateVideoRequestDto,
   TtsRequestDto,
-  VideoFinalizeDto,
   VideoRecordingDto,
 } from './dto';
 import { apiUrl } from './urls';
@@ -35,14 +34,16 @@ export const assetsApi = {
       })
       .then((response) => response.data),
 
-  /** Stops Egress, waits for the MP4, probes it (H.264 + audio required). */
+  /**
+   * Stops Egress and answers `202` with a job id at once. A `finalize_video` job then waits for
+   * the MP4 and probes it (H.264 + audio required); poll it with `GET /api/jobs/{jobId}`. The
+   * body is `unknown` here: the caller parses it with the job entity's schema.
+   */
   finalizeVideo: (videoAssetId: string) =>
     apiClient
-      .post<VideoFinalizeDto>(
-        `/api/assets/video/${videoAssetId}/finalize`,
-        undefined,
-        { timeout: 60_000 },
-      )
+      .post<unknown>(`/api/assets/video/${videoAssetId}/finalize`, undefined, {
+        timeout: 30_000,
+      })
       .then((response) => response.data),
 
   videoUrl: (videoAssetId: string) => apiUrl(`/api/assets/video/${videoAssetId}`),

@@ -213,6 +213,7 @@ Job types:
 
 | `job_type`        | `max_attempts` | What it does                                                 |
 | ----------------- | -------------- | ------------------------------------------------------------ |
+| `finalize_video`  | 3              | Enqueued by `POST /api/assets/video/{id}/finalize` with `dedupe_key` `finalize_video:<asset id>` and `input` `{ "asset_id" }`. When Egress has stopped, the job is made due and `input` gains `file_wait_from` (ISO time), where the wait for the MP4 starts. Waits for the MP4, then probes it and moves the asset from `DRAFT` to `VIDEO_GENERATED` in the transaction that marks the job done. `output` is the finalize result (`docs/API.md`) |
 | `retention_sweep` | 1              | Daily. Deletes `done` jobs finished more than 30 days ago. Never deletes a `failed` job. `created_by` is null. The next run is enqueued one day ahead when the current one closes, whatever its outcome |
 
 Failed jobs are kept with no end date, and each holds the `created_by` user id. A user deletion
