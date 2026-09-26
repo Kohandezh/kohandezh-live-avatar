@@ -231,10 +231,24 @@ place; REQ-065 and later were added on 2026-09-26.
   characters, else `422`). A missing `key` defaults to the video's `external_id`, or is refused
   without a video. A taken key is refused (`409 library_key_taken`). `position` is the current
   maximum plus one. `created_by` is the admin.
-- **REQ-005.** `PATCH /api/admin/library/entries/{id}` changes `question`, `answer_text`,
-  `language`, `category`, `category_title`, `section_type` and `technical`, and only while the entry
-  is `pending` (`409 invalid_status_transition` otherwise, with `currentStatus`). To change the text
-  of a later state, the admin first moves it back (REQ-067, REQ-069, REQ-007).
+- **REQ-005.** `PATCH /api/admin/library/entries/{id}` edits an entry in place. Which fields it
+  may change depends on the state:
+
+  | State | Editable | Locked |
+  | ----- | -------- | ------ |
+  | `pending` | `question`, `answer_text`, `language`, `category`, `category_title`, `section_type`, `technical` | nothing |
+  | `ready`, `draft` | `question`, `category`, `category_title`, `section_type`, `technical` | `answer_text`, `language` |
+  | `published`, `withdrawn` | nothing | everything |
+
+  `answer_text` and `language` stay locked outside `pending` because they tie to the audio: the
+  avatar speaks the answer text in that language (REQ-003). The question and the category fields
+  are not spoken (the render speaks only the answer, `apps/api/setup/server/render_answers.py:61`),
+  so fixing a typo in them, or a wrong `section_type`, never costs a video. A `published` entry is
+  not edited in place: the admin unpublishes it first (REQ-007, `published` to `draft`, which keeps
+  the video approved), edits it, and publishes again, so every text users see went through Publish.
+  A locked field, or any edit in `published` or `withdrawn`, answers `409 invalid_status_transition`
+  with `currentStatus`. To change `answer_text` after `pending`, the admin reopens a `ready` entry
+  (REQ-067); a `draft` entry needs a new video for new words, so it goes back through REQ-069.
 - **REQ-006.** Publish is `draft` to `published` through the status route of REQ-065, in one
   transaction: it checks the video file exists; if the video is `VIDEO_GENERATED`, it approves it
   with the same update and audit insert that `Database.review_asset` runs
@@ -262,8 +276,12 @@ place; REQ-065 and later were added on 2026-09-26.
   its video file exists. REQ-012, REQ-013 and REQ-077 all use it. A user sees only entries in the
   app's language (owner, 2026-09-25). The rendered answers are `fa`, so an `en` user sees no
   suggestions until `en` entries exist.
-- **REQ-012.** `GET /api/library/suggestions?language=&limit=` returns the servable entries in
-  `position` order, then `id`, at most `limit` (1 to 20, default 6).
+- **REQ-012.** `GET /api/library/suggestions?language=&limit=` returns the servable entries, at most
+  `limit` (1 to 20, default 6), in this order: funnel stage first (stage 1 before 2 before 3, the
+  stages of REQ-077), then `position`, then `id`. The pre-Start list is the entry point of the
+  funnel, so it opens with stage 1 questions rather than with whichever rows an import wrote first.
+  The stage order is this spec's choice; within a stage the order is still creation order, since
+  staff cannot reorder in this phase (section 2).
 - **REQ-013.** `GET /api/library/answers/{id}/video` returns the MP4 of a servable entry. Any entry
   that is not servable, or does not exist, answers `404 not_found` with the same body.
 - **REQ-014.** The video endpoint is rate limited per user with the existing
@@ -288,8 +306,8 @@ place; REQ-065 and later were added on 2026-09-26.
   (`.../migrations/004_asset_reviews.sql:5-14`). So deleting a `video_assets` row leaves its audit
   rows in place: they keep the bare `asset_id` of a row that no longer exists.
 - **REQ-017.** No library log line carries question text or answer text. Events log ids only:
-  `library_entry_created`, `library_entry_status_changed` (with the old and the new status),
-  `library_media_deleted`, each with the entry id and the admin id in `extra` (the house shape,
+  `library_entry_created`, `library_entry_edited` (with the names of the changed fields),
+  `library_entry_status_changed` (with the old and the new status), `library_media_deleted`, each with the entry id and the admin id in `extra` (the house shape,
   `.../src/auth/router.py:51`).
 - **REQ-065.** Every state change goes through one route,
   `PATCH /api/admin/library/entries/{id}/status`, with body `{ "status", "videoAssetId"? }`. One
@@ -301,6 +319,7 @@ place; REQ-065 and later were added on 2026-09-26.
   | `ready` | `pending` | REQ-066 | `ready` |
   | `pending` | `ready` | REQ-067 | `reopened` |
   | `draft` | `ready` | REQ-068, needs `videoAssetId` | `video_attached` |
+  | `draft` | `pending` | REQ-028, the import only; the status route refuses it | `video_attached`, null reviewer |
   | `ready` | `draft` | REQ-069, rejects the video | `video_rejected` |
   | `published` | `draft` | REQ-006 | `published` |
   | `draft` | `published` | REQ-007 | `unpublished` |
@@ -310,12 +329,16 @@ place; REQ-065 and later were added on 2026-09-26.
   runs in one transaction with its review row, the same pattern as `Database.review_asset`
   (`.../src/database.py:249-274`). A transition not in the table, or an entry that moved meanwhile,
   answers `409 invalid_status_transition` with `currentStatus`, the code assets already use
-  (`.../src/main.py:486-498`). This table is the one place transitions are enforced; the admin
-  screen only hides buttons the table would refuse.
+  (`.../src/main.py:486-498`). This table is the one place transitions are enforced, for the status
+  route and for the import alike: both call the same backend function with the transition they
+  want, and the import is the only caller allowed the `pending` to `draft` row. The admin screen
+  only hides buttons the table would refuse.
 - **REQ-066.** `pending` to `ready` needs `answer_text` of 1 to 480 characters and a `question`
   (else `422 validation_error`). It means the admin approved the spoken text and asks for a video
   (owner, 2026-09-26). The 350-character rule and the other rewrite rules are shown to the admin
-  (REQ-073) but are not checked by the server: only the hard 480 limit is.
+  (REQ-073) but are not checked by the server: only the hard 480 limit is. Every length in this spec
+  (the 350 and 480 limits, the editor's counter, the server check and the database `CHECK`) is
+  counted after the whitespace normalization of REQ-003, on the string that is stored.
 - **REQ-067.** `ready` to `pending` reopens the text for editing. Nothing else changes.
 - **REQ-068.** `ready` to `draft` attaches a video. The video must have status `VIDEO_GENERATED`, a
   non-empty file, no other entry, and a `text` equal to the entry's `answer_text` (REQ-003), else
@@ -371,18 +394,26 @@ place; REQ-065 and later were added on 2026-09-26.
   2026-09-26).
 - **REQ-021.** The two JSON formats, UTF-8:
   - **Results**: one JSON object whose keys are entry keys and whose values are row objects, the
-    shape `render_answers.py` writes (`apps/api/setup/server/render_answers.py:31-36,64-74`). Each
-    row has `key` (equal to its object key), `batch`, `question`, `answer`, `category`,
-    `category_title`, `section_type`, `technical`, `bridge_type`, `language`, `answer_original`,
-    `video_asset_id`, `external_id`, `audio_asset_id`, `status`, `duration_ms`, `file`, and
-    `error`. A row whose `error` is not null, or whose `status` is not `VIDEO_GENERATED`, was not
-    rendered: it is reported `not_rendered` and skipped, not failed.
+    shape `render_answers.py` writes (`apps/api/setup/server/render_answers.py:31-36`). It writes
+    two kinds of row:
+    - **A failed row** has only `key`, `question`, `answer` and a non-null `error`
+      (`render_answers.py:102-107`). It stays in the file until a rerun succeeds
+      (`render_answers.py:95-96`). Such a row needs only `key` (equal to its object key) and
+      `error`. It is reported `not_rendered`, skipped, and not checked further. It never fails the
+      file.
+    - **A rendered row** has `error` null and all of `key` (equal to its object key), `batch`,
+      `question`, `answer`, `category`, `category_title`, `section_type`, `technical`,
+      `bridge_type`, `language`, `answer_original`, `video_asset_id`, `external_id`,
+      `audio_asset_id`, `status`, `duration_ms` and `file` (`render_answers.py:64-74`, the extra
+      fields copied from the export at `:65`). The field checks of REQ-022 apply only to these
+      rows. A rendered row whose `status` is not `VIDEO_GENERATED` is also reported
+      `not_rendered` and skipped.
   - **Source**: one JSON list of row objects with `key`, `question`, `answer_original`,
     `category`, `category_title`, `section`, `section_type` and `technical`, the fields of the
     render sprint's source sheet. `section` is kept in `import_metadata` only.
 
-  A missing field, a wrong type or any other top-level shape fails the file before a row is used
-  (`bad_format`).
+  A wrong top-level shape fails the file before a row is used (`bad_format`). So does a rendered
+  row with a missing field or a wrong type, since `error` null promises the full field list.
 - **REQ-022.** Each row is checked. `key` matches `^[A-Za-z0-9_-]{1,80}$`. `question` is 1 to 300
   characters after trimming. `answer` (results) is 1 to 480 characters. `answer_original` is 1 to
   5000 characters. `category` is a non-empty string or integer, stored as text. `category_title`
@@ -443,9 +474,13 @@ place; REQ-065 and later were added on 2026-09-26.
     `draft`, review row `video_attached`, `reviewer_id` null for the import). The row's `answer`
     must equal the entry's `answer_text` (REQ-003), else the row fails with `answer_text_mismatch`.
     This is the return path of a render run (REQ-070, REQ-071).
-  - **Results row, entry `pending`:** the import attaches the video and sets `answer_text` from the
-    row, `pending` to `draft`, because the rendered text is approved (owner, 2026-09-26). So the
-    order of a source import and a results import does not matter.
+  - **Results row, entry `pending`:** the import moves the entry `pending` to `draft` through the
+    import-only row of the REQ-065 table, with review row `video_attached` and a null reviewer,
+    because the rendered text is approved (owner, 2026-09-26). It is allowed only when the entry's
+    `answer_text` is null or equal to the row's `answer` (REQ-003); then `answer_text` is set from
+    the row. If an admin has already written a different spoken text in the editor, the row fails
+    with `answer_text_mismatch`, so the admin's work is never replaced silently. So the order of a
+    source import and a results import does not matter while nobody has edited the entry.
   - **Any row, entry in another state, and a source row whose key exists:** reported
     `already_imported` and skipped, with no file copied. A second run of the same files therefore
     changes nothing.
@@ -466,12 +501,15 @@ place; REQ-065 and later were added on 2026-09-26.
   states. Columns: question, key, category title, section type, status, duration.
 - **REQ-032.** Opening an entry shows a panel that fits its state:
   - `pending`: the editor of REQ-073, and the actions Mark ready and Withdraw.
-  - `ready`: the question and the answer text (read only), the hint `library.readyHint`, and the
-    actions Record this answer (REQ-074), Reopen text and Withdraw.
+  - `ready`: the question and the category fields (editable, REQ-005), the answer text (read
+    only), the hint `library.readyHint`, and the actions Record this answer (REQ-074), Reopen text
+    and Withdraw.
   - `draft`: the video (fetched as a blob through `apiClient` from
     `GET /api/assets/video/{videoAssetId}`, admin only, `.../src/main.py:443`), the question and the
-    answer text (read only), and the actions Publish, Reject video and Withdraw.
-  - `published`: the same player and texts, and the actions Unpublish and Withdraw.
+    category fields (editable, REQ-005), the answer text (read only), and the actions Publish,
+    Reject video and Withdraw.
+  - `published`: the same player, all fields read only with the note that Unpublish makes them
+    editable, and the actions Unpublish and Withdraw.
   - `withdrawn`: the texts only, no action.
   Each action calls the status route (REQ-065).
 - **REQ-033.** Withdraw asks for confirmation in a dialog that says users stop seeing the answer now
@@ -647,12 +685,16 @@ place; REQ-065 and later were added on 2026-09-26.
 - **REQ-077.** `GET /api/library/answers/{id}/follow-ups` returns up to three servable entries
   (REQ-011) for a servable entry `id`, else `404 not_found`. They have the same `category` and the
   same language as the played entry, are not the played entry, and sit one funnel stage deeper.
-  The stage comes from `section_type`, with no new field (foreman decision, 2026-09-26):
-  `identity` or `knowledge` is stage 1, `sizing` is stage 2, `meeting` or `commercial` is stage 3.
-  After a stage 1 answer the follow-ups are stage 2 entries; after stage 2, stage 3 entries; after
-  stage 3, other stage 3 entries. `casual` has no stage in that decision; this spec treats a
-  `casual` answer like stage 0, so its follow-ups are stage 1 entries (open item 17). Order:
-  `position`, then `id`. The response has the suggestion item shape (SEC-003).
+  The stage comes from `section_type`, with no new field. There are three stages (foreman
+  decisions, 2026-09-26): `identity`, `knowledge` or `casual` is stage 1, `sizing` is stage 2,
+  `meeting` or `commercial` is stage 3. After a stage 1 answer the follow-ups are stage 2 entries;
+  after stage 2, stage 3 entries. Stage 3 has no deeper stage, so after a stage 3 answer the
+  follow-ups are other stage 3 entries (foreman decision a, 2026-09-26). Order: `position`, then
+  `id`. The response has the suggestion item shape (SEC-003).
+  `technical` does not filter what users see. It is admin-only metadata, used by the admin filters
+  (REQ-031) and the import (REQ-020). A `technical` answer reaches users only once it is
+  `published`, like any entry, and then it is a suggestion and a follow-up like the rest (foreman
+  decision, 2026-09-26).
 - **REQ-078.** When the live start from the lead card fails (the status becomes `error`), or while
   LiveAvatar is inactive and the start is refused, the page shows the existing error
   (`VideoConversationPage.tsx:206-224`, `AudioConversationPage.tsx:277-296`) and, under it, the
@@ -709,6 +751,7 @@ stateDiagram-v2
         pending --> ready: mark ready (REQ-066)
         ready --> pending: reopen text (REQ-067)
         ready --> draft: attach video (REQ-068, REQ-028)
+        pending --> draft: import a rendered row, import only (REQ-028)
         draft --> ready: reject video (REQ-069)
         draft --> published: publish (REQ-006)
         published --> draft: unpublish (REQ-007)
@@ -718,8 +761,9 @@ stateDiagram-v2
 ```
 
 The whole lifecycle is new. Every arrow between states is a row of the transition table in REQ-065
-and writes one review row; the two entry arrows are REQ-004 and REQ-026. A results row can also take
-a `pending` entry straight to `draft` (REQ-028); that arrow is left out of the picture. `withdrawn` is final, and the entry row stays after its media is gone.
+and writes one review row; the two entry arrows are REQ-004 and REQ-026. The `pending` to `draft`
+arrow belongs to the import only. `withdrawn` is final, and the entry row stays after its media is
+gone. Editing fields in place (REQ-005) changes no state and is left out of the picture.
 
 ## 6. API contract
 
@@ -1217,7 +1261,8 @@ subscription is not needed for any of this, or for playback: playback reads our 
 - [ ] **SC-010** (REQ-020 to REQ-028). A results import with one bad row writes nothing and exits 1
   with that row's code; after fixing it, the import creates one `draft` entry and one new
   `video_assets` row per rendered row, whose `id` differs from the row's `video_asset_id`; a row
-  with an `error` is reported `not_rendered`; a second run reports `already_imported` for every row
+  with an `error` and only the four fields the render script writes for a failure is reported
+  `not_rendered` and does not fail the file; a second run reports `already_imported` for every row
   and changes nothing; a file whose duration differs by more than 1000 ms fails with
   `duration_mismatch`.
 - [ ] **SC-011** (REQ-017, REQ-029, SEC-005). Captured log records of a create, a status change, a
@@ -1263,8 +1308,11 @@ subscription is not needed for any of this, or for playback: playback reads our 
   writes one review row with its decision; every other pair answers `409 invalid_status_transition`
   with `currentStatus` and writes nothing; two concurrent requests on one entry leave exactly one
   change.
-- [ ] **SC-028** (REQ-066, REQ-005). `ready` without `answer_text`, or with 481 characters, answers
-  `422`; `PATCH` on a `ready` entry answers `409 invalid_status_transition`.
+- [ ] **SC-028** (REQ-066, REQ-005). `ready` without `answer_text`, or with 481 characters counted
+  after normalization, answers `422`; `PATCH` of `question` or `section_type` succeeds on a `ready`
+  and on a `draft` entry and leaves its status and video unchanged; `PATCH` of `answer_text` or
+  `language` on a `ready` or `draft` entry, and any `PATCH` on a `published` entry, answers
+  `409 invalid_status_transition`.
 - [ ] **SC-029** (REQ-068, REQ-069). Attaching a video whose text differs from `answer_text` answers
   `409 library_text_mismatch`; rejecting a `draft` video sets the video `REJECTED` with an
   `asset_reviews` row, clears `video_asset_id`, and leaves the entry `ready`.
@@ -1274,9 +1322,11 @@ subscription is not needed for any of this, or for playback: playback reads our 
   `bad_format`.
 - [ ] **SC-031** (REQ-028). A results row whose key has a `ready` entry with the same text attaches
   its video (`ready` to `draft`, a `video_attached` review row with a null reviewer); with a
-  different text it fails `answer_text_mismatch`; a results row whose key has a `pending` entry moves
-  it to `draft` with the row's text; the results and source imports give the same entries in either
-  order.
+  different text it fails `answer_text_mismatch`; a results row whose key has a `pending` entry with
+  a null `answer_text` moves it to `draft` with the row's text and a `video_attached` review row
+  with a null reviewer, and with a different, admin-written `answer_text` it fails
+  `answer_text_mismatch` and changes nothing; the status route refuses `pending` to `draft`; the
+  results and source imports give the same entries in either order.
 - [ ] **SC-032** (REQ-071). The export writes every `ready` entry, and only those, as
   `[{key, question, answer, ...}]`, and a results file that `render_answers.py` would write from it
   imports cleanly.
@@ -1287,9 +1337,10 @@ subscription is not needed for any of this, or for playback: playback reads our 
   Start button is hidden; pressing «درخواست مشاوره» calls `POST /api/assistant/session`; the card and
   its follow-ups are absent once the status is not `idle`.
 - [ ] **SC-035** (REQ-077). For a stage 1 entry the follow-ups are published stage 2 entries of the
-  same category and language, at most three, not the entry itself; for a stage 3 entry they are
-  other stage 3 entries; for a `casual` entry they are stage 1 entries; an entry of another category
-  or language is never returned.
+  same category and language, at most three, not the entry itself; for a `casual` entry they are
+  stage 2 entries too; for a stage 3 entry they are other stage 3 entries; an entry of another
+  category or language is never returned; `technical` never changes the result. The suggestions
+  list returns stage 1 entries before stage 2 and 3 (REQ-012).
 - [ ] **SC-036** (REQ-078). When the start from the lead card fails, the page shows the existing
   error, `library.lead.liveUnavailable` and the contact card; after a failed plain Start it shows the
   existing error only.
@@ -1408,9 +1459,7 @@ code; each is named where it applies.
     the phone or mail app from the Android and iOS WebView has not been checked; check it on a
     device (foreman decision, 2026-09-26).
 16. **Follow-ups are sparse at first.** The 120 rendered answers have no `knowledge` or `sizing`
-    entry, and their 8 `identity` entries are all in category 18 (sprint files, read on
-    2026-09-26). So a stage 1 answer has no stage 2 follow-up until sizing answers are published.
-17. **`casual` has no funnel stage** in the foreman's decision. This spec treats it as stage 0, so
-    its follow-ups are stage 1 entries (REQ-077). The owner may choose otherwise.
-18. **Contact channels are not per install.** They sit in one app file (REQ-076). Another customer
+    entry (sprint files, read on 2026-09-26). Their stage 1 entries are the 8 `identity` and 24
+    `casual` ones. So a stage 1 answer has no stage 2 follow-up until sizing answers are published.
+17. **Contact channels are not per install.** They sit in one app file (REQ-076). Another customer
     would need them moved to configuration.
