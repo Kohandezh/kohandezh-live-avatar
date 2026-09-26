@@ -99,7 +99,11 @@ creates uses `--no-focus`. Never run a focus command. The user switches views.
 
 ## Mission flow
 
-1. **Intake.** Resolve the repository checkout and base ref. For Linear tickets, read each
+1. **Intake.** Start every new task from the latest `main`: in the repository checkout, run
+   `git checkout main` and then `git pull`. Why: a stale local `main` gives workers an old base,
+   and an owner merge since the last pull is missed. If `git status --short` shows changes to
+   tracked files, stop and ask the owner before switching; never stash or discard them.
+   Untracked files do not block the switch. Then resolve the base ref. For Linear tickets, read each
    ticket: description, priority, labels, and blocking relations. Reading is free. Any
    Linear write needs the user's explicit authority for that action.
 2. **Classify.** Give each task a type. Split mixed tasks into work units.
