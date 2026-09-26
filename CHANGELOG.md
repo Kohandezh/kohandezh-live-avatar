@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The answer library can be filled from the render sprint's files. `library_import --results`
+  reads a render run's results JSON and MP4 files into `draft` entries, each with a new video row
+  and a copy of its MP4 (`LIB_<external_id>.mp4`), or attaches a video to the `ready` or `pending`
+  entry with the same key and text. `library_import --source` reads the not-rendered answers into
+  `pending` entries, with the rewrite pass's verdicts settling `classify` rows. Both check every
+  row first and write nothing when one fails, and `--dry-run` only checks. `library_export` writes
+  the `ready` entries in the render script's input format. The commands run inside the orchestrator
+  container and print keys and reason codes only (`apps/api/README.md`).
 - The API has an answer library, backend only. Staff keep questions with an approved spoken
   answer and a recorded video in two new tables (`library_entries`, `library_entry_reviews`,
   migration 006). An entry moves `pending`, `ready`, `draft`, `published`, and can be withdrawn for

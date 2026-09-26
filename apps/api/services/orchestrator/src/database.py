@@ -785,8 +785,8 @@ class Database:
             """
             INSERT INTO library_entries
               (key,question,answer_text,answer_original,language,category,category_title,
-               section_type,technical,video_asset_id,status,created_by,position)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+               section_type,technical,video_asset_id,status,created_by,import_metadata,position)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,
                     (SELECT coalesce(max(position), 0) + 1 FROM library_entries))
             RETURNING id
             """,
@@ -802,19 +802,69 @@ class Database:
             data["video_asset_id"],
             data["status"],
             data["created_by"],
+            json.dumps(data.get("import_metadata", {})),
+        )
+
+    async def library_entries_by_key(self, keys: list[str]) -> list[asyncpg.Record]:
+        """The entries that hold one of `keys`, whatever their status (the import, REQ-028)."""
+        rows = await self._pool().fetch("SELECT * FROM library_entries WHERE key = ANY($1::text[])", keys)
+        return list(rows)
+
+    async def taken_video_external_ids(self, external_ids: list[str]) -> set[str]:
+        """Which of `external_ids` a video row already has. The column is unique."""
+        rows = await self._pool().fetch(
+            "SELECT external_id FROM video_assets WHERE external_id = ANY($1::text[])", external_ids
+        )
+        return {row["external_id"] for row in rows}
+
+    async def insert_imported_video(self, conn: asyncpg.Connection, data: dict[str, Any]) -> UUID:
+        """A finished video from a render run (REQ-024): always a new row, never an upsert, so a
+        name that is taken fails the import's transaction instead of reusing a row."""
+        return await conn.fetchval(
+            """
+            INSERT INTO video_assets
+              (external_id,text,avatar_id,voice_id,video_path,duration_ms,metadata,status)
+            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,'VIDEO_GENERATED')
+            RETURNING id
+            """,
+            data["external_id"],
+            data["text"],
+            data["avatar_id"],
+            data["voice_id"],
+            data["video_path"],
+            data["duration_ms"],
+            json.dumps(data["metadata"]),
+        )
+
+    async def ready_library_entries(self, keys: list[str] | None = None) -> list[asyncpg.Record]:
+        """The `ready` entries in display order, or only those with one of `keys` (the export,
+        REQ-071)."""
+        return list(
+            await self._pool().fetch(
+                "SELECT * FROM library_entries WHERE status = 'ready' "
+                "AND ($1::text[] IS NULL OR key = ANY($1::text[])) ORDER BY position, id",
+                keys,
+            )
         )
 
     async def update_library_entry_fields(
-        self, entry_id: UUID, fields: dict[str, Any], *, allowed_statuses: list[str]
+        self,
+        entry_id: UUID,
+        fields: dict[str, Any],
+        *,
+        allowed_statuses: list[str],
+        conn: asyncpg.Connection | None = None,
     ) -> bool:
         """Set `fields` on an entry whose status is one of `allowed_statuses`. False when no such
-        entry exists; then nothing changes. The status check is part of the UPDATE."""
+        entry exists; then nothing changes. The status check is part of the UPDATE. `conn` runs it
+        inside a transaction the caller holds."""
         if not fields or not set(fields) <= set(LIBRARY_EDITABLE_COLUMNS):
             raise ValueError("not an editable library column")
         flags_and_values = [
             value for column in LIBRARY_EDITABLE_COLUMNS for value in (column in fields, fields.get(column))
         ]
-        row = await self._pool().fetchrow(_LIBRARY_EDIT, entry_id, allowed_statuses, *flags_and_values)
+        executor = conn or self._pool()
+        row = await executor.fetchrow(_LIBRARY_EDIT, entry_id, allowed_statuses, *flags_and_values)
         return row is not None
 
     async def set_library_entry_status(

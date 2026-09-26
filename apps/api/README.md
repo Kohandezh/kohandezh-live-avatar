@@ -9,6 +9,9 @@ services/orchestrator/       FastAPI app, schemas, migrations, LiveKit gateway, 
 services/orchestrator/src/auth/       phone login: one-time codes, session tokens, guards
 services/orchestrator/src/auth/asanak.py  sends the login code by SMS (OTP_DELIVERY=asanak)
 services/orchestrator/src/assistant/  assistant session tokens: voice agent (Persian) or FULL persona
+services/orchestrator/src/library/    the answer library: transition table, admin and user routes
+services/orchestrator/src/library_import.py  command: import rendered and not-rendered answers
+services/orchestrator/src/library_export.py  command: export ready entries for a render run
 services/elevenlabs/         TTS client, PCM validation, deterministic content-addressed cache
 services/liveavatar/         LiveAvatar session client, event socket, LITE session manager
 ```
@@ -50,3 +53,64 @@ migrations applied on startup from `services/orchestrator/migrations`. Backgroun
 API process, from the `generation_jobs` table, with no queue library and no worker service
 (ADR 0015, `services/orchestrator/src/jobs/`). Record any further decision as an ADR under
 `docs/DECISIONS/` rather than letting a commit decide by accident.
+
+## Answer library import and export
+
+Two commands, run inside the orchestrator container of the install that serves the library, with
+its settings and database (`docs/features/response-caching/SPEC.md`, REQ-020 to REQ-029 and
+REQ-071). They have no HTTP route. Run every import with `--dry-run` first.
+
+Rendered answers, from a render run's results JSON (one `--results` per wave) and its MP4 files:
+
+```bash
+docker compose exec orchestrator python -m services.orchestrator.src.library_import \
+  --results /media/import/<batch>/results-wave1.json --results /media/import/<batch>/results-wave2.json \
+  --media-dir /media/import/<batch> --avatar-id <avatar the render used> --voice-id <voice it used> \
+  --dry-run
+```
+
+`--media-dir` is a path inside the container: the compose file mounts the host's `./media` at
+`/media`, so copy the files to the host folder `./media/import/<batch>`. Each rendered row becomes
+a new `video_assets` row and a `draft` entry; its MP4 is copied to
+`VIDEO_CACHE_DIR/LIB_<external_id>.mp4`. The source files are only read. A row whose key has a
+`ready` entry saying the same text attaches its video to it, and so does a row whose key has a
+`pending` entry with no text or the same text; the pending entry also takes the row's category
+fields. The entry must be in the row's language, else the row fails with `language_mismatch`. The render server's `video_asset_id` values are never reused.
+
+Not-rendered answers, from the source JSON, with the rewrite pass's verdict files:
+
+```bash
+docker compose exec orchestrator python -m services.orchestrator.src.library_import \
+  --source /media/import/<batch>/source.json --language fa \
+  --verdicts /media/import/<batch>/batch-1.json --verdicts /media/import/<batch>/batch-2.json \
+  --dry-run
+```
+
+Every source key without an entry becomes a `pending` entry with no answer text. A `classify` row
+takes its key's verdict. The same key may appear in more than one verdict file when the verdicts
+agree; verdicts that disagree fail with `duplicate_key`. A key that already has an entry is skipped, so run the results import
+first; the other order gives the same entries, apart from what
+`import_metadata` records.
+
+A run is all or nothing. If any row fails, nothing is copied or written and the exit status is 1.
+The report prints one line per reported row, `file<TAB>key<TAB>reason`, and a summary; it never
+prints question or answer text. Failures: `bad_format` (the whole file), `bad_key`, `bad_question`,
+`bad_answer`, `bad_answer_original`, `bad_category`, `bad_section_type`, `bad_technical`,
+`bad_language`, `bad_video_asset_id`, `bad_duration`, `bad_file`, `file_missing`, `file_exists`,
+`external_id_taken`, `duplicate_key`, `duplicate_external_id`, `probe_failed`, `duration_mismatch`,
+`answer_text_mismatch`, `language_mismatch`, `write_failed`. Not failures: `not_rendered` (a failed render row, or a
+status other than `VIDEO_GENERATED`), `already_imported` (skipped, so a second run changes
+nothing) and `attached`. Fix the file and run it again.
+
+The export writes the `ready` entries in the input format of `render_answers.py`, for a render run
+on the render server (`apps/api/setup/server/README.md`); import its results as above:
+
+```bash
+docker compose exec orchestrator python -m services.orchestrator.src.library_export \
+  --out /media/render/answers.json [--key C18Q05 ...]
+```
+
+Each row has `key`, `question`, `answer` (the entry's answer text), `category`, `category_title`,
+`section_type`, `technical`, `language`, `answer_original`, `batch` and `bridge_type` (null when
+the entry has none). With `--key`, a key that is not a `ready` entry is reported `not_ready` and
+nothing is written.
