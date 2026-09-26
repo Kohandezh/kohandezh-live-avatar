@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Stopping a recording no longer holds the request open. `POST /api/assets/video/{id}/finalize`
+  stops Egress and answers `202` with a job id at once; a `finalize_video` job waits for the MP4
+  (up to `FINALIZE_FILE_WAIT_SECONDS`, 30 by default, twice the old 15), probes it and marks the
+  asset `VIDEO_GENERATED`. The `/avatar` workbench polls the job every 2 seconds and shows the
+  same success and error states as before, plus a timeout error with a retry after 3 minutes. A
+  failed job shows a translated message for its error code, in English and Persian.
+  Finalize now needs a `DRAFT` asset, so it can no longer turn a rejected video back into a
+  generated one, and a repeated or parallel finalize returns the same job instead of stopping
+  Egress twice.
 - The API runs background jobs. A runner inside the API process claims one due job at a time from
   `generation_jobs` with a 60 second lease, renewed every 20 seconds, so a job whose process died
   is picked up again. Retryable failures are retried with backoff up to the job's attempt limit;

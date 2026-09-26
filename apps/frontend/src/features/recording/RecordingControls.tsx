@@ -86,6 +86,16 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
             />
           </InlineAlert>
         )}
+        {rec.status === 'finalizing' && rec.active && (
+          <InlineAlert status="info" title={t('recording.waiting')}>
+            <KeyValue
+              items={[
+                { label: t('recording.assetId'), value: rec.active.externalId, ltr: true },
+                ...(rec.jobId ? [{ label: t('recording.jobId'), value: rec.jobId, ltr: true }] : []),
+              ]}
+            />
+          </InlineAlert>
+        )}
         {rec.status === 'error' && rec.error && (
           <InlineAlert
             status="danger"
@@ -99,7 +109,11 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
               ) : undefined
             }
           >
-            <span className="ltr text-xs">{rec.error}</span>
+            {rec.errorKey ? (
+              <span className="text-xs">{t(rec.errorKey)}</span>
+            ) : (
+              <span className="ltr text-xs">{rec.error}</span>
+            )}
           </InlineAlert>
         )}
         {rec.status === 'done' && rec.result && (

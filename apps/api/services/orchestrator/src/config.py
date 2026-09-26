@@ -127,6 +127,9 @@ class Settings(BaseSettings):
     video_cache_dir: Path = Path("/media/video")
     metadata_dir: Path = Path("/media/metadata")
     egress_output_dir: str = "/out"
+    # The finalize_video job's total wait for the Egress MP4, from the moment Egress has stopped
+    # (ADR 0015, item 4).
+    finalize_file_wait_seconds: float = 30.0
 
     @field_validator("asanak_template_id", mode="before")
     @classmethod

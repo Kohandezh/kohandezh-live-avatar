@@ -37,6 +37,9 @@ RETRY_MAX_SECONDS = 300
 # (ADR 0015). An admin reads it through GET /jobs/{job_id}.
 ERROR_MESSAGES = {
     "worker_lost": "The worker running this job stopped before the job finished.",
+    "egress_failure": "The recording file did not appear in time.",
+    "egress_invalid_mp4": "The recording is not an MP4 with H.264 video and audio.",
+    "invalid_status_transition": "The video asset is no longer a draft.",
     "not_found": "A record this job needs no longer exists.",
     "internal_error": "The job failed with an unexpected error.",
 }
@@ -81,6 +84,23 @@ def new_worker_id() -> str:
 
 def error_message(code: str) -> str:
     return ERROR_MESSAGES.get(code, OTHER_ERROR_MESSAGE)
+
+
+def _log_fields(job: asyncpg.Record, code: str, attempt: int, will_retry: bool) -> dict[str, Any]:
+    # Ids and counts only. Never the payload, the output, or an exception string.
+    return {
+        "job_id": str(job["id"]),
+        "job_type": job["job_type"],
+        "attempt": attempt,
+        "max_attempts": job["max_attempts"],
+        "error_code": code,
+        "will_retry": will_retry,
+    }
+
+
+def log_job_failed(job: asyncpg.Record, code: str) -> None:
+    """The `job_failed` event for a job that ended `failed` (ADR 0015, item 3)."""
+    logger.error("job_failed", extra=_log_fields(job, code, job["attempt_count"], False))
 
 
 def retry_delay_seconds(attempt: int) -> float:
@@ -240,7 +260,7 @@ class JobRunner:
             self._log_lease_lost(job)
             return
         self._log_attempt_failed(job, code, attempt=job["attempt_count"], will_retry=False)
-        logger.error("job_failed", extra=self._log_fields(job, code, job["attempt_count"], False))
+        log_job_failed(job, code)
 
     def _follow_up(self, job: asyncpg.Record) -> list[JobWrite]:
         """The writes that close a job of this type, whatever its outcome. The retention sweep
@@ -261,20 +281,8 @@ class JobRunner:
 
         return [enqueue_next_sweep]
 
-    @staticmethod
-    def _log_fields(job: asyncpg.Record, code: str, attempt: int, will_retry: bool) -> dict[str, Any]:
-        # Ids and counts only. Never the payload, the output, or an exception string.
-        return {
-            "job_id": str(job["id"]),
-            "job_type": job["job_type"],
-            "attempt": attempt,
-            "max_attempts": job["max_attempts"],
-            "error_code": code,
-            "will_retry": will_retry,
-        }
-
     def _log_attempt_failed(self, job: asyncpg.Record, code: str, *, attempt: int, will_retry: bool) -> None:
-        logger.warning("job_attempt_failed", extra=self._log_fields(job, code, attempt, will_retry))
+        logger.warning("job_attempt_failed", extra=_log_fields(job, code, attempt, will_retry))
 
     @staticmethod
     def _log_lease_lost(job: asyncpg.Record) -> None:

@@ -32,6 +32,9 @@ export const fixtures = {
     sandbox: true,
   },
   recording: { id: '33333333-3333-4333-8333-333333333333', egress_id: 'EG_1', status: 'RECORDING' },
+  // POST /assets/video/{id}/finalize answers 202 with a job id. The finalize_video job's output
+  // (GET /jobs/{id} `result` once done) is `finalize`.
+  finalizeJob: { jobId: '44444444-4444-4444-8444-444444444444' },
   finalize: {
     id: '33333333-3333-4333-8333-333333333333',
     status: 'VIDEO_GENERATED',
@@ -68,7 +71,12 @@ export const handlers = [
   http.post('*/api/avatar/interrupt', () => HttpResponse.json({ status: 'interrupted' })),
   http.post('*/api/avatar/close', () => HttpResponse.json({ status: 'closed' })),
   http.post('*/api/assets/generate-video', () => HttpResponse.json(fixtures.recording)),
-  http.post('*/api/assets/video/:id/finalize', () => HttpResponse.json(fixtures.finalize)),
+  http.post('*/api/assets/video/:id/finalize', () =>
+    HttpResponse.json(fixtures.finalizeJob, { status: 202 }),
+  ),
+  http.get('*/api/jobs/:jobId', () =>
+    HttpResponse.json({ status: 'done', result: fixtures.finalize }),
+  ),
 ];
 
 export const server = setupServer(...handlers);
