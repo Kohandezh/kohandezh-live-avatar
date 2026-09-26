@@ -138,9 +138,11 @@ Three ways in:
    row becomes a new `video_assets` row and a `draft` entry: the owner approved these texts, and
    the videos still need admin review (owner, 2026-09-26). The render server's `video_asset_id`
    values are not trusted on the target install (owner, 2026-09-25).
-2. **Import of not-rendered answers.** The 246 technical answers, and any later ones, come from the
-   source JSON with the question, the original answer text, the category and the section type. Each
-   becomes a `pending` entry. Its text is not yet rewritten for speech: an admin writes the spoken
+2. **Import of not-rendered answers.** Every source key without a render row, 272 today, and any
+   later ones, come from the source JSON with the question, the original answer text, the category
+   and the section type. The 272 are the 246 rows the source marks `technical` and 26 `casual` rows
+   it marks `classify`, which the rewrite pass judged technical (REQ-021, "Verdicts"). Each becomes
+   a `pending` entry. Its text is not yet rewritten for speech: an admin writes the spoken
    version in the entry editor, which shows the rewrite rules (REQ-073), and then marks it `ready`.
 3. **Record in `admin`.** An admin opens Answer library, then Record answer, either from a `ready`
    entry (REQ-074) or empty. The screen is today's workbench
@@ -387,8 +389,11 @@ place; REQ-065 and later were added on 2026-09-26.
     values the render used; they fill the `NOT NULL` columns of `video_assets`,
     `.../migrations/001_initial.sql:44-45`).
   - `--source <file>`: not-rendered answers. Also required: `--language fa|en` (the source rows
-    have no language field). Optional: `--technical <value>` to import only rows with that
-    `technical` value, for example `technical` for the 246 technical answers.
+    have no language field). Optional: `--verdicts <file>` (repeatable), the rewrite pass's verdict
+    files, which settle a `classify` row (REQ-021). The source import takes every row of the file;
+    a key that already has an entry, which is every rendered key once the results import has run,
+    is skipped (REQ-028). So after the results import, the source import creates exactly the
+    not-rendered entries: 272 with the sprint's files.
 
   `--dry-run` works with both. There is no CSV input: both inputs are JSON (foreman decision,
   2026-09-26).
@@ -408,6 +413,14 @@ place; REQ-065 and later were added on 2026-09-26.
       fields copied from the export at `:65`). The field checks of REQ-022 apply only to these
       rows. A rendered row whose `status` is not `VIDEO_GENERATED` is also reported
       `not_rendered` and skipped.
+  - **Verdicts**: the rewrite pass wrote one file per batch, `batch-1.json` to `batch-5.json`, 146
+    rows in all (the 120 rendered answers and 26 judged technical), outside this repository. Each
+    is a JSON list of objects; the import reads only `key` and `technical` (`technical` or
+    `non-technical`, else `bad_technical`) and ignores the other fields. A source row whose
+    `technical` is `classify` takes the verdict of its key. A verdict for a row that is not
+    `classify` is ignored, and a `classify` row with no verdict keeps `classify`, so an admin can
+    still filter for it. With the sprint's files, all 26 not-rendered `classify` rows become
+    `technical`, and the source's own value is kept in `import_metadata.source_technical`.
   - **Source**: one JSON list of row objects with `key`, `question`, `answer_original`,
     `category`, `category_title`, `section`, `section_type` and `technical`, the fields of the
     render sprint's source sheet. `section` is kept in `import_metadata` only.
@@ -463,7 +476,8 @@ place; REQ-065 and later were added on 2026-09-26.
   `answer_text` = `answer`, `answer_original`, `language`, `category`, `category_title`,
   `section_type`, `technical`, the new video, `created_by` null, and `import_metadata`
   `{batch, bridge_type}`. A new source row creates a `pending` entry with `answer_text` null,
-  `answer_original`, the category fields, `--language`, and `import_metadata` `{section}`. The
+  `answer_original`, the category fields (with `technical` settled by a verdict, REQ-021),
+  `--language`, and `import_metadata` `{section, source_technical}`. The
   import never publishes and never marks an entry `ready`.
 - **REQ-027.** The import is all or nothing. If any row fails phase 1, it never starts phase 2: it
   copies no file and writes no row, prints one line per failed row (file, key, reason code) and
@@ -478,7 +492,8 @@ place; REQ-065 and later were added on 2026-09-26.
     import-only row of the REQ-065 table, with review row `video_attached` and a null reviewer,
     because the rendered text is approved (owner, 2026-09-26). It is allowed only when the entry's
     `answer_text` is null or equal to the row's `answer` (REQ-003); then `answer_text` is set from
-    the row. If an admin has already written a different spoken text in the editor, the row fails
+    the row, and so are `category`, `category_title`, `section_type` and `technical`, since the
+    rendered row is the later, approved version of the same question. If an admin has already written a different spoken text in the editor, the row fails
     with `answer_text_mismatch`, so the admin's work is never replaced silently. So the order of a
     source import and a results import does not matter while nobody has edited the entry.
   - **Any row, entry in another state, and a source row whose key exists:** reported
@@ -924,7 +939,10 @@ either in `withdrawn` (the sweep clears it). `answer_text` is not null in `ready
 in the check lists are the ones the render sprint's source file holds: `section_type` has 158
 `knowledge`, 88 `sizing`, 61 `commercial`, 50 `casual`, 27 `meeting` and 8 `identity` rows;
 `technical` has 246 `technical`, 96 `non-technical` and 50 `classify` rows (392 questions, read
-from the sprint's source JSON on 2026-09-26, outside this repository).
+from the sprint's source JSON on 2026-09-26, outside this repository). The rewrite pass settled
+the 50 `classify` rows: 24 `non-technical`, all rendered, and 26 `technical`, not rendered. So
+the 120 rendered entries and the 272 pending ones hold `classify` only if a verdict file is left
+out of the import.
 
 **`library_entry_reviews`** (append-only, no update or delete path)
 
@@ -1210,8 +1228,9 @@ moves to an admin spec.
    previous line.
 
 **Running the imports.** Once groups A and B are deployed, the operator runs the results import for
-the 120 rendered answers and the source import with `--technical technical` for the 246 technical
-ones, each with `--dry-run` first. The order does not matter (REQ-028). An admin then reviews and
+the 120 rendered answers first, then the source import with the five verdict files for the other
+272, each with `--dry-run` first. The other order gives the same entries, but the 120 rendered
+keys then pass through `pending` on the way to `draft` (REQ-028). An admin then reviews and
 publishes the `draft` entries, and rewrites and marks `ready` the `pending` ones. The live
 subscription is not needed for any of this, or for playback: playback reads our own files
 (HANDOFF, Step 0).
@@ -1316,10 +1335,11 @@ subscription is not needed for any of this, or for playback: playback reads our 
 - [ ] **SC-029** (REQ-068, REQ-069). Attaching a video whose text differs from `answer_text` answers
   `409 library_text_mismatch`; rejecting a `draft` video sets the video `REJECTED` with an
   `asset_reviews` row, clears `video_asset_id`, and leaves the entry `ready`.
-- [ ] **SC-030** (REQ-021, REQ-026). A source import with `--technical technical` of a file with
-  technical and classify rows creates `pending` entries for the technical rows only, with
-  `answer_text` null and `answer_original` kept; any CSV or other top-level shape fails with
-  `bad_format`.
+- [ ] **SC-030** (REQ-021, REQ-026). After a results import, a source import of a file with
+  rendered and not-rendered keys creates `pending` entries for the not-rendered keys only, with
+  `answer_text` null and `answer_original` kept, and reports the rendered keys `already_imported`;
+  with a verdict file, a `classify` row is stored as its verdict and without one it stays
+  `classify`; any CSV or other top-level shape fails with `bad_format`.
 - [ ] **SC-031** (REQ-028). A results row whose key has a `ready` entry with the same text attaches
   its video (`ready` to `draft`, a `video_attached` review row with a null reviewer); with a
   different text it fails `answer_text_mismatch`; a results row whose key has a `pending` entry with
