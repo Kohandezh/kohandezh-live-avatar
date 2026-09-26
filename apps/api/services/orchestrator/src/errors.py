@@ -9,6 +9,8 @@ class AppError(Exception):
     status_code: int = 500
     retryable: bool = False
     details: dict[str, Any] | None = None
+    # HTTP headers the error response carries, for example Retry-After.
+    headers: dict[str, str] | None = None
 
     def __str__(self) -> str:
         return self.message
@@ -54,7 +56,14 @@ class ForbiddenError(AppError):
 
 
 class RateLimitedError(AppError):
-    """Too many requests. retryAfterSeconds tells the client when to try again."""
+    """Too many requests. retryAfterSeconds tells the client when to try again.
 
-    def __init__(self, code: str, message: str, retry_after_seconds: int):
-        super().__init__(code, message, 429, True, {"retryAfterSeconds": retry_after_seconds})
+    `retry_after_header` also sends the wait as the HTTP Retry-After header. Only the routes whose
+    contract names the header set it, so the other 429 answers stay as they are.
+    """
+
+    def __init__(
+        self, code: str, message: str, retry_after_seconds: int, *, retry_after_header: bool = False
+    ):
+        headers = {"Retry-After": str(retry_after_seconds)} if retry_after_header else None
+        super().__init__(code, message, 429, True, {"retryAfterSeconds": retry_after_seconds}, headers)

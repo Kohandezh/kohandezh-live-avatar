@@ -137,15 +137,16 @@ we want to count. The frontend never reads it; `GET /usage` sums it per provider
 | `id`                    | uuid           | primary key                                                    |
 | `provider`              | text           | `liveavatar` on every assistant row                            |
 | `operation`             | text           | what happened. The assistant operations are listed below      |
-| `provider_resource_id`  | text (null)    | the provider's own id. Assistant rows: LiveAvatar's session id, never our `sessions.id` |
+| `provider_resource_id`  | text (null)    | the provider's own id. Assistant rows: LiveAvatar's session id, never our `sessions.id`. Null on a library row |
 | `model`                 | text (null)    | null on assistant rows                                         |
 | `characters`            | integer (null) | null on assistant rows: no text reaches the backend            |
-| `estimated_duration_ms` | bigint (null)  | `assistant_answer`: the answer's length, measured by the browser |
-| `cache_hit`             | boolean        | default `false`, and `false` on every assistant row today      |
+| `estimated_duration_ms` | bigint (null)  | `assistant_answer`: the answer's length, measured by the browser, or the video's duration on a library row |
+| `cache_hit`             | boolean        | default `false`. `true` only on a library row: a recorded answer served instead of a live one |
 | `metadata`              | jsonb          | see below. Never any text of a question or an answer          |
 | `occurred_at`           | timestamptz    | insert time. For `assistant_answer`: when the report arrived, not when the avatar spoke |
 
-The assistant writes three operations. `principal` is `user:<id>` or `embed:<origin>`.
+The assistant writes three operations, and the answer library writes a fourth kind of row.
+`principal` is `user:<id>` or `embed:<origin>`.
 
 - `assistant_token`: a session was minted (`POST /api/assistant/session`). Metadata: `avatar_id`,
   `sandbox`, `language`, `requested_language`, `provider_mode`, `principal`.
@@ -155,13 +156,22 @@ The assistant writes three operations. `principal` is `user:<id>` or `embed:<ori
   does not mean.
 - `assistant_close`: the session was closed (`POST /api/assistant/session/{id}/close`). Metadata:
   `principal`, `provider_stop`.
+- `assistant_answer` with `source: "library"`: a recorded answer was delivered
+  (`GET /api/library/answers/{id}/video`, `200` only). `cache_hit` is `true`,
+  `estimated_duration_ms` is the video's duration, `provider_resource_id`, `model` and `characters`
+  are null. Metadata is exactly `library_entry_id` and `source`. There is no user id, principal or
+  session id on purpose: every entry is a health question, and a row that joined a person to an
+  entry would record which person chose which topic. So `GET /usage` counts cache hits per answer,
+  never per person. The row counts a delivered file, not a watched one.
 
 ### Asset review in the backend (`asset_reviews` table)
 
 Created by `apps/api/services/orchestrator/migrations/004_asset_reviews.sql`. One row per accepted
 review decision on a recorded asset (ADR 0014, item 5). `PATCH /api/assets/{kind}/{id}/status`
 writes it in the same transaction as the status change, so there is never a decision without its
-row. A refused decision writes nothing. The frontend never reads it.
+row. Publishing a library entry (approval) and rejecting its video write the same row, with the
+same statement, inside the library's own transaction. A refused decision writes nothing. The
+frontend never reads it.
 
 | Column             | Type        | Notes                                                              |
 | ------------------ | ----------- | ------------------------------------------------------------------ |
@@ -218,6 +228,103 @@ Job types:
 
 Failed jobs are kept with no end date, and each holds the `created_by` user id. A user deletion
 must also clear that column on their failed jobs (ADR 0015, consequences).
+
+## LibraryEntry (`src/entities/library-entry`)
+
+The answer library: staff questions with an approved spoken answer and, once recorded, a video.
+Signed-in users on `mobile` and `web` see only published entries in their language. The widget
+never calls a library route. Endpoints and error codes are in `docs/API.md` ("The answer library").
+
+A signed-in user gets `LibrarySuggestion` and nothing else of an entry:
+
+| Field        | Type    | Notes                                   |
+| ------------ | ------- | --------------------------------------- |
+| `id`         | string  | the entry id, for the video and the follow-ups |
+| `question`   | string  | the button label                        |
+| `answerText` | string  | the caption: the text the video speaks  |
+| `durationMs` | integer | the video's length                      |
+
+The schema is strict (`z.strictObject`): a response with any other field fails to parse, because
+the backend promises exactly these four.
+
+An admin gets `AdminLibraryEntry`, every column below that the admin screens need, plus the video's
+`videoStatus` and `durationMs` (field list in `docs/API.md`), and `LibraryRecording` for a finished
+recording no entry uses yet (`videoAssetId`, `answerText`, `durationMs`, `createdAt`).
+
+- Endpoints: `GET /api/library/suggestions`, `GET /api/library/answers/{id}/video`,
+  `GET /api/library/answers/{id}/follow-ups`, and `/api/admin/library/entries`,
+  `/api/admin/library/entries/{id}`, `/api/admin/library/entries/{id}/status`,
+  `/api/admin/library/recordings`
+- Functions: `getLibrarySuggestions`, `fetchLibraryVideo` (a `Blob`, `responseType: 'blob'`, 60 s
+  timeout, an `AbortSignal`), `getLibraryFollowUps`, `listLibraryEntries`, `createLibraryEntry`,
+  `updateLibraryEntry`, `changeLibraryEntryStatus`, `listLibraryRecordings`
+- Query keys: `['library-entry', 'suggestions', language]`, `['library-entry', 'follow-ups', id]`,
+  `['library-entry', 'list', params]`, `['library-entry', 'recordings', params]`
+- Hooks: `useLibrarySuggestions(language, { enabled })`, `useLibraryFollowUps(id)`,
+  `useLibraryEntries(params)`, `useLibraryRecordings(params)`, and the mutations
+  `useCreateLibraryEntry()`, `useUpdateLibraryEntry()`, `useChangeLibraryEntryStatus()`, which
+  refetch everything under `['library-entry']`
+- The video blob is never put in the query cache. The screen that plays it owns it.
+- Permissions: the three user routes need a signed-in user (the embed key gets `401`); the rest
+  need the admin role
+
+### The answer library in the backend (`library_entries`, `library_entry_reviews` tables)
+
+Created by `apps/api/services/orchestrator/migrations/006_library_entries.sql`. Additive: two new
+tables, no change to an existing one.
+
+`library_entries`, one row per question:
+
+| Column             | Type               | Notes                                                              |
+| ------------------ | ------------------ | ------------------------------------------------------------------ |
+| `id`               | uuid               | primary key                                                        |
+| `key`              | text               | unique, `^[A-Za-z0-9_-]{1,80}$`, the sheet's key such as `C18Q05`  |
+| `question`         | text               | staff text, 1 to 300 characters                                    |
+| `answer_text`      | text (null)        | the approved spoken text, 1 to 480 characters, whitespace collapsed. Null only in `pending` (and in a `withdrawn` entry that left from `pending`) |
+| `answer_original`  | text (null)        | the original answer before the rewrite, 1 to 5000 characters. Admin only |
+| `language`         | text               | `fa` or `en`. A user sees only their app language                  |
+| `category`         | text               | the sheet's category number as text                                |
+| `category_title`   | text               |                                                                    |
+| `section_type`     | text               | `knowledge`, `identity`, `sizing`, `meeting`, `commercial`, `casual`. Gives the funnel stage |
+| `technical`        | text               | `technical`, `non-technical`, `classify`. Admin metadata only      |
+| `import_metadata`  | jsonb              | from the import (`batch`, `bridge_type`, `section`). Never shown to users |
+| `video_asset_id`   | uuid (null)        | unique, references `video_assets(id)`. Null in `pending` and `ready`, set in `draft` and `published` |
+| `status`           | text               | `pending`, `ready`, `draft`, `published`, `withdrawn`              |
+| `position`         | integer            | display order: the last position plus one at creation              |
+| `created_by`       | uuid (null)        | the admin, references `users(id)`. Null for the import             |
+| `created_at`, `updated_at` | timestamptz |                                                                    |
+| `published_at`, `withdrawn_at` | timestamptz (null) | the last change of each kind                          |
+
+Two checks tie the columns to the status: no video before `draft`, a video in `draft` and
+`published`, either in `withdrawn`; and an answer text in `ready`, `draft` and `published`. The
+indexes `(language, status, position)` and `(category, section_type, status)` serve the
+suggestions and the follow-ups.
+
+`library_entry_reviews`, one row per status change (ADR 0014, item 5). Append-only: nothing
+updates or deletes a row.
+
+| Column           | Type        | Notes                                                                |
+| ---------------- | ----------- | -------------------------------------------------------------------- |
+| `id`             | uuid        | primary key                                                          |
+| `entry_id`       | uuid        | references `library_entries(id)`                                    |
+| `reviewer_id`    | uuid (null) | the admin, references `users(id)`. Null when the import attached a video |
+| `decision`       | text        | `ready`, `reopened`, `video_attached`, `video_rejected`, `published`, `unpublished`, `withdrawn` |
+| `video_asset_id` | uuid (null) | the video of `video_attached` and `video_rejected`. No foreign key, so it outlives the video |
+| `created_at`     | timestamptz | the time of the insert (`clock_timestamp()`), not of the transaction start |
+
+No text column. The transitions and the decision each one writes are in `docs/API.md`
+(`PATCH /api/admin/library/entries/{id}/status`). The status change and its review row are one
+transaction, and the change is guarded by the current status, so two changes at once leave exactly
+one. `created_at`, `published_at` and `withdrawn_at` are the time of the statement, not of the
+transaction start, so a change that waited for the entry's row lock sorts after the change it
+waited for.
+
+The library reads these `video_assets` columns (created by `001_initial.sql`): `id`, `external_id`
+(unique; the MP4 is `<external_id>.mp4`), `text` (what the avatar says, compared with
+`answer_text` after whitespace normalization), `video_path` (absolute path of the MP4),
+`duration_ms`, and `status`: `DRAFT` while recording, `VIDEO_GENERATED` once the file is probed,
+`VIDEO_APPROVED` after review, `REJECTED`. An entry never uses `video_assets.status` for its own
+state: the question's review and the media's render are two lifecycles.
 
 ## Adding a model
 

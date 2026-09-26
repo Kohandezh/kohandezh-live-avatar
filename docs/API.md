@@ -32,19 +32,27 @@ contract between the two apps. Any backend that implements it works with this fr
 
 ## Endpoints used by the frontend
 
-| Method | Path                                  | Access      | Used by                       |
-| ------ | ------------------------------------- | ----------- | ----------------------------- |
-| POST   | `/api/auth/otp/request`               | Public      | `features/authentication`     |
-| POST   | `/api/auth/otp/verify`                | Public      | `features/authentication`     |
-| POST   | `/api/auth/logout`                    | Auth        | `features/authentication`     |
-| GET    | `/api/me`                             | Auth        | `entities/user` (session)     |
-| PUT    | `/api/me/profile`                     | Auth        | `entities/user` (onboarding)  |
-| GET    | `/api/admin/users`                    | Admin       | `entities/user` (admin table) |
-| GET    | `/api/admin/dashboard`                | Admin       | `entities/dashboard`          |
-| POST   | `/api/assistant/session`              | Auth or key | `entities/assistant-session`  |
-| POST   | `/api/assistant/session/{id}/close`   | Auth or key | `entities/assistant-session`  |
-| POST   | `/api/assistant/session/{id}/answers` | Auth or key | `entities/assistant-session`  |
-| GET    | `/api/jobs/{jobId}`                   | Auth        | `entities/job` (recording)    |
+| Method | Path                                     | Access      | Used by                          |
+| ------ | ---------------------------------------- | ----------- | -------------------------------- |
+| POST   | `/api/auth/otp/request`                  | Public      | `features/authentication`        |
+| POST   | `/api/auth/otp/verify`                   | Public      | `features/authentication`        |
+| POST   | `/api/auth/logout`                       | Auth        | `features/authentication`        |
+| GET    | `/api/me`                                | Auth        | `entities/user` (session)        |
+| PUT    | `/api/me/profile`                        | Auth        | `entities/user` (onboarding)     |
+| GET    | `/api/admin/users`                       | Admin       | `entities/user` (admin table)    |
+| GET    | `/api/admin/dashboard`                   | Admin       | `entities/dashboard`             |
+| POST   | `/api/assistant/session`                 | Auth or key | `entities/assistant-session`     |
+| POST   | `/api/assistant/session/{id}/close`      | Auth or key | `entities/assistant-session`     |
+| POST   | `/api/assistant/session/{id}/answers`    | Auth or key | `entities/assistant-session`     |
+| GET    | `/api/jobs/{jobId}`                      | Auth        | `entities/job` (recording)       |
+| GET    | `/api/library/suggestions`               | Auth        | `entities/library-entry`         |
+| GET    | `/api/library/answers/{id}/video`        | Auth        | `entities/library-entry`         |
+| GET    | `/api/library/answers/{id}/follow-ups`   | Auth        | `entities/library-entry`         |
+| GET    | `/api/admin/library/entries`             | Admin       | `entities/library-entry` (admin) |
+| POST   | `/api/admin/library/entries`             | Admin       | `entities/library-entry` (admin) |
+| PATCH  | `/api/admin/library/entries/{id}`        | Admin       | `entities/library-entry` (admin) |
+| PATCH  | `/api/admin/library/entries/{id}/status` | Admin       | `entities/library-entry` (admin) |
+| GET    | `/api/admin/library/recordings`          | Admin       | `entities/library-entry` (admin) |
 
 Login is a phone number plus a one-time code (OTP). There is no password anywhere in the system.
 
@@ -275,6 +283,209 @@ its job is `queued` or `running` gets the same `jobId`.
 - `404 not_found` for an unknown id, and for a job the caller may not read. Both answer the same
   body, so a job id tells nothing about the job.
 - `422 validation_error` when the id is not a UUID.
+
+## The answer library
+
+Staff write a fixed set of questions and approve a recorded video for each one in the `admin`
+target. Signed-in users on `mobile` and `web` pick one of them and play its video. Free text never
+reaches the library: the library is reached by selection only
+(`docs/features/response-caching/SPEC.md`).
+
+An entry has a `status`:
+
+| Status      | Meaning                                                                 |
+| ----------- | ----------------------------------------------------------------------- |
+| `pending`   | Question and answer text only. The answer may still be the original.    |
+| `ready`     | An admin approved the spoken text and asked for a video.                |
+| `draft`     | A video exists and waits for an admin to review it.                     |
+| `published` | Users see it.                                                           |
+| `withdrawn` | Final. The entry left the library; its row and its audit rows stay.     |
+
+An entry is **servable**, which means a user may see it, when it is `published`, its video is
+`VIDEO_APPROVED`, and the video file exists. The list routes also need the entry's language to be
+the requested one. The three user routes use this rule and nothing else.
+
+The user routes need a signed-in user. The widget's embed key is not enough: a request with only
+`X-Embed-Key` gets `401`, because the widget plays no library entries until it signs its users in
+(ADR 0014, item 3). The admin routes need the admin role: `401` without a session, `403` for anyone
+else. No library response or log line carries the text of a question or an answer except the
+response bodies below.
+
+### GET /api/library/suggestions
+
+Query: `language` (`fa` or `en`, required), `limit` (1 to 20, default 6). This is a capped list,
+not a paged one.
+
+Response `200`: `{ "items": LibrarySuggestion[] }`, where `LibrarySuggestion` is exactly
+`{ "id": string, "question": string, "answerText": string, "durationMs": number }`. Nothing else
+of an entry reaches a user: no video id, key, category or review data. An empty `items` is normal
+(for example an `en` user while only `fa` answers exist).
+
+Order: the funnel stage first (stage 1 before 2 before 3, see the follow-ups below), then the order
+the entries were created. An entry whose file is missing is skipped, and the list still fills up to
+`limit` from the entries after it.
+
+- `401 unauthorized`, `403 account_disabled`.
+- `422 validation_error` for a missing or bad `language`, or a `limit` out of range.
+
+### GET /api/library/answers/{id}/video
+
+Response `200`: the whole MP4 (`video/mp4`, with `Content-Length` and
+`Cache-Control: private, no-store`). Fetch it with the shared client as a blob; never put an API
+URL in a `<video src>` (ADR 0014, item 6). A `Range` header is ignored: the answer is always the
+whole file with `200`, never `206` or `416`, and there is no `Accept-Ranges`.
+
+Each `200` writes one `provider_usage` row once the file is open and before the body is sent: `operation: "assistant_answer"`,
+`cache_hit: true`, the video's duration, and metadata `{ library_entry_id, source: "library" }`.
+The row has no user id, no principal and no session id (see `docs/DATA_MODEL.md`). It counts a
+delivered file, not a watched one.
+
+- `401 unauthorized`, `403 account_disabled`.
+- `404 not_found` for an entry that does not exist or is not servable. Both answer the same body.
+- `429 library_rate_limited`, `retryable: true`, with `details.retryAfterSeconds` and the same wait
+  in the HTTP `Retry-After` header, which CORS exposes to the browser: more than
+  `LIBRARY_PLAYBACK_RATE_LIMIT_PER_HOUR` requests (default 60) from one user in the current hour.
+  Every request counts, also one that ends in `404`, so an unknown id costs the same as a real one.
+- `422 validation_error` when the id is not a UUID.
+
+A response other than `200` writes no usage row.
+
+### GET /api/library/answers/{id}/follow-ups
+
+Up to three servable entries to offer after a played answer. They have the same `category` and the
+same language as the played entry, are not the played entry, and sit one funnel stage deeper. The
+stage comes from `sectionType`: `identity`, `knowledge` and `casual` are stage 1, `sizing` is stage
+2, `meeting` and `commercial` are stage 3. After a stage 3 answer the follow-ups are other stage 3
+entries. `technical` never changes the result. Order: creation order.
+
+Response `200`: `{ "items": LibrarySuggestion[] }`, at most 3. An empty `items` is normal. The
+request writes no usage row.
+
+- `401 unauthorized`, `403 account_disabled`.
+- `404 not_found` when `id` is not servable.
+
+### GET /api/admin/library/entries
+
+Query: `status?`, `language?`, `category?`, `sectionType?`, `technical?` (exact values), `q?`
+(part of the key or the question), `page?` (default 1), `pageSize?` (default 10, max 100).
+
+Response `200`: `Paginated<AdminLibraryEntry>`, newest first. `AdminLibraryEntry`:
+
+| Field            | Type               | Notes                                                        |
+| ---------------- | ------------------ | ------------------------------------------------------------ |
+| `id`             | string (uuid)      |                                                              |
+| `key`            | string             | `^[A-Za-z0-9_-]{1,80}$`, unique, for example `C18Q05`        |
+| `question`       | string             | 1 to 300 characters                                          |
+| `answerText`     | string \| null     | the approved spoken text, 1 to 480 characters. Null in `pending` until written |
+| `answerOriginal` | string \| null     | the original answer before the rewrite                       |
+| `language`       | `fa` \| `en`       |                                                              |
+| `category`       | string             | for example `18`                                             |
+| `categoryTitle`  | string             |                                                              |
+| `sectionType`    | string             | `knowledge`, `identity`, `sizing`, `meeting`, `commercial`, `casual` |
+| `technical`      | string             | `technical`, `non-technical`, `classify`. Admin metadata only |
+| `status`         | string             | see the status table above                                   |
+| `position`       | integer            | creation order                                               |
+| `videoAssetId`   | string \| null     | null in `pending` and `ready`                                |
+| `videoStatus`    | string \| null     | the video's status, for example `VIDEO_GENERATED`            |
+| `durationMs`     | integer \| null    | the video's duration                                         |
+| `createdAt`, `publishedAt`, `withdrawnAt` | string (ISO 8601) | the last two null until that happens     |
+
+`422 validation_error` for a filter value outside its list, or a page out of range.
+
+### POST /api/admin/library/entries
+
+The body is closed: an unknown key is `422`. Two ways in:
+
+- **From text:** `{ "question", "answerText"?, "answerOriginal"?, "language", "category",
+  "categoryTitle", "sectionType", "technical", "key" }` creates a `pending` entry. `answerText` is
+  stored with its whitespace collapsed to single spaces, and its 480 characters are counted on that
+  form.
+- **From a recording:** the same fields with `"videoAssetId"` and without `answerText` create a
+  `draft` entry. The video must be `VIDEO_GENERATED` with a non-empty file and no entry. Its text
+  becomes `answerText`. `key` may be left out; it then defaults to the video's `external_id`.
+
+Response `201`: the `AdminLibraryEntry`, placed after the last entry.
+
+- `404 not_found`: the video does not exist.
+- `409 library_video_not_ready`: the video is not `VIDEO_GENERATED`, or its file is missing or empty.
+- `409 library_video_in_use`: another entry uses the video.
+- `409 library_key_taken`: another entry has the key.
+- `422 validation_error`: a bad or missing field, `answerText` together with `videoAssetId`, no
+  `key` without a video, or a video whose text is longer than 480 characters.
+
+### PATCH /api/admin/library/entries/{id}
+
+Body: any of `question`, `answerText`, `language`, `category`, `categoryTitle`, `sectionType`,
+`technical`, at least one. Only `answerText` may be `null`. The body is closed. Changes no status.
+
+| Status               | Editable                                                             |
+| -------------------- | -------------------------------------------------------------------- |
+| `pending`            | all seven fields                                                     |
+| `ready`, `draft`     | `question`, `category`, `categoryTitle`, `sectionType`, `technical` |
+| `published`, `withdrawn` | nothing                                                          |
+
+`answerText` and `language` stay locked after `pending` because the video speaks that text in that
+language. To change them, reopen a `ready` entry (`ready` to `pending`). A `published` entry is
+unpublished first, so every text users see went through Publish.
+
+Response `200`: the `AdminLibraryEntry`.
+
+- `404 not_found`.
+- `409 invalid_status_transition` with `details: { "currentStatus": string }`: a field that is
+  locked in the entry's status, or any edit of a `published` or `withdrawn` entry. Nothing changes.
+- `422 validation_error`: an empty body, an unknown key, a `null` other than `answerText`, or a
+  value out of range.
+
+### PATCH /api/admin/library/entries/{id}/status
+
+Body: `{ "status": string, "videoAssetId"?: string, "fromStatus"?: string }`. Every status change
+goes through this one route and this table. Each accepted change writes one `library_entry_reviews`
+row in the same transaction (`docs/DATA_MODEL.md`).
+
+| To          | From                                        | What else happens                                                    | Review row       |
+| ----------- | ------------------------------------------- | -------------------------------------------------------------------- | ---------------- |
+| `ready`     | `pending`                                   | needs an `answerText` of 1 to 480 characters                          | `ready`          |
+| `pending`   | `ready`                                     | reopens the text for editing                                          | `reopened`       |
+| `draft`     | `ready`                                     | attaches `videoAssetId`: `VIDEO_GENERATED`, a non-empty file, no other entry, and the same text after whitespace normalization | `video_attached` |
+| `ready`     | `draft`                                     | rejects the video: the video becomes `REJECTED` with an `asset_reviews` row, and the entry loses it | `video_rejected` |
+| `published` | `draft`                                     | the file must exist; a `VIDEO_GENERATED` video is approved with an `asset_reviews` row, a `VIDEO_APPROVED` one is kept | `published` |
+| `draft`     | `published`                                 | users stop seeing it; the video stays approved                        | `unpublished`    |
+| `withdrawn` | `pending`, `ready`, `draft`, `published`    | final: nothing moves an entry out of `withdrawn`                      | `withdrawn`      |
+
+`pending` to `draft` belongs to the import only; this route refuses it. `videoAssetId` is sent only
+to attach a video (`status: "draft"` on a `ready` entry).
+
+`fromStatus` is the status the admin's screen showed. When it is sent, the backend compares it
+with the entry's status under the row lock, before anything else, and a different status answers
+`409 invalid_status_transition` with `currentStatus`; nothing changes and no review row is written.
+Clients should always send it: the target `ready` means "mark ready" from `pending` and "reject the
+video" from `draft`, so a stale "Mark ready" without it would reject a video another admin attached
+meanwhile. Without `fromStatus` the route behaves as the table says. `fromStatus` is an owner
+decision of 2026-09-26 made after `docs/features/response-caching/SPEC.md` §6 was written; that
+section does not list it yet.
+
+Response `200`: the `AdminLibraryEntry` after the change.
+
+- `404 not_found`: the entry, or the video to attach, does not exist.
+- `409 invalid_status_transition` with `details: { "currentStatus": string }`: a `fromStatus` that
+  is not the current status, a pair that is not in the table, or an entry that another request
+  moved first. Two changes at once leave exactly one.
+- `409 library_video_not_ready`: the video to attach or to publish is not in the right status, or
+  its file is missing.
+- `409 library_video_in_use`: another entry uses the video to attach.
+- `409 library_text_mismatch`: the video does not say the entry's `answerText`.
+- `422 validation_error`: an unknown status, `fromStatus` or key, `ready` without an answer text,
+  `draft` from `ready` without `videoAssetId`, or `videoAssetId` with any other change.
+
+### GET /api/admin/library/recordings
+
+Query: `page?` (default 1), `pageSize?` (default 10, max 100).
+
+Finished recordings that no entry uses yet: videos with status `VIDEO_GENERATED`, a non-empty file,
+and no library entry, newest first. This is how an admin finds a recording again after a reload.
+
+Response `200`: `Paginated<{ "videoAssetId": string, "answerText": string, "durationMs": number,
+"createdAt": string }>`. `answerText` is the video's text.
 
 ## Backend requirements
 

@@ -34,6 +34,8 @@ from .errors import AppError, NotFoundError
 from .jobs import HANDLERS, JobRunner, new_worker_id
 from .jobs.finalize import start_finalize
 from .jobs.router import router as jobs_router
+from .library.router import admin_router as library_admin_router
+from .library.router import router as library_router
 from .livekit_gateway import LiveKitGateway
 from .logging import configure_logging, correlation_id_var
 from .schemas import (
@@ -158,7 +160,8 @@ app.add_middleware(
         "X-Embed-Key",
         "X-Correlation-ID",
     ],
-    expose_headers=["X-Correlation-ID"],
+    # Retry-After tells a client of a rate-limited route when to try again.
+    expose_headers=["X-Correlation-ID", "Retry-After"],
 )
 
 
@@ -187,6 +190,7 @@ async def app_error_handler(_: Request, exc: AppError):
             },
             "correlation_id": correlation_id_var.get(),
         },
+        headers=exc.headers,
     )
 
 
@@ -211,6 +215,8 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(assistant_router)
 app.include_router(jobs_router)
+app.include_router(library_router)
+app.include_router(library_admin_router)
 
 
 @app.get("/health/live")
