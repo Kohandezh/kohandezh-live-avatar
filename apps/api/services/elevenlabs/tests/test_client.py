@@ -1,9 +1,13 @@
+import json
 import struct
 
 import httpx
 import pytest
+from websockets.exceptions import ConnectionClosedError
+from websockets.frames import Close
 
-from services.elevenlabs.client import ElevenLabsClient
+import services.elevenlabs.client as client_module
+from services.elevenlabs.client import _PAYMENT_ERROR_MESSAGE, ElevenLabsClient
 from services.orchestrator.src.errors import ConfigurationError, ProviderError
 
 PARAMS = {
@@ -17,6 +21,40 @@ PARAMS = {
     "language": "fa",
     "output_format": "pcm_24000",
 }
+
+TTS_PARAMS = {**PARAMS, "model_id": "eleven_multilingual_v2"}
+
+
+class _FakeSocket:
+    def __init__(self, frames):
+        self._frames = iter(frames)
+
+    async def send(self, _message):
+        return None
+
+    async def recv(self):
+        item = next(self._frames)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+class _FakeConnect:
+    def __init__(self, frames):
+        self._socket = _FakeSocket(frames)
+
+    async def __aenter__(self):
+        return self._socket
+
+    async def __aexit__(self, *_exc):
+        return False
+
+
+def _fake_connect(frames):
+    def _connect(_uri, **_kwargs):
+        return _FakeConnect(frames)
+
+    return _connect
 
 
 @pytest.mark.asyncio
@@ -64,4 +102,180 @@ async def test_missing_credentials_never_make_a_provider_request():
     client = ElevenLabsClient(api_key="", base_url="https://api.test", websocket_url="wss://api.test")
     with pytest.raises(ConfigurationError):
         await client.generate(PARAMS)
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dialogue_stream_maps_payment_issue_message_to_elevenlabs_payment(monkeypatch):
+    frames = [json.dumps({"message": "please pay", "error": "payment_issue", "code": 1008})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_payment"
+    assert error.value.status_code == 502
+    assert error.value.retryable is False
+    assert "please pay" not in error.value.message
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dialogue_stream_maps_ivc_not_permitted_with_code_1008_to_elevenlabs_payment(monkeypatch):
+    """Pay-as-you-go plans reject an instant-cloned voice with a different error string, same code."""
+    frames = [json.dumps({"error": "ivc_not_permitted", "code": 1008})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_payment"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dialogue_stream_maps_payment_issue_without_a_code_field_to_elevenlabs_payment(
+    monkeypatch,
+):
+    """REQ-040 maps on payment_issue OR code 1008, not only when both are present."""
+    frames = [json.dumps({"message": "please pay", "error": "payment_issue"})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_payment"
+    assert error.value.message == _PAYMENT_ERROR_MESSAGE
+    assert "please pay" not in error.value.message
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dialogue_stream_other_error_keeps_generic_stream_error(monkeypatch):
+    frames = [json.dumps({"error": "some_other_problem", "code": 500})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_stream_error"
+    assert error.value.message == "ElevenLabs dialogue stream failed"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dialogue_stream_close_code_1008_maps_to_elevenlabs_payment(monkeypatch):
+    close = ConnectionClosedError(rcvd=Close(1008, "payment required"), sent=None)
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect([close]))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_payment"
+    assert "payment required" not in error.value.message
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dialogue_stream_close_code_other_keeps_generic_stream_error(monkeypatch):
+    close = ConnectionClosedError(rcvd=Close(1011, "internal error"), sent=None)
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect([close]))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_stream_error"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_tts_stream_maps_payment_issue_message_to_elevenlabs_payment(monkeypatch):
+    frames = [json.dumps({"message": "please pay", "error": "payment_issue", "code": 1008})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(TTS_PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_payment"
+    assert "please pay" not in error.value.message
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_tts_stream_maps_payment_issue_without_a_code_field_to_elevenlabs_payment(monkeypatch):
+    """REQ-040 maps on payment_issue OR code 1008, not only when both are present."""
+    frames = [json.dumps({"message": "please pay", "error": "payment_issue"})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(TTS_PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_payment"
+    assert error.value.message == _PAYMENT_ERROR_MESSAGE
+    assert "please pay" not in error.value.message
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_tts_stream_close_code_1008_maps_to_elevenlabs_payment(monkeypatch):
+    close = ConnectionClosedError(rcvd=Close(1008, "payment required"), sent=None)
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect([close]))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(TTS_PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_payment"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_tts_stream_other_error_keeps_generic_stream_error(monkeypatch):
+    frames = [json.dumps({"error": "some_other_problem", "code": 500})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as error:
+        async for _ in client.stream_websocket(TTS_PARAMS):
+            pass
+
+    assert error.value.code == "elevenlabs_stream_error"
+    assert error.value.message == "ElevenLabs TTS stream failed"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dialogue_and_tts_payment_errors_use_the_same_fixed_message(monkeypatch):
+    frames = [json.dumps({"error": "payment_issue", "code": 1008})]
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(frames))
+    client = ElevenLabsClient(api_key="secret", base_url="https://api.test", websocket_url="wss://api.test")
+
+    with pytest.raises(ProviderError) as dialogue_error:
+        async for _ in client.stream_websocket(PARAMS):
+            pass
+
+    monkeypatch.setattr(client_module.websockets, "connect", _fake_connect(list(frames)))
+
+    with pytest.raises(ProviderError) as tts_error:
+        async for _ in client.stream_websocket(TTS_PARAMS):
+            pass
+
+    assert dialogue_error.value.message == tts_error.value.message
     await client.close()

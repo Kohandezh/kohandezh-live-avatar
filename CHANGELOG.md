@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- ElevenLabs speech now reports a plan payment problem clearly. The client raises
+  `elevenlabs_payment` instead of the generic `elevenlabs_stream_error`, on both WebSocket paths
+  (`apps/api/services/elevenlabs/client.py`), when the speech WebSocket answers with an error
+  `payment_issue`, or any error at code 1008 (a pay-as-you-go plan gets this for an instant-cloned
+  voice too, as `ivc_not_permitted`), or closes the socket with close code 1008.
+  `/avatar/speak` returns it to the admin like any other provider error. The message is fixed
+  English text; the provider's own text is never logged or returned.
 - Stopping a recording no longer holds the request open. `POST /api/assets/video/{id}/finalize`
   stops Egress and answers `202` with a job id at once; a `finalize_video` job waits for the MP4
   (up to `FINALIZE_FILE_WAIT_SECONDS`, 30 by default, twice the old 15), probes it and marks the
