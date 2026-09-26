@@ -22,6 +22,13 @@ contract between the two apps. Any backend that implements it works with this fr
   Never hold a request open while a model runs.
 - Streaming answers use Server-Sent Events (`text/event-stream`), not WebSockets, so the same
   code works through a normal reverse proxy.
+- `/avatar/speak` only uses ElevenLabs' speech WebSocket, so its `ProviderError` codes are
+  `configuration_error`, `elevenlabs_timeout`, `elevenlabs_stream_error`, and `elevenlabs_payment`.
+  `elevenlabs_payment` (the ElevenLabs plan is not paid) is raised, on either WebSocket path, for
+  any of: an error message with `error: "payment_issue"`, an error message with `code: 1008`
+  (covers `ivc_not_permitted` on a pay-as-you-go plan too), or the socket closed with close code
+  `1008`. It is `502`, not retryable, with a fixed English message; the provider's own text is
+  never logged or returned.
 
 ## Endpoints used by the frontend
 

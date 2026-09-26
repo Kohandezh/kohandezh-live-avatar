@@ -9,6 +9,9 @@ import websockets
 
 from services.orchestrator.src.errors import ConfigurationError, ProviderError
 
+_PAYMENT_ISSUE_CODE = 1008
+_PAYMENT_ERROR_MESSAGE = "ElevenLabs refused the request because the ElevenLabs plan is not paid"
+
 
 class ElevenLabsClient:
     def __init__(
@@ -111,6 +114,21 @@ class ElevenLabsClient:
             )
         raise AssertionError("unreachable")
 
+    @staticmethod
+    def _stream_error(message: dict, *, path_label: str) -> ProviderError:
+        if message.get("code") == _PAYMENT_ISSUE_CODE or message.get("error") == "payment_issue":
+            return ProviderError("elevenlabs_payment", _PAYMENT_ERROR_MESSAGE, 502, False)
+        return ProviderError(
+            "elevenlabs_stream_error", f"ElevenLabs {path_label} stream failed", 502, False
+        )
+
+    @staticmethod
+    def _closed_error(exc: websockets.WebSocketException) -> ProviderError:
+        rcvd = getattr(exc, "rcvd", None)
+        if rcvd is not None and rcvd.code == _PAYMENT_ISSUE_CODE:
+            return ProviderError("elevenlabs_payment", _PAYMENT_ERROR_MESSAGE, 502, False)
+        return ProviderError("elevenlabs_stream_error", "ElevenLabs WebSocket failed", 502, True)
+
     async def stream_websocket(self, params: dict) -> AsyncIterator[bytes]:
         self._require_credentials(params["voice_id"])
         if params["model_id"].startswith("eleven_v3"):
@@ -155,9 +173,7 @@ class ElevenLabsClient:
                     raw = await asyncio.wait_for(socket.recv(), timeout=self.timeout_seconds)
                     message = json.loads(raw)
                     if message.get("error"):
-                        raise ProviderError(
-                            "elevenlabs_stream_error", "ElevenLabs dialogue stream failed", 502, False
-                        )
+                        raise self._stream_error(message, path_label="dialogue")
                     if message.get("audio"):
                         yield base64.b64decode(message["audio"])
                     if message.get("is_final"):
@@ -167,7 +183,7 @@ class ElevenLabsClient:
         except TimeoutError as exc:
             raise ProviderError("elevenlabs_timeout", "ElevenLabs WebSocket timed out", 504, True) from exc
         except websockets.WebSocketException as exc:
-            raise ProviderError("elevenlabs_stream_error", "ElevenLabs WebSocket failed", 502, True) from exc
+            raise self._closed_error(exc) from exc
 
     async def _stream_tts(self, params: dict) -> AsyncIterator[bytes]:
         query = urlencode(
@@ -196,9 +212,7 @@ class ElevenLabsClient:
                     raw = await asyncio.wait_for(socket.recv(), timeout=self.timeout_seconds)
                     message = json.loads(raw)
                     if message.get("error"):
-                        raise ProviderError(
-                            "elevenlabs_stream_error", "ElevenLabs TTS stream failed", 502, False
-                        )
+                        raise self._stream_error(message, path_label="TTS")
                     if message.get("audio"):
                         yield base64.b64decode(message["audio"])
                     if message.get("is_final"):
@@ -208,4 +222,4 @@ class ElevenLabsClient:
         except TimeoutError as exc:
             raise ProviderError("elevenlabs_timeout", "ElevenLabs WebSocket timed out", 504, True) from exc
         except websockets.WebSocketException as exc:
-            raise ProviderError("elevenlabs_stream_error", "ElevenLabs WebSocket failed", 502, True) from exc
+            raise self._closed_error(exc) from exc
