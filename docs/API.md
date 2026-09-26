@@ -37,7 +37,7 @@ contract between the two apps. Any backend that implements it works with this fr
 | POST   | `/api/assistant/session`              | Auth or key | `entities/assistant-session`  |
 | POST   | `/api/assistant/session/{id}/close`   | Auth or key | `entities/assistant-session`  |
 | POST   | `/api/assistant/session/{id}/answers` | Auth or key | `entities/assistant-session`  |
-| GET    | `/api/jobs/{jobId}`                   | Auth        | none yet                      |
+| GET    | `/api/jobs/{jobId}`                   | Auth        | `entities/job` (recording)    |
 
 Login is a phone number plus a one-time code (OTP). There is no password anywhere in the system.
 
@@ -257,7 +257,8 @@ Response `200`, by `status`:
 - `{ "status": "failed", "error": { "code": string, "message": string } }`: `message` is a fixed
   English text per `code`, never user text and never a server exception. Show a translated text
   by `code`. `worker_lost` means the process running the job stopped on the job's last allowed
-  attempt; `internal_error` is an unexpected failure. The operation adds its own codes.
+  attempt; `internal_error` is an unexpected failure. The operation adds its own codes (the
+  finalize job's codes are listed under `POST /api/assets/video/{id}/finalize` below).
 
 A job can go back from `running` to `queued`: when it waits for something, or when a retryable
 error is retried later. `done` and `failed` are final. A second request for the same work while
@@ -328,3 +329,43 @@ one of these statuses:
 - The status check is part of the update statement, so two reviews at once cannot both pass it.
   Every accepted decision writes one `asset_reviews` row in the same transaction
   (`docs/DATA_MODEL.md`). A refused decision writes nothing.
+
+### POST /api/assets/video/{id}/finalize
+
+Stops the Egress recording of a video asset and answers at once. No body. A `finalize_video` job
+(`docs/DATA_MODEL.md`) then waits for the MP4, probes it and marks the asset `VIDEO_GENERATED`, so
+the request is never held open while the file is written (ADR 0015, item 4).
+
+Response `202`: `{ "jobId": string }`. Poll `GET /api/jobs/{jobId}` (the workbench polls every 2
+seconds and gives up after 180). A second call while that job is `queued` or `running` answers
+`202` with the same `jobId` and does not stop Egress again, also when both calls arrive at once.
+After a `failed` job, a new call starts a new job.
+
+The call creates the job first and then stops Egress; the job becomes due only once Egress has
+stopped. No database connection is held while LiveKit answers.
+
+- `404 not_found`: unknown id.
+- `409 egress_failure`: the asset has no Egress recording.
+- `409 invalid_status_transition` with `details: { "currentStatus": string }`: the asset is not
+  `DRAFT`. A `REJECTED` video can no longer be turned into `VIDEO_GENERATED` this way.
+- `502 egress_failure`, `retryable: true`: LiveKit did not accept the stop. The job this call
+  created ends `failed` with `egress_failure` without running, so a new call can start again.
+  Exception: when an earlier finalize job of this asset ran, its stop already ended the Egress
+  and LiveKit refuses a second stop. That refusal counts as stopped and the new job starts, so a
+  late MP4 can still be finalized after a job that failed waiting for it.
+
+The job's `result` once `done` is the asset: `{ "id", "status": "VIDEO_GENERATED", "media_url",
+"probe" }`, the fields finalize answered before it became a job. `probe` holds `container`,
+`video_codec`, `audio_codec`, `duration_ms`, `width`, `height` and `frame_rate`. The job's `error`
+once `failed`:
+
+| `code`                      | Meaning                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `egress_failure`            | The MP4 did not appear within `FINALIZE_FILE_WAIT_SECONDS` (default 30) after Egress stopped. The time the stop call took does not count. Final, not retried |
+| `egress_invalid_mp4`        | The file is not an MP4 with H.264 video and audio                       |
+| `invalid_status_transition` | The asset stopped being `DRAFT` while the job waited, for example a rejection. The asset keeps that status |
+| `not_found`                 | The asset no longer exists                                              |
+| `worker_lost`, `internal_error` | As for every job                                                    |
+
+While the file is missing the job goes back to `queued` every 2 seconds, and that wait does not
+count as an attempt.

@@ -1,4 +1,26 @@
+import { z } from 'zod';
 import type { AssetStatusDto, VideoFinalizeDto, VideoRecordingDto } from '@/shared/api';
+
+const ASSET_STATUSES = [
+  'DRAFT',
+  'AUDIO_GENERATED',
+  'AUDIO_APPROVED',
+  'VIDEO_GENERATED',
+  'VIDEO_APPROVED',
+  'REJECTED',
+] as const satisfies readonly AssetStatusDto[];
+
+/**
+ * The output of a done `finalize_video` job (`result` of GET /api/jobs/{jobId}): the same fields
+ * finalize used to return. `probe` is ffprobe-derived and loosely typed; `videoAssetFromDto`
+ * picks the known keys.
+ */
+export const videoFinalizeSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(ASSET_STATUSES),
+  media_url: z.string().min(1),
+  probe: z.record(z.string(), z.unknown()),
+}) satisfies z.ZodType<VideoFinalizeDto>;
 
 export interface VideoRecording {
   id: string;

@@ -1,5 +1,6 @@
 """Fakes that let the API be tested without Postgres, Redis, LiveAvatar, ElevenLabs, or LiveKit."""
 
+import asyncio
 import json
 import time
 from dataclasses import dataclass, field
@@ -20,7 +21,7 @@ from services.orchestrator.src.auth.sessions import SessionService
 from services.orchestrator.src.config import Settings
 from services.orchestrator.src.coordination import Coordinator
 from services.orchestrator.src.database import new_answers_that_fit
-from services.orchestrator.src.errors import NotFoundError
+from services.orchestrator.src.errors import NotFoundError, ProviderError
 from services.orchestrator.src.main import app
 
 ADMIN_PHONE = "+989120000001"
@@ -302,10 +303,19 @@ class FakeAvatarManager:
 
 
 class FakeLiveKit:
-    """Stands in for the LiveKit gateway. Records every Egress call."""
+    """Stands in for the LiveKit gateway. Records every Egress call.
+
+    A finalize test can make a stop wait (`stop_gate`) or fail (`stop_error`). The call is recorded
+    before either, so a test can see how many stops are in flight. `refuse_repeated_stop` refuses a
+    second stop of the same Egress, the way LiveKit refuses to stop an Egress that already ended.
+    """
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any]] = []
+        self.stop_gate: asyncio.Event | None = None
+        self.stop_error: Exception | None = None
+        self.refuse_repeated_stop = False
+        self.stopped: set[str] = set()
 
     async def start_mp4_egress(self, room_name: str, asset_id: str) -> str:
         self.calls.append(("start_mp4_egress", room_name))
@@ -313,6 +323,15 @@ class FakeLiveKit:
 
     async def stop_egress(self, egress_id: str) -> None:
         self.calls.append(("stop_egress", egress_id))
+        if self.stop_gate is not None:
+            await self.stop_gate.wait()
+        if self.stop_error is not None:
+            raise self.stop_error
+        if self.refuse_repeated_stop and egress_id in self.stopped:
+            raise ProviderError(
+                "egress_failure", "LiveKit Egress could not finalize the MP4 recording", 502, True
+            )
+        self.stopped.add(egress_id)
 
 
 class FakeLiveAvatarClient:

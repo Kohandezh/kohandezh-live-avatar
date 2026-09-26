@@ -38,7 +38,8 @@ handlers in `apps/frontend/tests/utils/server.ts`.
   identity and role check (ADR 0002). See `docs/SECURITY.md`.
 - **Authorization.** The frontend guards are UX only. Check the role on every `/api/admin/*` request.
 - **Long work.** Answer `202` with a job id and let the client poll. Never hold a request open while
-  a model runs.
+  a model runs. `POST /assets/video/{id}/finalize` does this: it answers `202 {"jobId"}` and a
+  `finalize_video` job waits for the MP4 (`docs/API.md`, ADR 0015).
 - **CORS.** Cloud installs need explicit web and admin origins with credentials. On-premise installs
   serve both from one origin and need none.
 
