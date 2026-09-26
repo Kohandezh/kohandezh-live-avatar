@@ -45,5 +45,7 @@ handlers in `apps/frontend/tests/utils/server.ts`.
 ## Already decided
 
 PostgreSQL 16 for metadata and usage, Redis for locks and short-lived session state, SQL
-migrations applied on startup from `services/orchestrator/migrations`. Record any further
-decision as an ADR under `docs/DECISIONS/` rather than letting a commit decide by accident.
+migrations applied on startup from `services/orchestrator/migrations`. Background jobs run in the
+API process, from the `generation_jobs` table, with no queue library and no worker service
+(ADR 0015, `services/orchestrator/src/jobs/`). Record any further decision as an ADR under
+`docs/DECISIONS/` rather than letting a commit decide by accident.
