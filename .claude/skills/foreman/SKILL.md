@@ -231,17 +231,20 @@ the gates pass. Get the user's approval of the exact content and destination bef
 these: a ready-for-review PR, flipping a draft to ready, a PR or Linear comment, or any
 other Linear write. Ask again if the content or destination changes.
 
-**Stacked PRs land in their parent branch, not in `main`.** A PR whose base is another PR's
-branch merges into that branch. GitHub retargets it to `main` only when the parent branch is
-deleted on merge. On 2026-09-24 the owner merged a stack of seven and four of them never reached
-`main`: two landed in parent branches that had already merged, and one base was still open.
-Three re-landing PRs fixed it. So, whenever Foreman reports a stack:
+**No stacked PRs (owner rule, 2026-09-26).** Every PR targets `main`. When one work unit
+depends on another, Foreman opens the second PR only after the first is merged: it rebases the
+second branch on the new `origin/main`, re-runs the gates, and then opens the PR against `main`.
+The team may build both commits at once; only the PR waits.
 
-- give the merge order, parents first, and say that each child must show base `main` before it
-  is merged (retarget with `gh pr edit <n> --base main`, or delete the parent branch on merge);
-- after the owner merges, check every commit reached `main`
-  (`git merge-base --is-ancestor <sha> origin/main`) before cleanup, and report anything
-  stranded with the exact PR that would land it.
+Why: a PR whose base is another PR's branch merges into that branch, not into `main`. GitHub
+retargets it only when the parent branch is deleted on merge. It went wrong three times even with
+the merge order written down: on 2026-09-24 four PRs of a stack of seven never reached `main`, and
+on 2026-09-25 and 2026-09-26 #33 and #41 landed in their parent branches and needed the re-land
+PRs #34 and #42.
+
+After every owner merge, check that each commit reached `main`
+(`git merge-base --is-ancestor <sha> origin/main`) before cleanup, and report anything stranded
+with the exact PR that would land it.
 
 ## Escalation
 
