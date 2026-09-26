@@ -2,7 +2,8 @@
   "title": "Admin",
   "nav": {
     "dashboard": "Dashboard",
-    "users": "Users"
+    "users": "Users",
+    "library": "Answer library"
   },
   "layout": {
     "signedInAs": "Signed in as",
@@ -43,6 +44,128 @@
       "previous": "Previous",
       "next": "Next",
       "goToPage": "Go to page {{page}}"
+    }
+  },
+  "library": {
+    "title": "Answer library",
+    "subtitle": "Write, review and publish the recorded answers users can play.",
+    "search": "Search by key or question",
+    "clearSearch": "Clear search",
+    "noMatch": "No answers match these filters.",
+    "unsavedText": "Your unsaved text",
+    "filters": {
+      "label": "Filters",
+      "all": "All",
+      "status": "Status",
+      "language": "Answer language",
+      "category": "Category",
+      "categoryPlaceholder": "For example 4",
+      "sectionType": "Section type",
+      "technical": "Technical"
+    },
+    "columns": {
+      "question": "Question",
+      "key": "Key",
+      "categoryTitle": "Category",
+      "sectionType": "Section type",
+      "status": "Status",
+      "duration": "Duration"
+    },
+    "duration": "{{seconds}} s",
+    "sectionType": {
+      "knowledge": "Knowledge",
+      "identity": "Identity",
+      "sizing": "Sizing",
+      "meeting": "Meeting",
+      "commercial": "Commercial",
+      "casual": "Casual"
+    },
+    "technical": {
+      "technical": "Technical",
+      "non-technical": "Non-technical",
+      "classify": "To classify"
+    },
+    "fields": {
+      "question": "Question",
+      "answerText": "Spoken answer",
+      "answerOriginal": "Original answer",
+      "language": "Language",
+      "category": "Category number",
+      "categoryTitle": "Category title",
+      "sectionType": "Section type",
+      "technical": "Technical",
+      "duration": "Duration"
+    },
+    "panel": {
+      "title": "Answer {{key}}",
+      "noSpokenText": "No spoken answer yet.",
+      "videoLabel": "Video of answer {{key}}",
+      "videoLoading": "Loading the video…",
+      "videoError": "The video could not be loaded.",
+      "noVideo": "The video of this answer was deleted.",
+      "loadError": "This answer could not be loaded."
+    },
+    "publishedNote": "A published answer cannot be edited. Unpublish it to edit it, then publish it again.",
+    "actions": {
+      "save": "Save changes",
+      "markReady": "Mark ready",
+      "reopen": "Reopen text",
+      "publish": "Publish",
+      "reject": "Reject video",
+      "unpublish": "Unpublish",
+      "withdraw": "Withdraw",
+      "cancel": "Cancel",
+      "dismiss": "Dismiss"
+    },
+    "toast": {
+      "save": "Changes saved.",
+      "markReady": "Marked ready for video.",
+      "reopen": "Text reopened for editing.",
+      "publish": "Answer published.",
+      "reject": "Video rejected.",
+      "unpublish": "Answer unpublished.",
+      "withdraw": "Answer withdrawn."
+    },
+    "errors": {
+      "required": "This field is required.",
+      "saveFailed": "The change was not saved. Try again.",
+      "offline": "You are offline. Connect to the internet and try again.",
+      "statusChanged": "This answer changed in the meantime. The page now shows its current state.",
+      "videoNotReady": "The video is not ready. Wait until the recording has finished.",
+      "keyTaken": "This key is already used by another answer.",
+      "videoInUse": "This video already belongs to another answer.",
+      "textMismatch": "This video does not say the approved text of this answer.",
+      "tooLong": "This answer is too long for one recording. Keep its audio under 4 minutes 30 seconds."
+    },
+    "pagination": {
+      "summary_one": "Page {{page, number}} of {{pages, number}} · {{count, number}} answer",
+      "summary_other": "Page {{page, number}} of {{pages, number}} · {{count, number}} answers",
+      "previous": "Previous",
+      "next": "Next",
+      "goToPage": "Go to page {{page, number}}"
+    },
+    "status": {
+      "pending": "Waiting for text approval",
+      "ready": "Ready for video",
+      "draft": "Waiting for video review",
+      "published": "Published",
+      "withdrawn": "Withdrawn"
+    },
+    "readyHint": "Record this answer here, or export it for a render run on the render server. Both need an active LiveAvatar account.",
+    "empty": "No answers yet. Record one, or import the answer files on the server.",
+    "withdrawConfirm": "Withdraw this answer? Users stop seeing it now. Its video is deleted at the next daily cleanup and cannot be restored.",
+    "rejectConfirm": "Reject this video? It is deleted at the next daily cleanup. The answer goes back to Ready for video, and a new recording costs paid minutes.",
+    "rules": {
+      "title": "How to write the spoken answer",
+      "spoken": "Write in spoken Persian, as the practitioner would say it aloud.",
+      "sentences": "Two to four sentences, then one bridge sentence that leads to the next step.",
+      "length": "At most 350 characters, or 480 when the answer has a phone number.",
+      "noNewFacts": "No new facts. Use only what the original answer says.",
+      "phoneWords": "Write phone numbers as Persian words, in groups.",
+      "bothNumbers": "When a line has two numbers, give both.",
+      "counter": "{{count}} characters",
+      "overSoft": "Longer than 350 characters. This is allowed only when the answer has a phone number.",
+      "overHard": "Longer than 480 characters. Shorten it before marking it ready."
     }
   }
 }

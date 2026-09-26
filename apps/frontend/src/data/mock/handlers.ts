@@ -778,6 +778,15 @@ const libraryRoutes: MockRoute[] = [
     },
   },
   {
+    // The admin review player's source. The mock holds no media, like the user video route.
+    method: 'get',
+    path: /^\/api\/assets\/video\/[^/]+$/,
+    handle(request) {
+      requireAdmin(request);
+      throw new MockHttpError(404, 'not_found', 'video asset was not found');
+    },
+  },
+  {
     method: 'get',
     path: /^\/api\/admin\/library\/recordings$/,
     handle(request) {

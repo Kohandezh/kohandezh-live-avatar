@@ -1051,9 +1051,11 @@ Other cases:
 | status `withdrawn` | `library.status.withdrawn` | Withdrawn | حذف‌شده |
 | `ready` hint (REQ-070) | `library.readyHint` | Record this answer here, or export it for a render run on the render server. Both need an active LiveAvatar account. | این پاسخ را همین‌جا ضبط کنید، یا آن را برای ساخت روی سرور ساخت ویدیو خروجی بگیرید. هر دو به حساب فعال LiveAvatar نیاز دارند. |
 | empty list | `library.empty` | No answers yet. Record one, or import the answer files on the server. | هنوز پاسخی وجود ندارد. یک پاسخ ضبط کنید یا فایل‌های پاسخ را روی سرور وارد کنید. |
+| empty list because of a filter or search | `library.noMatch` | No answers match these filters. | هیچ پاسخی با این فیلترها پیدا نشد. |
 | withdraw confirmation | `library.withdrawConfirm` | Withdraw this answer? Users stop seeing it now. Its video is deleted at the next daily cleanup and cannot be restored. | این پاسخ حذف شود؟ کاربران از همین حالا آن را نمی‌بینند. ویدیوی آن در پاک‌سازی روزانه بعدی حذف می‌شود و قابل بازگرداندن نیست. |
 | reject video confirmation | `library.rejectConfirm` | Reject this video? It is deleted at the next daily cleanup. The answer goes back to Ready for video, and a new recording costs paid minutes. | این ویدیو رد شود؟ در پاک‌سازی روزانه بعدی حذف می‌شود. پاسخ به «آماده ساخت ویدیو» برمی‌گردد و ضبط دوباره هزینه دارد. |
 | `409 invalid_status_transition` | `library.errors.statusChanged` | This answer changed in the meantime. The page now shows its current state. | این پاسخ در این فاصله تغییر کرده است. صفحه اکنون وضعیت فعلی آن را نشان می‌دهد. |
+| typed text a `409` made read only, kept next to the server's text | `library.unsavedText` | Your unsaved text | متن ذخیره‌نشده شما |
 | `409 library_video_not_ready` | `library.errors.videoNotReady` | The video is not ready. Wait until the recording has finished. | ویدیو آماده نیست. صبر کنید تا ضبط تمام شود. |
 | `409 library_key_taken` | `library.errors.keyTaken` | This key is already used by another answer. | این کلید برای پاسخ دیگری استفاده شده است. |
 | `409 library_video_in_use` | `library.errors.videoInUse` | This video already belongs to another answer. | این ویدیو به پاسخ دیگری تعلق دارد. |

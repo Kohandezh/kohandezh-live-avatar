@@ -8,6 +8,7 @@ import type { PaginationParams } from '@/shared/api';
 import {
   changeLibraryEntryStatus,
   createLibraryEntry,
+  getLibraryEntry,
   getLibraryFollowUps,
   getLibrarySuggestions,
   listLibraryEntries,
@@ -15,6 +16,7 @@ import {
   updateLibraryEntry,
 } from './api';
 import type {
+  AdminLibraryEntry,
   ChangeLibraryStatusInput,
   LibraryEntryListParams,
   LibraryLanguage,
@@ -31,6 +33,7 @@ export const libraryEntryKeys = {
     [...libraryEntryKeys.all, 'follow-ups', id] as const,
   list: (params: LibraryEntryListParams) =>
     [...libraryEntryKeys.all, 'list', params] as const,
+  detail: (id: string) => [...libraryEntryKeys.all, 'detail', id] as const,
   recordings: (params: RecordingParams) =>
     [...libraryEntryKeys.all, 'recordings', params] as const,
 };
@@ -68,6 +71,18 @@ export function useLibraryEntries(params: LibraryEntryListParams) {
   });
 }
 
+/**
+ * One entry, for the admin panel. Starts from the list row the admin opened, and refetches after
+ * every library write, so a `409` shows the entry's current state.
+ */
+export function useLibraryEntry(row: AdminLibraryEntry) {
+  return useQuery({
+    queryKey: libraryEntryKeys.detail(row.id),
+    queryFn: () => getLibraryEntry(row),
+    initialData: row,
+  });
+}
+
 export function useLibraryRecordings(params: RecordingParams) {
   return useQuery({
     queryKey: libraryEntryKeys.recordings(params),
@@ -86,13 +101,23 @@ function useInvalidateLibrary() {
     queryClient.invalidateQueries({ queryKey: libraryEntryKeys.all });
 }
 
+/** Puts the entry the server answered into the panel at once, then refetches the library. */
+function useStoreEntry() {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateLibrary();
+  return (entry: AdminLibraryEntry) => {
+    queryClient.setQueryData(libraryEntryKeys.detail(entry.id), entry);
+    return invalidate();
+  };
+}
+
 export function useCreateLibraryEntry() {
   const invalidate = useInvalidateLibrary();
   return useMutation({ mutationFn: createLibraryEntry, onSuccess: invalidate });
 }
 
 export function useUpdateLibraryEntry() {
-  const invalidate = useInvalidateLibrary();
+  const storeEntry = useStoreEntry();
   return useMutation({
     mutationFn: ({
       id,
@@ -101,12 +126,12 @@ export function useUpdateLibraryEntry() {
       id: string;
       input: UpdateLibraryEntryInput;
     }) => updateLibraryEntry(id, input),
-    onSuccess: invalidate,
+    onSuccess: storeEntry,
   });
 }
 
 export function useChangeLibraryEntryStatus() {
-  const invalidate = useInvalidateLibrary();
+  const storeEntry = useStoreEntry();
   return useMutation({
     mutationFn: ({
       id,
@@ -115,6 +140,6 @@ export function useChangeLibraryEntryStatus() {
       id: string;
       input: ChangeLibraryStatusInput;
     }) => changeLibraryEntryStatus(id, input),
-    onSuccess: invalidate,
+    onSuccess: storeEntry,
   });
 }

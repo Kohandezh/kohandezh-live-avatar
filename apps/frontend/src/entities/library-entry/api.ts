@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { apiClient, type PaginationParams } from '@/shared/api';
+import { ApiError, apiClient, type PaginationParams } from '@/shared/api';
 import {
   adminLibraryEntryPageSchema,
   adminLibraryEntrySchema,
@@ -60,6 +60,52 @@ export async function listLibraryEntries(params: LibraryEntryListParams = {}) {
     params,
   });
   return adminLibraryEntryPageSchema.parse(data);
+}
+
+/**
+ * Admin only. One entry, read again through the list search on its key: the contract has no
+ * single-entry route, and a key is unique. Answers `404 not_found` when the entry is gone.
+ */
+export async function getLibraryEntry({
+  id,
+  key,
+}: {
+  id: string;
+  key: string;
+}) {
+  const page = await listLibraryEntries({ q: key, pageSize: 100 });
+  const entry = page.items.find((item) => item.id === id);
+  if (!entry) {
+    throw new ApiError({
+      message: 'library answer was not found',
+      status: 404,
+      code: 'not_found',
+      serverCode: 'not_found',
+      category: 'NOT_FOUND',
+    });
+  }
+  return entry;
+}
+
+/**
+ * Admin only. The MP4 of an entry under review (`GET /api/assets/video/{id}`), through the same
+ * client and credential, so no `<video src>` points at the API. The blob is not put in the query
+ * cache.
+ */
+export async function fetchLibraryEntryVideo(
+  videoAssetId: string,
+  signal?: AbortSignal,
+) {
+  const { data } = await apiClient.get<Blob>(
+    `/api/assets/video/${encodeURIComponent(videoAssetId)}`,
+    {
+      responseType: 'blob',
+      headers: { Accept: 'video/mp4' },
+      timeout: 60_000,
+      signal,
+    },
+  );
+  return blobSchema.parse(data);
 }
 
 /** Admin only. */
