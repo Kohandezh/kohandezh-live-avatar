@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     # never spends a session mint. The per-session cap is what really bounds one session.
     assistant_answers_rate_limit_per_hour: int = 600
     assistant_answers_per_session_max: int = 200
+    # Recorded answers (GET /library/answers/{id}/video) one signed-in user may fetch per hour.
+    library_playback_rate_limit_per_hour: int = 60
 
     # Phone login. "console" writes the code to the log instead of sending an SMS. It stays the
     # default so tests and CI can never send a real message. "asanak" sends the code by SMS.

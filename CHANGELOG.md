@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- The API has an answer library, backend only. Staff keep questions with an approved spoken
+  answer and a recorded video in two new tables (`library_entries`, `library_entry_reviews`,
+  migration 006). An entry moves `pending`, `ready`, `draft`, `published`, and can be withdrawn for
+  good; every change goes through one status route and one transition table, is guarded by the
+  current status (and by the status the admin's screen showed, when it sends `fromStatus`), and
+  writes one audit row with the admin's id and no text. Publishing approves a generated video, and
+  rejecting a video rejects it, with the same `asset_reviews` row as the asset review route.
+  Admins can list, filter, create and edit entries, and list finished recordings no entry uses
+  yet. Signed-in users get up to six suggested questions in their language, the whole video of a
+  published answer (always `200`, never a partial answer, and not stored by any cache), and up to
+  three follow-up questions one step further on. A played answer writes a usage row with
+  `cache_hit` true and no user id, and plays are limited to 60 per user per hour
+  (`LIBRARY_PLAYBACK_RATE_LIMIT_PER_HOUR`), with a `Retry-After` header on the `429`. The widget's
+  embed key gets `401` on every library route. The frontend has the `library-entry` entity and the
+  mock routes; no screen uses them yet.
 - ElevenLabs speech now reports a plan payment problem clearly. The client raises
   `elevenlabs_payment` instead of the generic `elevenlabs_stream_error`, on both WebSocket paths
   (`apps/api/services/elevenlabs/client.py`), when the speech WebSocket answers with an error

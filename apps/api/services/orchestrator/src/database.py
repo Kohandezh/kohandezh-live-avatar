@@ -1,6 +1,7 @@
 import json
 import logging
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -119,6 +120,76 @@ _JOB_CLOSE = """
 # A write that runs inside the transaction closing a job (see close_job).
 JobWrite = Callable[[asyncpg.Connection], Awaitable[Any]]
 
+# The answer library (docs/features/response-caching/SPEC.md, section 7).
+#
+# An entry with the two video fields the admin list shows. A pending or ready entry has no video.
+_LIBRARY_ENTRY_SELECT = """
+    SELECT e.*, v.status AS video_status, v.duration_ms AS video_duration_ms
+    FROM library_entries AS e LEFT JOIN video_assets AS v ON v.id = e.video_asset_id
+"""
+
+# The database half of "servable" (REQ-011), as the subquery `s`: published, with an approved
+# video. The library service adds the other half, the file on disk, and each query adds its own
+# WHERE. `stage` is the funnel stage (REQ-077): identity, knowledge and casual are stage 1, sizing
+# is stage 2, meeting and commercial are stage 3.
+_LIBRARY_SERVABLE = """
+    SELECT * FROM (
+        SELECT e.id, e.question, e.answer_text, e.language, e.category, e.position,
+               CASE e.section_type
+                   WHEN 'sizing' THEN 2 WHEN 'meeting' THEN 3 WHEN 'commercial' THEN 3 ELSE 1
+               END AS stage,
+               v.duration_ms, v.video_path
+        FROM library_entries AS e JOIN video_assets AS v ON v.id = e.video_asset_id
+        WHERE e.status = 'published' AND v.status = 'VIDEO_APPROVED'
+    ) AS s
+"""
+
+# The admin list (REQ-009). A null parameter is "no filter". The count and the page are two
+# queries with the same WHERE, so keep the two in step.
+_LIBRARY_LIST_COUNT = """
+    SELECT count(*) FROM library_entries AS e
+    WHERE ($1::text IS NULL OR e.status = $1) AND ($2::text IS NULL OR e.language = $2)
+      AND ($3::text IS NULL OR e.category = $3) AND ($4::text IS NULL OR e.section_type = $4)
+      AND ($5::text IS NULL OR e.technical = $5)
+      AND ($6::text IS NULL OR e.key ILIKE $6 OR e.question ILIKE $6)
+"""
+_LIBRARY_LIST_PAGE = """
+    SELECT e.*, v.status AS video_status, v.duration_ms AS video_duration_ms
+    FROM library_entries AS e LEFT JOIN video_assets AS v ON v.id = e.video_asset_id
+    WHERE ($1::text IS NULL OR e.status = $1) AND ($2::text IS NULL OR e.language = $2)
+      AND ($3::text IS NULL OR e.category = $3) AND ($4::text IS NULL OR e.section_type = $4)
+      AND ($5::text IS NULL OR e.technical = $5)
+      AND ($6::text IS NULL OR e.key ILIKE $6 OR e.question ILIKE $6)
+    ORDER BY e.position DESC, e.id
+    LIMIT $7 OFFSET $8
+"""
+
+# Edit in place (REQ-005): each column changes only when its flag is true, so one statement
+# serves any set of fields. The status check is part of the UPDATE.
+_LIBRARY_EDIT = """
+    UPDATE library_entries SET
+      question = CASE WHEN $3::boolean THEN $4::text ELSE question END,
+      answer_text = CASE WHEN $5::boolean THEN $6::text ELSE answer_text END,
+      language = CASE WHEN $7::boolean THEN $8::text ELSE language END,
+      category = CASE WHEN $9::boolean THEN $10::text ELSE category END,
+      category_title = CASE WHEN $11::boolean THEN $12::text ELSE category_title END,
+      section_type = CASE WHEN $13::boolean THEN $14::text ELSE section_type END,
+      technical = CASE WHEN $15::boolean THEN $16::text ELSE technical END,
+      updated_at = now()
+    WHERE id=$1 AND status = ANY($2::text[])
+    RETURNING id
+"""
+# The columns of _LIBRARY_EDIT, in the order of its parameters.
+LIBRARY_EDITABLE_COLUMNS = (
+    "question",
+    "answer_text",
+    "language",
+    "category",
+    "category_title",
+    "section_type",
+    "technical",
+)
+
 
 def _usage_values(data: dict[str, Any]) -> tuple[Any, ...]:
     """The columns of one usage row. Keys that are not named here never reach the table."""
@@ -205,6 +276,14 @@ class Database:
 
     async def ping(self) -> None:
         await self._pool().fetchval("SELECT 1")
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[asyncpg.Connection]:
+        """One connection with an open transaction. What runs on it commits together, or rolls
+        back together when the block raises."""
+        async with self._pool().acquire() as conn:
+            async with conn.transaction():
+                yield conn
 
     async def create_audio_asset(self, data: dict[str, Any]) -> asyncpg.Record:
         return await self._pool().fetchrow(
@@ -337,24 +416,36 @@ class Database:
         decision: str,
         allowed_from: list[str],
         reviewer_user_id: UUID,
+        conn: asyncpg.Connection | None = None,
     ) -> asyncpg.Record | None:
         """Move an asset to a review decision and write its audit row, in one transaction.
 
         Returns the updated row plus `previous_status`, or None when no asset with this id is in
         one of the `allowed_from` statuses; then nothing is written. If the audit row cannot be
-        written, the status change rolls back with it.
+        written, the status change rolls back with it. `conn` runs both inside a transaction the
+        caller holds, so they commit or roll back with the caller's own writes.
         """
         if kind not in _REVIEW_UPDATES:
             raise ValueError("invalid asset kind")
-        async with self._pool().acquire() as conn:
-            async with conn.transaction():
-                row = await conn.fetchrow(_REVIEW_UPDATES[kind], asset_id, decision, allowed_from)
-                if row is None:
-                    return None
-                await conn.execute(
-                    _REVIEW_INSERT, kind, asset_id, reviewer_user_id, decision, row["previous_status"]
-                )
-                return row
+        if conn is None:
+            async with self.transaction() as own:
+                return await self._review_asset(own, kind, asset_id, decision, allowed_from, reviewer_user_id)
+        return await self._review_asset(conn, kind, asset_id, decision, allowed_from, reviewer_user_id)
+
+    async def _review_asset(
+        self,
+        conn: asyncpg.Connection,
+        kind: str,
+        asset_id: UUID,
+        decision: str,
+        allowed_from: list[str],
+        reviewer_user_id: UUID,
+    ) -> asyncpg.Record | None:
+        row = await conn.fetchrow(_REVIEW_UPDATES[kind], asset_id, decision, allowed_from)
+        if row is None:
+            return None
+        await conn.execute(_REVIEW_INSERT, kind, asset_id, reviewer_user_id, decision, row["previous_status"])
+        return row
 
     async def get_user(self, user_id: UUID) -> asyncpg.Record | None:
         return await self._pool().fetchrow("SELECT * FROM users WHERE id=$1", user_id)
@@ -667,3 +758,183 @@ class Database:
             older_than_days,
         )
         return int(result.split()[-1])
+
+    async def get_library_entry(
+        self, entry_id: UUID, *, conn: asyncpg.Connection | None = None
+    ) -> asyncpg.Record | None:
+        """An entry plus `video_status` and `video_duration_ms` of its video, if it has one."""
+        return await (conn or self._pool()).fetchrow(f"{_LIBRARY_ENTRY_SELECT} WHERE e.id=$1", entry_id)
+
+    async def lock_library_entry(self, conn: asyncpg.Connection, entry_id: UUID) -> asyncpg.Record | None:
+        """Read an entry and hold its row until the caller's transaction ends, so a second change
+        of the same entry waits and then sees this one."""
+        return await conn.fetchrow("SELECT * FROM library_entries WHERE id=$1 FOR UPDATE", entry_id)
+
+    async def lock_video_asset(self, conn: asyncpg.Connection, asset_id: UUID) -> asyncpg.Record | None:
+        return await conn.fetchrow("SELECT * FROM video_assets WHERE id=$1 FOR UPDATE", asset_id)
+
+    async def library_uses_video(self, conn: asyncpg.Connection, asset_id: UUID) -> bool:
+        return await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM library_entries WHERE video_asset_id=$1)", asset_id
+        )
+
+    async def insert_library_entry(self, conn: asyncpg.Connection, data: dict[str, Any]) -> UUID:
+        """Add an entry after the last one. Two inserts at once may share a position; the id then
+        decides their order."""
+        return await conn.fetchval(
+            """
+            INSERT INTO library_entries
+              (key,question,answer_text,answer_original,language,category,category_title,
+               section_type,technical,video_asset_id,status,created_by,position)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+                    (SELECT coalesce(max(position), 0) + 1 FROM library_entries))
+            RETURNING id
+            """,
+            data["key"],
+            data["question"],
+            data["answer_text"],
+            data["answer_original"],
+            data["language"],
+            data["category"],
+            data["category_title"],
+            data["section_type"],
+            data["technical"],
+            data["video_asset_id"],
+            data["status"],
+            data["created_by"],
+        )
+
+    async def update_library_entry_fields(
+        self, entry_id: UUID, fields: dict[str, Any], *, allowed_statuses: list[str]
+    ) -> bool:
+        """Set `fields` on an entry whose status is one of `allowed_statuses`. False when no such
+        entry exists; then nothing changes. The status check is part of the UPDATE."""
+        if not fields or not set(fields) <= set(LIBRARY_EDITABLE_COLUMNS):
+            raise ValueError("not an editable library column")
+        flags_and_values = [
+            value for column in LIBRARY_EDITABLE_COLUMNS for value in (column in fields, fields.get(column))
+        ]
+        row = await self._pool().fetchrow(_LIBRARY_EDIT, entry_id, allowed_statuses, *flags_and_values)
+        return row is not None
+
+    async def set_library_entry_status(
+        self,
+        conn: asyncpg.Connection,
+        entry_id: UUID,
+        *,
+        status: str,
+        allowed_from: list[str],
+        video_asset_id: UUID | None,
+        answer_text: str | None,
+    ) -> bool:
+        """Move an entry to `status` with its video and answer text, only from `allowed_from`.
+        False when the entry is in another status; then nothing changes. The two event times are
+        the time of this statement, like the review row's `created_at`, so a change that waited for
+        the row lock is not dated at the start of its transaction."""
+        row = await conn.fetchrow(
+            """
+            UPDATE library_entries SET status=$2::text, video_asset_id=$3, answer_text=$4,
+              published_at = CASE WHEN $2::text = 'published' THEN clock_timestamp() ELSE published_at END,
+              withdrawn_at = CASE WHEN $2::text = 'withdrawn' THEN clock_timestamp() ELSE withdrawn_at END,
+              updated_at = now()
+            WHERE id=$1 AND status = ANY($5::text[])
+            RETURNING id
+            """,
+            entry_id,
+            status,
+            video_asset_id,
+            answer_text,
+            allowed_from,
+        )
+        return row is not None
+
+    async def insert_library_review(
+        self,
+        conn: asyncpg.Connection,
+        entry_id: UUID,
+        *,
+        reviewer_id: UUID | None,
+        decision: str,
+        video_asset_id: UUID | None,
+    ) -> None:
+        await conn.execute(
+            "INSERT INTO library_entry_reviews (entry_id, reviewer_id, decision, video_asset_id) "
+            "VALUES ($1,$2,$3,$4)",
+            entry_id,
+            reviewer_id,
+            decision,
+            video_asset_id,
+        )
+
+    async def list_library_entries(
+        self,
+        *,
+        status: str | None = None,
+        language: str | None = None,
+        category: str | None = None,
+        section_type: str | None = None,
+        technical: str | None = None,
+        search: str | None = None,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[asyncpg.Record], int]:
+        """A page of entries, newest first. Each filter matches the whole value, None is no filter;
+        `search` matches part of the key or the question, case insensitive."""
+        pattern = f"%{search.strip()}%" if search and search.strip() else None
+        filters = (status, language, category, section_type, technical, pattern)
+        total = await self._pool().fetchval(_LIBRARY_LIST_COUNT, *filters)
+        rows = await self._pool().fetch(_LIBRARY_LIST_PAGE, *filters, page_size, (page - 1) * page_size)
+        return list(rows), int(total or 0)
+
+    async def servable_library_suggestions(
+        self, language: str, *, limit: int, offset: int
+    ) -> list[asyncpg.Record]:
+        """Candidates for the suggestions (REQ-012): funnel stage first, then position, then id."""
+        return list(
+            await self._pool().fetch(
+                f"{_LIBRARY_SERVABLE} WHERE s.language = $1 ORDER BY s.stage, s.position, s.id "
+                "LIMIT $2 OFFSET $3",
+                language,
+                limit,
+                offset,
+            )
+        )
+
+    async def servable_library_entry(self, entry_id: UUID) -> asyncpg.Record | None:
+        """One candidate, in any language: the video and follow-up routes name the entry."""
+        return await self._pool().fetchrow(f"{_LIBRARY_SERVABLE} WHERE s.id = $1", entry_id)
+
+    async def servable_library_follow_ups(
+        self, *, language: str, category: str, stage: int, exclude_id: UUID, limit: int, offset: int
+    ) -> list[asyncpg.Record]:
+        """Candidates for the follow-ups (REQ-077): same language and category, one stage."""
+        return list(
+            await self._pool().fetch(
+                f"{_LIBRARY_SERVABLE} WHERE s.language = $1 AND s.category = $2 AND s.stage = $3 "
+                "AND s.id <> $4 ORDER BY s.position, s.id LIMIT $5 OFFSET $6",
+                language,
+                category,
+                stage,
+                exclude_id,
+                limit,
+                offset,
+            )
+        )
+
+    async def unused_video_recordings(self) -> list[asyncpg.Record]:
+        """Finished recordings no entry uses (REQ-042), newest first. The caller checks the files.
+
+        Not paged in SQL: the file check comes after, and it decides the total. The list holds only
+        admin recordings not yet saved, so it stays short.
+        """
+        return list(
+            await self._pool().fetch(
+                """
+                SELECT v.id, v.text, v.duration_ms, v.created_at, v.video_path
+                FROM video_assets AS v
+                WHERE v.status = 'VIDEO_GENERATED'
+                  AND NOT EXISTS (SELECT 1 FROM library_entries AS e WHERE e.video_asset_id = v.id)
+                ORDER BY v.created_at DESC, v.id
+                """
+            )
+        )
