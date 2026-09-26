@@ -1,0 +1,5 @@
+# LIVEKIT_DOMAIN comes from .env through docker-compose.server.yml. Caddy gets the TLS
+# certificate for it and passes wss:// to LiveKit's signalling port.
+{$LIVEKIT_DOMAIN} {
+	reverse_proxy livekit:7880
+}
