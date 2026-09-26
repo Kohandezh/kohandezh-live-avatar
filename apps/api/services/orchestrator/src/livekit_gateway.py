@@ -67,7 +67,9 @@ class LiveKitGateway:
             identity=f"liveavatar-{suffix}",
             room_name=room_name,
             can_publish=True,
-            can_subscribe=False,
+            # LiveAvatar refuses a BYO token without canSubscribe: 422 "Input Livekit token needs
+            # to grant canSubscribe permission" (render sprint 2026-09-25).
+            can_subscribe=True,
             can_publish_data=True,
         )
         browser_token = self.token(
