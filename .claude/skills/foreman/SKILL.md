@@ -99,7 +99,11 @@ creates uses `--no-focus`. Never run a focus command. The user switches views.
 
 ## Mission flow
 
-1. **Intake.** Resolve the repository checkout and base ref. For Linear tickets, read each
+1. **Intake.** Start every new task from the latest `main`: in the repository checkout, run
+   `git checkout main` and then `git pull`. Why: a stale local `main` gives workers an old base,
+   and an owner merge since the last pull is missed. If `git status --short` shows changes to
+   tracked files, stop and ask the owner before switching; never stash or discard them.
+   Untracked files do not block the switch. Then resolve the base ref. For Linear tickets, read each
    ticket: description, priority, labels, and blocking relations. Reading is free. Any
    Linear write needs the user's explicit authority for that action.
 2. **Classify.** Give each task a type. Split mixed tasks into work units.
@@ -318,28 +322,27 @@ Foreman sometimes needs a wide fan-out that is not a team: an intake that checks
 document or a proposal against the repository before a contract is written, or a swarm of
 skeptics that tries to refute each finding. These runs are scripts, not sessions.
 
-They run on Claude models, through the Workflow tool or Agent subagents. The Antigravity CLI
-(`agy`) is not an option: its quota is used up and the auto-mode classifier blocks it from a
-session anyway (owner's decision, 2026-09-24). Because they share the owner's Claude limit with
-every Herdr session, they are the first thing to bound.
+They run on Claude models, through the Workflow tool or Agent subagents. Because they share
+the owner's Claude limit with every Herdr session, they are the first thing to bound.
 
-**Why these rules exist.** On 2026-09-24 one intake ran 6 readers that returned 90 findings, gave
-each finding two skeptics, and let every skeptic re-read the cited files itself: 187 agents,
-about 10 million tokens, two usage-limit pauses, 68 verdicts and the critic lost. A capped run of
-the same shape is about 40 agents.
+**Why these rules exist.** Unbounded fan-out runs, where readers return dozens of findings and
+multiple skeptics re-read entire files from scratch, quickly spawn hundreds of agents, burn
+through token quotas, and trigger usage-limit pauses that drop in-flight work.
 
 **Hard ceilings, written into every fan-out script:**
 
-- At most **8 findings per reader**. The reader is told the cap and the script slices to it.
-- **One skeptic per finding.** A second skeptic only when the first says `REFUTED` or
+- **Prioritize findings instead of dropping them.** Readers return all valid findings ranked
+  by severity rather than being sliced to a fixed cap.
+- **One skeptic per finding.** A second skeptic runs only when the first says `REFUTED` or
   `UNVERIFIABLE`. Never two by default.
-- At most **40 agents per intake**, counted in the script. Over the cap, the remaining findings
-  are returned unverified and labelled, never silently dropped.
+- **At most 40 agents per intake**, counted in the script. Findings are verified in priority
+  order up to this cap; any remaining findings are returned unverified and labelled, never
+  silently dropped.
 - **Models do not re-read files to check a quote.** The reader returns `file:line`; the script
   extracts those lines itself and hands the text to the skeptic. The citation check is a small
   prompt on `haiku`. The reasoning check runs on `opus`; readers and the critic run on `sonnet`.
-- Set `effort` per stage: `low` for extraction and citation checks, the session default only
-  for the reasoning skeptic and the critic.
+- **Set `effort` per stage:** `low` for extraction and citation checks, and the session default
+  only for the reasoning skeptic and the critic.
 
 **Before launching:**
 
