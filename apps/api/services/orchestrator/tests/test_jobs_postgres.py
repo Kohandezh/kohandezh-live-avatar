@@ -834,6 +834,311 @@ async def test_a_lost_sweep_still_enqueues_the_next_run(database):
     assert following["status"] == "queued"
 
 
+# The library media steps of the sweep (REQ-016, REQ-017, REQ-072; SC-009, SC-011, SC-026)
+
+MEDIA_PREFIX = "sweep-test-"
+
+
+@pytest.fixture
+async def media(database, tmp_path):
+    """A clean library and a reviewer. Every library row goes, so the sweep sees only this test's."""
+
+    async def clean() -> None:
+        await database.pool.execute("DELETE FROM library_entry_reviews")
+        await database.pool.execute("DELETE FROM library_entries")
+        await database.pool.execute("DELETE FROM video_assets WHERE external_id LIKE $1", f"{MEDIA_PREFIX}%")
+
+    await clean()
+    reviewer = await database.create_user(f"+98913{uuid4().int % 10**7:07d}", "admin")
+    try:
+        yield Media(database, tmp_path, reviewer["id"])
+    finally:
+        await clean()
+
+
+class Media:
+    def __init__(self, db: Database, folder: Path, reviewer_id: UUID):
+        self.db = db
+        self.folder = folder
+        self.reviewer_id = reviewer_id
+
+    async def video(self, status: str, *, with_file: bool = True) -> tuple[UUID, Path]:
+        name = f"{MEDIA_PREFIX}{uuid4().hex}"
+        path = self.folder / f"{name}.mp4"
+        if with_file:
+            path.write_bytes(b"mp4 bytes")
+        video_id = await self.db.pool.fetchval(
+            "INSERT INTO video_assets (external_id,text,avatar_id,voice_id,video_path,status) "
+            "VALUES ($1,$2,'avatar','voice',$3,$4) RETURNING id",
+            name,
+            PRIVATE_TEXT,
+            str(path),
+            status,
+        )
+        await self.db.pool.execute(
+            "INSERT INTO asset_reviews (asset_kind, asset_id, reviewer_user_id, decision, previous_status) "
+            "VALUES ('video', $1, $2, $3, 'VIDEO_GENERATED')",
+            video_id,
+            self.reviewer_id,
+            status,
+        )
+        return video_id, path
+
+    async def entry(self, status: str, video_id: UUID | None = None) -> UUID:
+        return await self.db.pool.fetchval(
+            """
+            INSERT INTO library_entries
+              (key,question,answer_text,language,category,category_title,section_type,technical,
+               video_asset_id,status,position)
+            VALUES ($1,$2,$3,'fa','1','category','knowledge','technical',$4,$5,1)
+            RETURNING id
+            """,
+            f"K{uuid4().hex[:12]}",
+            PRIVATE_TEXT,
+            PRIVATE_TEXT,
+            video_id,
+            status,
+        )
+
+    async def review(self, entry_id: UUID, decision: str, video_id: UUID | None = None) -> None:
+        await self.db.pool.execute(
+            "INSERT INTO library_entry_reviews (entry_id, reviewer_id, decision, video_asset_id) "
+            "VALUES ($1,$2,$3,$4)",
+            entry_id,
+            self.reviewer_id,
+            decision,
+            video_id,
+        )
+
+    async def withdrawn_with_video(self) -> tuple[UUID, UUID, Path]:
+        video_id, path = await self.video("VIDEO_APPROVED")
+        entry_id = await self.entry("withdrawn", video_id)
+        await self.review(entry_id, "video_attached", video_id)
+        await self.review(entry_id, "withdrawn")
+        return entry_id, video_id, path
+
+    async def rejected_video(self) -> tuple[UUID, UUID, Path]:
+        """What REQ-069 leaves: a ready entry, and a REJECTED video that a video_rejected row names."""
+        video_id, path = await self.video("REJECTED")
+        entry_id = await self.entry("ready")
+        await self.review(entry_id, "video_attached", video_id)
+        await self.review(entry_id, "video_rejected", video_id)
+        return entry_id, video_id, path
+
+    async def entry_row(self, entry_id: UUID) -> asyncpg.Record:
+        return await self.db.pool.fetchrow("SELECT * FROM library_entries WHERE id=$1", entry_id)
+
+    async def video_exists(self, video_id: UUID) -> bool:
+        return await self.db.pool.fetchval("SELECT EXISTS (SELECT 1 FROM video_assets WHERE id=$1)", video_id)
+
+    async def asset_review_ids(self, video_id: UUID) -> list[UUID]:
+        rows = await self.db.pool.fetch(
+            "SELECT id FROM asset_reviews WHERE asset_kind='video' AND asset_id=$1 ORDER BY id", video_id
+        )
+        return [row["id"] for row in rows]
+
+    async def entry_review_ids(self, entry_id: UUID) -> list[UUID]:
+        rows = await self.db.pool.fetch(
+            "SELECT id FROM library_entry_reviews WHERE entry_id=$1 ORDER BY id", entry_id
+        )
+        return [row["id"] for row in rows]
+
+    async def sweep(self) -> asyncpg.Record:
+        """Run one sweep now and return its job row. A sweep closes by queueing the next one a day
+        ahead, so a second call makes that one due."""
+        sweep = await _enqueue_sweep(self.db)
+        await _make_due(self.db, sweep["id"])
+        await _runner(self.db, HANDLERS).run_once()
+        return await _row(self.db, sweep["id"])
+
+
+async def test_the_sweep_deletes_a_withdrawn_entrys_media_and_keeps_its_history(media):
+    entry_id, video_id, path = await media.withdrawn_with_video()
+    entry_reviews = await media.entry_review_ids(entry_id)
+    asset_reviews = await media.asset_review_ids(video_id)
+
+    sweep = await media.sweep()
+
+    assert sweep["status"] == "done"
+    assert json.loads(sweep["output"]) == {
+        "deleted_done_jobs": 0,
+        "deleted_withdrawn_media": 1,
+        "deleted_rejected_media": 0,
+        "skipped_media": 0,
+    }
+    entry = await media.entry_row(entry_id)
+    assert (entry["status"], entry["video_asset_id"]) == ("withdrawn", None)
+    assert not await media.video_exists(video_id)
+    assert not path.exists()
+    assert await media.entry_review_ids(entry_id) == entry_reviews
+    assert await media.asset_review_ids(video_id) == asset_reviews
+
+
+async def test_the_sweep_deletes_a_rejected_video_no_entry_uses_and_keeps_its_history(media):
+    entry_id, video_id, path = await media.rejected_video()
+    entry_reviews = await media.entry_review_ids(entry_id)
+    asset_reviews = await media.asset_review_ids(video_id)
+
+    sweep = await media.sweep()
+
+    assert sweep["status"] == "done"
+    assert json.loads(sweep["output"])["deleted_rejected_media"] == 1
+    assert not await media.video_exists(video_id)
+    assert not path.exists()
+    assert (await media.entry_row(entry_id))["status"] == "ready"
+    assert await media.entry_review_ids(entry_id) == entry_reviews
+    assert await media.asset_review_ids(video_id) == asset_reviews
+
+
+async def test_a_missing_file_is_not_an_error_so_a_crash_after_the_file_delete_heals(media):
+    """A sweep that died after the file delete and before the row delete leaves this state: the
+    rows without their file. The next run finishes the job."""
+    entry_id, withdrawn_video, withdrawn_path = await media.withdrawn_with_video()
+    _, rejected_video, rejected_path = await media.rejected_video()
+    withdrawn_path.unlink()
+    rejected_path.unlink()
+
+    sweep = await media.sweep()
+
+    assert sweep["status"] == "done"
+    output = json.loads(sweep["output"])
+    assert (output["deleted_withdrawn_media"], output["deleted_rejected_media"]) == (1, 1)
+    assert (await media.entry_row(entry_id))["video_asset_id"] is None
+    assert not await media.video_exists(withdrawn_video)
+    assert not await media.video_exists(rejected_video)
+
+
+async def test_a_second_sweep_finds_nothing_left_to_delete(media):
+    await media.withdrawn_with_video()
+    await media.rejected_video()
+    await media.sweep()
+
+    output = json.loads((await media.sweep())["output"])
+
+    assert (output["deleted_withdrawn_media"], output["deleted_rejected_media"]) == (0, 0)
+
+
+async def test_the_sweep_keeps_every_video_and_entry_it_must_not_delete(media):
+    """ADR 0015 item 5: no RENDER_FAILED row, no draft or unpublished recording, and nothing an
+    entry still uses. Only REQ-069's rejection counts, not a rejection through the asset route."""
+    kept_videos: list[tuple[UUID, Path]] = []
+    kept_entries: dict[UUID, tuple[str, UUID | None]] = {}
+
+    for status in ("draft", "published"):
+        video = await media.video("VIDEO_APPROVED")
+        kept_videos.append(video)
+        kept_entries[await media.entry(status, video[0])] = (status, video[0])
+    for status in ("pending", "ready"):
+        kept_entries[await media.entry(status)] = (status, None)
+    kept_videos.append(await media.video("VIDEO_GENERATED"))  # a recording not yet saved (REQ-042)
+    kept_videos.append(await media.video("DRAFT"))  # a recording in progress
+    kept_videos.append(await media.video("REJECTED"))  # rejected through the asset route
+    failed = await media.video("RENDER_FAILED", with_file=False)
+    kept_videos.append(failed)
+    kept_entries[await media.entry("withdrawn", failed[0])] = ("withdrawn", failed[0])
+    rejected_but_used = await media.video("REJECTED")
+    kept_videos.append(rejected_but_used)
+    using_entry = await media.entry("draft", rejected_but_used[0])
+    kept_entries[using_entry] = ("draft", rejected_but_used[0])
+    await media.review(await media.entry("ready"), "video_rejected", rejected_but_used[0])
+    not_rejected = await media.video("VIDEO_GENERATED")  # named by a video_rejected row, not REJECTED
+    kept_videos.append(not_rejected)
+    await media.review(await media.entry("ready"), "video_rejected", not_rejected[0])
+    asset_reviews = await media.db.pool.fetchval("SELECT count(*) FROM asset_reviews")
+    entry_reviews = await media.db.pool.fetchval("SELECT count(*) FROM library_entry_reviews")
+
+    sweep = await media.sweep()
+
+    output = json.loads(sweep["output"])
+    assert (output["deleted_withdrawn_media"], output["deleted_rejected_media"]) == (0, 0)
+    for video_id, path in kept_videos:
+        assert await media.video_exists(video_id)
+        assert path.exists() or video_id == failed[0]
+    for entry_id, (status, video_id) in kept_entries.items():
+        entry = await media.entry_row(entry_id)
+        assert (entry["status"], entry["video_asset_id"]) == (status, video_id)
+    assert await media.db.pool.fetchval("SELECT count(*) FROM asset_reviews") == asset_reviews
+    assert await media.db.pool.fetchval("SELECT count(*) FROM library_entry_reviews") == entry_reviews
+
+
+async def test_each_delete_checks_its_conditions_again_when_it_runs(media):
+    """The sweep lists first and deletes later, so each delete repeats the list's conditions."""
+    route_rejected, _ = await media.video("REJECTED")  # no video_rejected row names it
+    used, _ = await media.video("REJECTED")
+    await media.entry("draft", used)
+    await media.review(await media.entry("ready"), "video_rejected", used)
+    render_failed, _ = await media.video("RENDER_FAILED", with_file=False)
+    holder = await media.entry("withdrawn", render_failed)
+    published, _ = await media.video("VIDEO_APPROVED")
+    other = await media.entry("published", published)
+    not_rejected, _ = await media.video("VIDEO_GENERATED")
+    await media.review(await media.entry("ready"), "video_rejected", not_rejected)
+
+    assert not await media.db.delete_rejected_library_video(route_rejected)
+    assert not await media.db.delete_rejected_library_video(used)
+    assert not await media.db.delete_rejected_library_video(not_rejected)
+    assert not await media.db.delete_withdrawn_library_video(holder, render_failed)
+    assert not await media.db.delete_withdrawn_library_video(other, published)
+    for video_id in (route_rejected, used, not_rejected, render_failed, published):
+        assert await media.video_exists(video_id)
+    assert (await media.entry_row(holder))["video_asset_id"] == render_failed
+    assert (await media.entry_row(other))["video_asset_id"] == published
+
+
+async def test_each_deleted_media_logs_its_ids_and_no_text(media, caplog):
+    caplog.set_level(logging.INFO)
+    withdrawn_entry, withdrawn_video, _ = await media.withdrawn_with_video()
+    rejected_entry, rejected_video, _ = await media.rejected_video()
+
+    await media.sweep()
+
+    events = [r for r in caplog.records if r.getMessage() == "library_media_deleted"]
+    logged = sorted((r.entry_id, r.video_asset_id, r.admin_id) for r in events)
+    assert logged == sorted(
+        [
+            (str(withdrawn_entry), str(withdrawn_video), None),
+            (str(rejected_entry), str(rejected_video), None),
+        ]
+    )
+    everything = "\n".join(json.dumps(r.__dict__, default=str, ensure_ascii=False) for r in caplog.records)
+    assert PRIVATE_TEXT not in everything
+
+
+async def test_a_file_that_cannot_be_deleted_is_skipped_and_retried_by_the_next_run(media, caplog):
+    """Foreman ruling: one file the sweep cannot delete does not fail the run. Its rows stay with
+    their file, the other media are still deleted, the run counts it as skipped and ends done, and
+    the next run tries it again."""
+    stuck_entry, stuck_video, stuck_path = await media.withdrawn_with_video()
+    stuck_path.unlink()
+    stuck_path.mkdir()  # unlink() of a folder raises an OSError
+    other_entry, other_video, _ = await media.withdrawn_with_video()
+
+    sweep = await media.sweep()
+
+    assert (sweep["status"], sweep["error_code"]) == ("done", None)
+    output = json.loads(sweep["output"])
+    assert (output["deleted_withdrawn_media"], output["skipped_media"]) == (1, 1)
+    assert await media.video_exists(stuck_video)
+    assert (await media.entry_row(stuck_entry))["video_asset_id"] == stuck_video
+    assert not await media.video_exists(other_video)
+    assert (await media.entry_row(other_entry))["video_asset_id"] is None
+    [failure] = [r for r in caplog.records if r.getMessage() == "media_delete_failed"]
+    assert failure.entry_id == str(stuck_entry)
+    assert not hasattr(failure, "video_asset_id")
+    assert failure.exc_info is None
+    assert str(stuck_path) not in json.dumps(failure.__dict__, default=str)
+    assert _job_logs(caplog) == []
+
+    stuck_path.rmdir()
+    retry = await media.sweep()
+
+    assert retry["status"] == "done"
+    output = json.loads(retry["output"])
+    assert (output["deleted_withdrawn_media"], output["skipped_media"]) == (1, 0)
+    assert not await media.video_exists(stuck_video)
+    assert (await media.entry_row(stuck_entry))["video_asset_id"] is None
+
+
 # start() and stop() (A-8)
 
 

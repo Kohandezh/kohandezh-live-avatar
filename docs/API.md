@@ -275,6 +275,13 @@ Response `200`, by `status`:
   attempt; `internal_error` is an unexpected failure. The operation adds its own codes (the
   finalize job's codes are listed under `POST /api/assets/video/{id}/finalize` below).
 
+The daily retention sweep is a system job, so only an admin reads it. When `done`, its `result` is
+`{ "deleted_done_jobs": number, "deleted_withdrawn_media": number, "deleted_rejected_media":
+number, "skipped_media": number }`. `skipped_media` counts the library media files the sweep could
+not delete (`media_delete_failed`). Each one is logged with its entry id only, keeps its rows, and
+is tried again by the next run. A skipped file does not fail the run: the sweep still ends `done`,
+so `media_delete_failed` never appears as an `error.code`.
+
 A job can go back from `running` to `queued`: when it waits for something, or when a retryable
 error is retried later. `done` and `failed` are final. A second request for the same work while
 its job is `queued` or `running` gets the same `jobId`.
