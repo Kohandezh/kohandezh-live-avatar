@@ -6,6 +6,17 @@
   withdrawn library entry, and of a video that was rejected from an entry and that no entry uses.
   The entry and every audit row stay. A file that cannot be deleted is skipped and keeps its row,
   so the next run tries it again, and the sweep still deletes the others.
+- Recorded answers play on `/video` and `/audio` in the mobile app and the web app. While no
+  conversation runs, up to six suggested questions in the screen's language are listed under
+  Start, and Start does not move when they arrive. A tap downloads the whole answer through the
+  API client and plays it from a local `blob:` URL: `/video` shows the video over the stage,
+  `/audio` plays its sound while the orb speaks. Both show a "Recorded answer" label and the
+  answer text. Stop, the end of the answer, a new tap, Start and leaving the screen each stop the
+  answer and free its memory; after an answer the list comes back with focus on the played
+  question. A refused autoplay shows "Tap to play the answer". An answer that was withdrawn meanwhile
+  leaves the list, too many plays ask the user to wait, and an offline or failed download offers
+  Retry. The widget does not change. The mock now serves a small real MP4, so the
+  player can be tried without a backend.
 - The admin target has an Answer library screen (`/library`, "Answer library" in the sidebar).
   Staff search the entries by key or question and filter them by status, language, category,
   section type and technical, page by page. Opening an entry shows a panel for its state: a

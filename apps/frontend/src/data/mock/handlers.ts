@@ -7,6 +7,9 @@ import type {
   LibrarySuggestion,
 } from '@/entities/library-entry';
 import type { User } from '@/entities/user';
+// A data URL, inlined on purpose: the handlers answer synchronously, and the mock chunk is only
+// loaded when VITE_API_MOCK is on (src/app/bootstrap.ts).
+import RECORDED_ANSWER_MP4 from './recorded-answer.mp4?inline';
 import { mockSession } from './session';
 import { MOCK_OTP_CODE, mockUsers } from './users';
 
@@ -295,10 +298,11 @@ const mockJobs: Record<string, { createdBy: string | null; body: unknown }> = {
 };
 
 /*
- * The answer library. The mock holds no media, so every video answers 404 (the tests that play a
- * video intercept the request with a fixture). Differences a caller must not rely on: no 429 (no
- * play limit), no `details.currentStatus` on a 409 (mock errors carry no details), and a filter
- * value the backend refuses with 422 simply matches nothing in the admin list.
+ * The answer library. Every servable entry plays the same small MP4 (a 4 second test pattern with a
+ * tone, `recorded-answer.mp4`), so the player itself can be walked with the mock. Differences a
+ * caller must not rely on: one file for every entry, no 429 (no play limit), no
+ * `details.currentStatus` on a 409 (mock errors carry no details), and a filter value the backend
+ * refuses with 422 simply matches nothing in the admin list.
  */
 const LIBRARY_CATEGORY_TITLE = 'کاشت مو';
 const LIBRARY_CREATED_AT = '2026-09-25T10:00:00.000Z';
@@ -533,6 +537,16 @@ function servableEntries(): AdminLibraryEntry[] {
   return mockLibrary.entries.filter((entry) => entry.status === 'published');
 }
 
+/** The fixture as bytes. A fresh Blob per request, like a real download. */
+function recordedAnswerBlob(): Blob {
+  const binary = atob(RECORDED_ANSWER_MP4.slice(RECORDED_ANSWER_MP4.indexOf(',') + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: 'video/mp4' });
+}
+
 function toSuggestion(entry: AdminLibraryEntry): LibrarySuggestion {
   return {
     id: entry.id,
@@ -655,7 +669,9 @@ const libraryRoutes: MockRoute[] = [
     path: /^\/api\/library\/answers\/[^/]+\/video$/,
     handle(request) {
       requireUser(request);
-      throw libraryNotFound();
+      const id = decodeURIComponent(request.url.pathname.split('/').at(-2) ?? '');
+      if (!servableEntries().some((entry) => entry.id === id)) throw libraryNotFound();
+      return { body: recordedAnswerBlob() };
     },
   },
   {
@@ -778,7 +794,8 @@ const libraryRoutes: MockRoute[] = [
     },
   },
   {
-    // The admin review player's source. The mock holds no media, like the user video route.
+    // The admin review player's source. The mock has no asset media: only the user video route
+    // serves its one fixture.
     method: 'get',
     path: /^\/api\/assets\/video\/[^/]+$/,
     handle(request) {

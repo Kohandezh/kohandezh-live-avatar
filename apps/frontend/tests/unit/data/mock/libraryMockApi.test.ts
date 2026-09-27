@@ -128,12 +128,40 @@ describe('mock library API, signed-in user routes', () => {
     );
   });
 
-  it('answers 404 for every video, because the mock holds no media', async () => {
+  it('serves a small real MP4 for a servable entry, so the player itself can be walked', async () => {
     mockSession.set('u-user');
     const [first] = await suggestions();
 
+    const response = await createClient().get(
+      `/api/library/answers/${first?.id}/video`,
+      { responseType: 'blob' },
+    );
+
+    const blob = response.data as Blob;
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('video/mp4');
+    // An MP4 starts with an `ftyp` box: 4 bytes of size, then the letters. jsdom's Blob has no
+    // `arrayBuffer()`, so the bytes are read the older way.
+    const head = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsBinaryString(blob.slice(4, 8));
+    });
+    expect(head).toBe('ftyp');
+  });
+
+  it('answers the same 404 for a video users may not see as for a missing one (SEC-004)', async () => {
+    mockSession.set('u-admin');
+    const [draft] = (await entries(createClient(), { status: 'draft' })).items;
+    mockSession.set('u-user');
+
     await expectError(
-      createClient().get(`/api/library/answers/${first?.id}/video`),
+      createClient().get(`/api/library/answers/${draft?.id}/video`),
+      404,
+      'not_found',
+    );
+    await expectError(
+      createClient().get('/api/library/answers/no-such-entry/video'),
       404,
       'not_found',
     );

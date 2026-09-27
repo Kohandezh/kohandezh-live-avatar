@@ -143,6 +143,9 @@ const HUE_SHIFT: CSSProperties =
  */
 function messageKey(signals: OrbSignals): string {
   const { status, isAvatarSpeaking, isMicMuted, isUserSpeaking } = signals;
+  if (status === 'idle' && signals.isRecordingPlaying) {
+    return 'assistant.voice.speaking';
+  }
   if (status === 'requesting' || status === 'connecting') {
     return `assistant.status.${status}`;
   }
@@ -158,6 +161,8 @@ export interface AssistantOrbProps {
   isUserSpeaking: boolean;
   isAvatarSpeaking: boolean;
   isMicMuted: boolean;
+  /** A recorded answer from the library is playing. See `OrbSignals`. Defaults to false. */
+  isRecordingPlaying?: boolean;
   /**
    * The media element of the screen that renders this orb. The avatar's audio track rides on
    * it as a `MediaStream`, which is where the real loudness is measured.
@@ -196,6 +201,7 @@ export function AssistantOrb({
   isUserSpeaking,
   isAvatarSpeaking,
   isMicMuted,
+  isRecordingPlaying = false,
   mediaRef,
   className,
 }: AssistantOrbProps) {
@@ -209,6 +215,7 @@ export function AssistantOrb({
     isUserSpeaking,
     isAvatarSpeaking,
     isMicMuted,
+    isRecordingPlaying,
   };
   const state = orbState(signals);
 
@@ -229,7 +236,10 @@ export function AssistantOrb({
     has to run an animation frame to make "connecting" look busy.
   */
   const isLive = status === 'connected';
-  const isAnimating = isLive && !reducedMotion;
+  // A recorded answer breathes too. Its file element has no stream to measure, so `readLevel`
+  // answers null and the loop falls back to the synthetic envelope (REQ-058).
+  const isAnimating =
+    (isLive || (status === 'idle' && isRecordingPlaying)) && !reducedMotion;
 
   const isConnecting = status === 'requesting' || status === 'connecting';
   // How strong the halo sits when no loop is running. Connecting gets some, so the accent is

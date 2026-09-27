@@ -298,8 +298,12 @@ test.describe('requirement 17: the audio sphere', () => {
     ).toBeVisible();
 
     // The sr-only live region is debounced by 800ms (AssistantSphere.tsx),
-    // so it must be read after that window, not right away.
-    const liveRegion = page.getByRole('status');
+    // so it must be read after that window, not right away. It is picked by
+    // its text: while the suggested questions load, their spinner is a
+    // `status` too.
+    const liveRegion = page
+      .getByRole('status')
+      .filter({ hasText: 'Press start, then speak.' });
     await expect(liveRegion).toHaveText('Press start, then speak.', {
       timeout: 2000,
     });
