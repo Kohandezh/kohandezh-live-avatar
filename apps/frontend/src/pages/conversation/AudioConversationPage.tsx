@@ -2,6 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Drawer } from '@heroui/react';
 import {
+  RecordedAnswerCaption,
+  RecordedAnswerLabel,
+  RecordedAnswerPanel,
+  RecordedAnswerPlayer,
+  TapToPlayButton,
+  useAnswerLibrary,
+} from '@/features/answer-library';
+import {
   Transcript,
   useConversationScreen,
   WARNING_SECONDS,
@@ -94,6 +102,13 @@ export function AudioConversationPage() {
     enableAudio,
   } = controller;
 
+  const { suggestions, recorded } = useAnswerLibrary(status);
+  const isIdle = status === 'idle';
+  const isRecordedShown =
+    isIdle && (recorded.phase === 'playing' || recorded.phase === 'blocked');
+  // Mounted from the tap on, so the element exists when the file arrives.
+  const isPlayerMounted = isIdle && (recorded.phase === 'loading' || isRecordedShown);
+
   const isBusy = status === 'requesting' || status === 'connecting';
   const hasFinished = status === 'ended' || status === 'error';
   const isStreaming = status === 'connected' && isStreamReady;
@@ -168,6 +183,15 @@ export function AudioConversationPage() {
   const handleType = useCallback(() => setComposerOpen(true), []);
 
   /*
+    Start stops a recorded answer first and revokes its URL, then starts the live session as
+    today, so two voices never play at once (REQ-060).
+  */
+  const handleStart = () => {
+    recorded.cancel();
+    void start();
+  };
+
+  /*
     The conversation is over, so the keyboard is moved to the news rather than left on a
     control that no longer exists. From here Tab reaches Restart.
 
@@ -176,6 +200,21 @@ export function AudioConversationPage() {
     while the keyboard is on End unmounts the focused button either way. Only one of the two
     cards is ever mounted, so the pair of calls cannot fight over the focus.
   */
+  /* `ghost` keeps HeroUI from painting a filled background under the glass; the `glass` utility
+     sits in Tailwind's utilities layer, which comes after HeroUI's component layer, so the
+     material wins. */
+  const startButton = (
+    <Button
+      variant="ghost"
+      onPress={handleStart}
+      isPending={isBusy}
+      isDisabled={!canStart}
+      className="glass glass-fringe min-h-14 shrink-0 rounded-full px-7 text-base font-semibold text-foreground"
+    >
+      {t(hasFinished ? 'assistant.restart' : 'assistant.start')}
+    </Button>
+  );
+
   useEffect(() => {
     if (status === 'ended') endedRef.current?.focus();
     if (status === 'error') errorRef.current?.focus();
@@ -212,6 +251,10 @@ export function AudioConversationPage() {
       {/* Not shown, only heard. See the note on the component. */}
       <div className="sr-only">
         <ConversationStage controller={controller} mediaRef={stageRef} />
+        {/* The recorded answer is heard the same way, from its own element (REQ-058). */}
+        {isPlayerMounted && (
+          <RecordedAnswerPlayer recorded={recorded} variant="audio" />
+        )}
       </div>
 
       {/* The content column, in normal flow. `safe-inline-gutter` is the same 1rem gutter as a
@@ -233,27 +276,54 @@ export function AudioConversationPage() {
           <span className="line-clamp-1">{sessionLine}</span>
         </p>
 
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+        {/*
+          Below the session line: the orb's half, the Start slot, and the lower half. The two
+          halves share the height equally in every status, and the Start slot keeps its height
+          even when Start is gone, so Start sits in the middle at idle (as on `/video`) and the
+          orb's box stays the same from idle through the whole session (REQ-056, ruling 5).
+          Everything that comes and goes (the suggested questions, an error, the notice line,
+          the transcript) lives in the lower half.
+        */}
+        <div className="flex min-h-0 flex-1 flex-col items-center gap-4">
           {/* The orb stays mounted in every state, error included. It is the screen's one
               picture, it has a calm drained look for an ended or failed session, and
               `data-sphere-state` is what a test reads. */}
-          {/* The orb is the part that gives way when the middle of the screen runs out of room.
-              Everything under it is either news or a control, and a control a user cannot reach
-              is much worse than a small picture. `min-h-0` is what lets a flex item shrink below
-              its content; without it this box refused to shrink and the Restart button spilled
-              out of the column and landed on top of the transcript, swallowing its taps. */}
-          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+          {/* The orb's half. Its size and place depend on nothing below it, so pressing Start,
+              the control layer arriving and the notice line filling in move nothing (ruling 5).
+              Inside it the orb is the part that gives way, to a recorded answer's caption.
+              `min-h-0` is what lets a flex item shrink below its content. */}
+          <div className="relative flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-3 overflow-hidden">
             <AssistantOrb
               // Smaller once the conversation is over. The picture has done its job by then and
               // the room goes to the message and to Restart. This is not mid-conversation churn:
               // the whole screen changes at `ended` anyway.
-              className={cn('w-full', hasFinished && 'max-w-40')}
+              className={cn(
+                'min-h-0 w-full flex-1',
+                hasFinished && 'max-w-40',
+                // A long caption scrolls rather than squeezing the orb away.
+                isRecordedShown && 'min-h-24',
+              )}
               status={status}
               isUserSpeaking={isUserSpeaking}
               isAvatarSpeaking={isAvatarSpeaking}
               isMicMuted={isMicMuted}
+              isRecordingPlaying={isIdle && recorded.phase === 'playing'}
               mediaRef={stageRef}
             />
+
+            {/* The recorded answer's label and its text, under the orb (REQ-058). "Tap to play"
+                takes the caption's place when the browser refused to autoplay (REQ-059): the
+                player itself is in the `sr-only` wrapper and cannot be tapped. */}
+            {isRecordedShown && recorded.entry && (
+              <div className="flex min-h-0 w-full flex-col items-center gap-2">
+                <RecordedAnswerLabel />
+                {recorded.phase === 'blocked' ? (
+                  <TapToPlayButton onPress={recorded.resume} />
+                ) : (
+                  <RecordedAnswerCaption text={recorded.entry.answerText} />
+                )}
+              </div>
+            )}
 
             {/* The browser refused to play the sound because no gesture preceded it, which is
                 common on iOS. The orb becomes the button that fixes it: an overlay over what is
@@ -271,9 +341,14 @@ export function AudioConversationPage() {
             )}
           </div>
 
-          {/* `shrink-0`, so the news and the one control below it always keep their full size
-              and the squeeze goes to the orb above instead. */}
-          <div className="flex w-full shrink-0 flex-col items-center gap-4 empty:hidden">
+          {/* The Start slot: always 56 px, the height of Start, whether Start is there or not.
+              Start is here only at idle; after a session "Start again" follows the ended message
+              below. */}
+          <div className="flex h-14 w-full shrink-0 items-center justify-center">
+            {isIdle && startButton}
+          </div>
+
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-4 overflow-y-auto">
             {status === 'error' && error && (
               <div
                 ref={errorRef}
@@ -302,102 +377,101 @@ export function AudioConversationPage() {
               </div>
             )}
 
-            {/* `ghost` keeps HeroUI from painting a filled background under the glass; the
-                `glass` utility sits in Tailwind's utilities layer, which comes after HeroUI's
-                component layer, so the material wins. */}
-            {!isSessionOpen && status !== 'error' && (
-              <Button
-                variant="ghost"
-                onPress={() => void start()}
-                isPending={isBusy}
-                isDisabled={!canStart}
-                className="glass glass-fringe min-h-14 rounded-full px-7 text-base font-semibold text-foreground"
-              >
-                {t(hasFinished ? 'assistant.restart' : 'assistant.start')}
-              </Button>
+            {/* Right after the ended message, in the page order too: the keyboard is moved to
+                the message when the session ends, and the next Tab has to reach this. */}
+            {status === 'ended' && startButton}
+
+            {/* At idle, the suggested questions under Start (REQ-056). */}
+            {isIdle && (
+              <div className="w-full p-1">
+                <RecordedAnswerPanel recorded={recorded} suggestions={suggestions} />
+              </div>
             )}
+
+            {/* The notice line and the transcript sit at the bottom of the column, as before. */}
+            <div className="mt-auto flex w-full flex-col">
+              {/* One line for everything that used to be its own chip or its own alert: offline,
+                  blocked audio, a control error, a weak connection, the time warning, and the reason
+                  a refused control was refused.
+
+                  It is a real live region, and the only one on this screen besides the orb's caption.
+                  Those messages were all announced before this redesign, and the orb's region carries
+                  only the caption, on an 800 ms debounce, so without this they would all have gone
+                  silent. A denied microphone raises it to a real `role="alert"`: the avatar talks, the
+                  user talks back, and nobody hears them. The reason a refused press was refused is the
+                  one message that is shown without being said, because the control it came from has
+                  already said it.
+
+                  Fixed height, never `min-h`: two lines of `text-xs` is 32 px inside a 44 px box, so
+                  no message can make this line grow and push the orb. */}
+              {isSessionOpen && (
+                <p
+                  /*
+                    Remounted when the role changes, never relabelled in place.
+
+                    Several screen readers read a live region's role and politeness at the moment the
+                    node is INSERTED and ignore a later change to them, so an element that starts as
+                    `role="status"` and is rewritten to `role="alert"` stays a polite status for the
+                    user who needed the alert. Changing the key makes React drop the old node and
+                    insert a new one with the role it needs. The reserved height is the same either
+                    way, so nothing moves when it swaps.
+                  */
+                  key={notice.isAlert ? 'alert' : 'status'}
+                  // Which message won, readable from outside. The same idea as the orb's
+                  // `data-sphere-state`: a test should not have to infer the state from pixels or
+                  // from a translated string.
+                  data-notice={notice.tone}
+                  role={notice.isAlert ? 'alert' : 'status'}
+                  /*
+                    `off` is not a mistake. It is the reason a refused press was refused, which the
+                    blocked control already read out as its own description when the user focused it.
+                    See `isSilent` in useConversationNotice.ts.
+                  */
+                  aria-live={
+                    notice.isSilent
+                      ? 'off'
+                      : notice.isAlert
+                        ? 'assertive'
+                        : 'polite'
+                  }
+                  aria-atomic="true"
+                  className={cn(
+                    'flex h-11 flex-wrap items-center justify-center gap-x-1 overflow-hidden px-4 text-center text-xs',
+                    CONTROL_CLEAR_CORNERS,
+                    NOTICE_TONE[notice.tone],
+                  )}
+                >
+                  {notice.text && <span>{notice.text}</span>}
+                  {notice.hint && <span>{notice.hint}</span>}
+                </p>
+              )}
+
+              {/* The transcript is content, not chrome. The old icon button in the top row is gone
+                  and the last thing said is the way in, which is a far bigger target than 44 px and
+                  frees the top right for typing.
+
+                  The text is `aria-hidden` and the button carries the name: a screen reader hears one
+                  control, not a control and then the same sentence again. */}
+              {showTranscript && (
+                <button
+                  type="button"
+                  aria-label={t('conversation.transcript.open')}
+                  onClick={() => setTranscriptOpen(true)}
+                  className={cn(
+                    'flex h-12 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-center text-sm text-muted',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                    CONTROL_CLEAR_CORNERS,
+                  )}
+                >
+                  <span aria-hidden="true" className="line-clamp-2">
+                    {lastTurn?.text ?? t('conversation.transcript.open')}
+                  </span>
+                  <TranscriptIcon className="size-4 shrink-0" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* One line for everything that used to be its own chip or its own alert: offline,
-            blocked audio, a control error, a weak connection, the time warning, and the reason
-            a refused control was refused.
-
-            It is a real live region, and the only one on this screen besides the orb's caption.
-            Those messages were all announced before this redesign, and the orb's region carries
-            only the caption, on an 800 ms debounce, so without this they would all have gone
-            silent. A denied microphone raises it to a real `role="alert"`: the avatar talks, the
-            user talks back, and nobody hears them. The reason a refused press was refused is the
-            one message that is shown without being said, because the control it came from has
-            already said it.
-
-            Fixed height, never `min-h`: two lines of `text-xs` is 32 px inside a 44 px box, so
-            no message can make this line grow and push the orb. */}
-        {isSessionOpen && (
-          <p
-            /*
-              Remounted when the role changes, never relabelled in place.
-
-              Several screen readers read a live region's role and politeness at the moment the
-              node is INSERTED and ignore a later change to them, so an element that starts as
-              `role="status"` and is rewritten to `role="alert"` stays a polite status for the
-              user who needed the alert. Changing the key makes React drop the old node and
-              insert a new one with the role it needs. The reserved height is the same either
-              way, so nothing moves when it swaps.
-            */
-            key={notice.isAlert ? 'alert' : 'status'}
-            // Which message won, readable from outside. The same idea as the orb's
-            // `data-sphere-state`: a test should not have to infer the state from pixels or
-            // from a translated string.
-            data-notice={notice.tone}
-            role={notice.isAlert ? 'alert' : 'status'}
-            /*
-              `off` is not a mistake. It is the reason a refused press was refused, which the
-              blocked control already read out as its own description when the user focused it.
-              See `isSilent` in useConversationNotice.ts.
-            */
-            aria-live={
-              notice.isSilent
-                ? 'off'
-                : notice.isAlert
-                  ? 'assertive'
-                  : 'polite'
-            }
-            aria-atomic="true"
-            className={cn(
-              'flex h-11 flex-wrap items-center justify-center gap-x-1 overflow-hidden px-4 text-center text-xs',
-              CONTROL_CLEAR_CORNERS,
-              NOTICE_TONE[notice.tone],
-            )}
-          >
-            {notice.text && <span>{notice.text}</span>}
-            {notice.hint && <span>{notice.hint}</span>}
-          </p>
-        )}
-
-        {/* The transcript is content, not chrome. The old icon button in the top row is gone
-            and the last thing said is the way in, which is a far bigger target than 44 px and
-            frees the top right for typing.
-
-            The text is `aria-hidden` and the button carries the name: a screen reader hears one
-            control, not a control and then the same sentence again. */}
-        {showTranscript && (
-          <button
-            type="button"
-            aria-label={t('conversation.transcript.open')}
-            onClick={() => setTranscriptOpen(true)}
-            className={cn(
-              'flex h-12 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-center text-sm text-muted',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-              CONTROL_CLEAR_CORNERS,
-            )}
-          >
-            <span aria-hidden="true" className="line-clamp-2">
-              {lastTurn?.text ?? t('conversation.transcript.open')}
-            </span>
-            <TranscriptIcon className="size-4 shrink-0" />
-          </button>
-        )}
       </div>
 
       {/* The four physical corners. Outside the content column on purpose: the column is in

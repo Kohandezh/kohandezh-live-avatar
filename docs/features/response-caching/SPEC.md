@@ -635,8 +635,13 @@ place; REQ-065 and later were added on 2026-09-26.
 - **REQ-056.** Both pages render `SuggestedQuestions` inside their existing pre-Start block
   (`VideoConversationPage.tsx:239-249`, `AudioConversationPage.tsx:308-318`), under the Start button,
   and only when `status === 'idle'` (owner decision 3). Under Start, the list's arrival never moves
-  the Start button. While a recorded answer is loading or playing, the list is hidden and Stop is
-  shown in its place. While the lead card shows, the list is hidden too (REQ-075).
+  the Start button. While an answer downloads, the tapped question shows a spinner (`isPending`),
+  the other suggestion buttons are disabled, and Stop is shown; from the moment playback starts the
+  list is hidden and Stop is shown in its place (playback contract, ruling 1). On `/audio`, Start
+  sits in the middle of the column at idle, as on `/video`, and the orb's box keeps the same size
+  and place from idle through the start of the session: pressing Start moves nothing, whether the
+  list is there or the library is empty (playback contract, ruling 5). While the lead card shows,
+  the list is hidden too (REQ-075).
 - **REQ-057.** On `/video`, the player shows the video above the stage, full bleed like the stage
   (`ConversationStage.tsx:58-65`), with the "Recorded answer" label at the top and the answer text as
   a caption at the bottom (owner decision 2).
@@ -858,9 +863,10 @@ and `finalize`) stays in the workbench chain and in dependency (b).
   (`docs/API.md:26-39`) and a section each, with the error codes above.
 - `src/entities/library-entry/types.ts`: the Zod schemas, which parse every response.
 - `src/data/mock/handlers.ts`: the eight routes. It has no `/api/assets` or library route today. The
-  mock suggestions route answers two Persian entries, and the mock follow-ups route answers one of
-  them. The mock video route answers `404 not_found`, because the in-browser mock carries no media
-  file; the tests that play a video intercept the request with a fixture instead (section 12). The
+  mock suggestions route answers two Persian entries (none in English, like the rendered library),
+  and the mock follow-ups route answers one of them. The mock video route serves one small real MP4 (a 4 second test pattern with
+  a tone, `src/data/mock/recorded-answer.mp4`) for every servable entry and `404 not_found` for any
+  other, so the player itself can be walked with the mock (playback contract, ruling 4). The
   mock also answers `GET /api/assets/video/{videoAssetId}`, which the admin review player uses
   (REQ-032), with the same `404 not_found`; `tests/integration/adminLibraryPage.test.tsx` intercepts
   that request with the same fixture MP4.
@@ -1457,7 +1463,8 @@ code; each is named where it applies.
    hour (REQ-014), six suggestions by default (REQ-012), and three follow-ups at most (REQ-077).
 5. **The admin recording flow needs a public LiveKit.** An install with no public `wss://` LiveKit
    can only get videos through a render run (REQ-070).
-6. **The dev mock plays nothing.** Its video route answers `404` (section 6); tests use a fixture.
+6. **The dev mock plays one file.** Its video route serves the same small MP4 for every servable
+   entry (section 6), so a walk with the mock shows the player but not the real answers.
 7. **Dependency (b)** is not merged at `0747fc1`.
 8. **No feature switch.** There is no setting that turns the library off. The way back is to
    unpublish every entry (REQ-007); the suggestions list is then empty and the screens look as they

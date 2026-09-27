@@ -1,6 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
+import type { AxiosAdapter } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The real SDK talks to LiveAvatar over WebRTC. Tests drive a fake with the same events
@@ -10,7 +11,7 @@ vi.mock('@heygen/liveavatar-web-sdk', async () => {
   return mock.createLiveAvatarSdkMockModule();
 });
 
-import { installMockApi, mockSession } from '@/data/mock';
+import { installMockApi, mockSession, resetMockLibrary } from '@/data/mock';
 import { ConversationLiveProvider, useConversationLive } from '@/features/navigation';
 import { FloatingTabBar } from '@/features/navigation/FloatingTabBar';
 import { AudioConversationPage } from '@/pages/conversation/AudioConversationPage';
@@ -23,6 +24,7 @@ import {
   resetLiveAvatarSdkMock,
   sdkState,
 } from '../utils/liveAvatarSdkMock';
+import { servePersianLibraryToEnglishScreens } from '../utils/persianLibrary';
 import { renderWithProviders } from '../utils/renderWithProviders';
 
 /** One conversation screen, alone: no floating menu, for assertions about the
@@ -83,16 +85,121 @@ describe('conversation routes (requirements 16, 17, 18, 19)', () => {
   beforeEach(() => {
     resetLiveAvatarSdkMock();
     installMockApi(apiClient, { delayMs: 0 });
+    servePersianLibraryToEnglishScreens();
     mockSession.set('u-user');
+    resetMockLibrary();
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   });
 
-  it('the idle video screen renders exactly one button, to start the conversation (requirement 16)', () => {
+  it('the idle video screen renders one button of its own, to start the conversation (requirement 16)', async () => {
     renderVideoAlone();
 
-    const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(1);
-    expect(buttons[0]).toHaveAccessibleName('Start the conversation');
+    // The suggested questions under Start (REQ-056) are the only other buttons, and they
+    // sit in their own named list.
+    const list = await screen.findByRole('list', { name: 'Suggested questions' });
+    const own = screen
+      .getAllByRole('button')
+      .filter((button) => !list.contains(button));
+    expect(own).toHaveLength(1);
+    expect(own[0]).toHaveAccessibleName('Start the conversation');
+  });
+
+  it.each([
+    ['/video', renderVideoAlone],
+    ['/audio', renderAudioAlone],
+  ] as const)('%s: after a session ends, the next Tab from the ended message reaches "Start again"', async (_route, render) => {
+    const user = userEvent.setup();
+    render();
+    await startConversation(user);
+    await user.click(await screen.findByRole('button', { name: 'End' }));
+
+    const restart = await screen.findByRole('button', { name: 'Start again' });
+    // The page moves the keyboard to the ended message (the news), not to the menu.
+    const ended = screen.getByText('The conversation ended').closest('[tabindex="-1"]');
+    await waitFor(() => expect(ended).toHaveFocus());
+
+    await user.tab();
+
+    expect(restart).toHaveFocus();
+  });
+
+  describe('the suggested questions show only while the status is idle (REQ-056, SC-012)', () => {
+    const LIST = { name: 'Suggested questions' } as const;
+
+    /** Holds every request whose URL ends with `suffix` until the test releases it. */
+    function holdRequests(suffix: string) {
+      const inner = apiClient.defaults.adapter as AxiosAdapter;
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      apiClient.defaults.adapter = async (config) => {
+        if (config.url?.endsWith(suffix)) await gate;
+        return inner(config);
+      };
+      return () => release();
+    }
+
+    it.each([
+      ['/video', renderVideoAlone],
+      ['/audio', renderAudioAlone],
+    ] as const)('%s: present at idle, absent at requesting and connecting', async (_route, render) => {
+      const releaseSession = holdRequests('/api/assistant/session');
+      let openStart = () => {};
+      sdkState.startGate = new Promise<void>((resolve) => {
+        openStart = resolve;
+      });
+      const user = userEvent.setup();
+      render();
+      expect(await screen.findByRole('list', LIST)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Start the conversation' }));
+      // requesting: the backend POST is held.
+      expect(screen.queryByRole('list', LIST)).not.toBeInTheDocument();
+
+      releaseSession();
+      await waitFor(() => expect(lastFakeSession()).toBeTruthy());
+      // connecting: the SDK's start() is held.
+      expect(screen.queryByRole('list', LIST)).not.toBeInTheDocument();
+
+      openStart();
+      await screen.findByRole('button', { name: 'End' });
+      // connected
+      expect(screen.queryByRole('list', LIST)).not.toBeInTheDocument();
+    });
+
+    it('absent while the session ends and once it has ended', async () => {
+      const user = userEvent.setup();
+      renderVideoAlone();
+      await screen.findByRole('list', LIST);
+      await startConversation(user);
+      await screen.findByRole('button', { name: 'End' });
+      const releaseClose = holdRequests('/close');
+
+      await user.click(screen.getByRole('button', { name: 'End' }));
+      // ending: the backend close is held.
+      expect(screen.queryByRole('list', LIST)).not.toBeInTheDocument();
+
+      releaseClose();
+      expect(
+        await screen.findByRole('button', { name: 'Start again' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('list', LIST)).not.toBeInTheDocument();
+    });
+
+    it('absent after a failed start', async () => {
+      sdkState.startError = new Error('boom');
+      const user = userEvent.setup();
+      renderAudioAlone();
+      await screen.findByRole('list', LIST);
+
+      await user.click(screen.getByRole('button', { name: 'Start the conversation' }));
+
+      expect(
+        await screen.findByText('Something went wrong. Try again.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('list', LIST)).not.toBeInTheDocument();
+    });
   });
 
   it('shows the error state with a working retry when the SDK fails to start', async () => {
@@ -163,9 +270,12 @@ describe('conversation routes (requirements 16, 17, 18, 19)', () => {
 
     // Before the conversation starts, `assistant.voice.idle` is what a screen
     // reader (and this test) reads back off the sr-only status region.
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Press start, then speak.',
-    );
+    // The suggested questions' loading spinner is a status too, so pick the orb's by its text.
+    expect(
+      screen
+        .getAllByRole('status')
+        .some((region) => region.textContent === 'Press start, then speak.'),
+    ).toBe(true);
   });
 
   it('blocks a route change while the avatar is speaking, and explains why with a toast (requirement 18)', async () => {

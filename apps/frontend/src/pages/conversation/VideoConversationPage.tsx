@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  RecordedAnswerCaption,
+  RecordedAnswerLabel,
+  RecordedAnswerPanel,
+  RecordedAnswerPlayer,
+  useAnswerLibrary,
+} from '@/features/answer-library';
 import { useConversationScreen, WARNING_SECONDS } from '@/features/assistant';
 import {
   CONTROL_CLEAR_CORNERS,
@@ -31,8 +38,9 @@ const NOTICE_TONE = {
  * the two conversation screens had to learn the controls twice. See
  * docs/DECISIONS/0013-physical-anchoring-for-conversation-controls.md.
  *
- * Idle is deliberately bare. One start button over the stage is the whole screen, so the
- * first thing a new user sees is a single thing to press.
+ * Idle is deliberately plain. Start sits in the middle of the stage as the one primary action,
+ * and under it the suggested questions of the answer library (REQ-056), which play a recorded
+ * answer without starting a live session. With an empty library, Start is all there is.
  *
  * The session belongs to this page. Walking to `/audio` or `/settings` unmounts the page,
  * which closes the provider session and the backend row. The floating menu asks first.
@@ -65,6 +73,12 @@ export function VideoConversationPage() {
     sendText,
     enableAudio,
   } = controller;
+
+  const { suggestions, recorded } = useAnswerLibrary(status);
+  const isIdle = status === 'idle';
+  const isRecordedShown = recorded.phase === 'playing' || recorded.phase === 'blocked';
+  // Mounted from the tap on, so the element exists when the file arrives.
+  const isPlayerMounted = recorded.phase === 'loading' || isRecordedShown;
 
   const isBusy = status === 'requesting' || status === 'connecting';
   const hasFinished = status === 'ended' || status === 'error';
@@ -126,6 +140,15 @@ export function VideoConversationPage() {
   const handleToggleMic = useCallback(() => void toggleMic(), [toggleMic]);
   const handleType = useCallback(() => setComposerOpen(true), []);
 
+  /*
+    Start stops a recorded answer first and revokes its URL, then starts the live session as
+    today, so two voices never play at once (REQ-060).
+  */
+  const handleStart = () => {
+    recorded.cancel();
+    void start();
+  };
+
   useEffect(() => {
     if (status === 'ended') endedRef.current?.focus();
     if (status === 'error') errorRef.current?.focus();
@@ -154,6 +177,12 @@ export function VideoConversationPage() {
     <div className="relative h-full w-full overflow-hidden bg-background">
       <ConversationStage controller={controller} mediaRef={stageRef} />
 
+      {/* The recorded answer covers the stage, full bleed like it (REQ-057). Only at idle: a
+          recorded answer never runs next to a live session. */}
+      {isIdle && isPlayerMounted && (
+        <RecordedAnswerPlayer recorded={recorded} variant="video" />
+      )}
+
       {/*
         The chrome column is the 16:9 safe area. The stage itself is full bleed, because a
         literal 16:9 box on a phone (about 9:19.5) would cover roughly a quarter of the
@@ -173,8 +202,8 @@ export function VideoConversationPage() {
             CONTROL_COLUMN_BOTTOM,
           )}
         >
-          {/* The screen's only heading. A visible title would break "one button and
-              nothing else", but a screen still needs a name for a screen reader. */}
+          {/* The screen's name. A visible title would crowd the one primary action, but a
+              screen still needs a name for a screen reader. */}
           <h1 className="sr-only">{t('conversation.video.title')}</h1>
 
           {/* `px-16` keeps it clear of the two 48 px circles beside it, and one clamped line
@@ -199,6 +228,18 @@ export function VideoConversationPage() {
                 onClick={enableAudio}
                 className="pointer-events-auto absolute inset-0 rounded-3xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               />
+            )}
+
+            {/*
+              At idle, Start sits between two halves that always share the height equally, so it
+              stays exactly where it sat alone, and nothing that arrives under it (the suggested
+              questions, the loading line, the caption) can move it (REQ-056). The upper half
+              holds the "Recorded answer" label.
+            */}
+            {isIdle && (
+              <div className="flex min-h-0 w-full flex-1 flex-col items-center">
+                {isRecordedShown && <RecordedAnswerLabel />}
+              </div>
             )}
 
             {/* `shrink-0`, so the news and the one control below it keep their full size. */}
@@ -239,7 +280,7 @@ export function VideoConversationPage() {
               {!isSessionOpen && status !== 'error' && (
                 <Button
                   variant="ghost"
-                  onPress={() => void start()}
+                  onPress={handleStart}
                   isPending={isBusy}
                   isDisabled={!canStart}
                   className="glass glass-fringe min-h-14 rounded-full px-7 text-base font-semibold text-foreground"
@@ -264,6 +305,21 @@ export function VideoConversationPage() {
                 </p>
               )}
             </div>
+
+            {isIdle && (
+              <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-3 overflow-y-auto p-1">
+                <div className="pointer-events-auto w-full max-w-sm">
+                  <RecordedAnswerPanel recorded={recorded} suggestions={suggestions} />
+                </div>
+                {/* The caption at the bottom of the video (REQ-057), still above the bottom
+                    clearance this column pays. */}
+                {isRecordedShown && recorded.entry && (
+                  <div className="pointer-events-auto mt-auto w-full max-w-sm">
+                    <RecordedAnswerCaption text={recorded.entry.answerText} />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* One line for everything that used to be its own chip or its own alert: offline,

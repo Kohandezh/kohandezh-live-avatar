@@ -376,6 +376,21 @@
       "cancel": "Stay here"
     }
   },
+  "library": {
+    "suggestionsTitle": "Suggested questions",
+    "recordedLabel": "Recorded answer",
+    "loading": "Loading the recorded answer",
+    "stop": "Stop",
+    "tapToPlay": "Tap to play the answer",
+    "captionLabel": "Answer text",
+    "suggestionsError": "Suggested questions could not load.",
+    "errors": {
+      "notFound": "This answer is no longer available.",
+      "rateLimited": "You have played many answers. Try again in a few minutes.",
+      "offline": "You are offline. Connect to play the answer.",
+      "generic": "The recorded answer could not play. Try again, or start a live conversation."
+    }
+  },
   "widget": {
     "title": "Dr. Kohandezh Assistant",
     "open": "Talk to Dr. Kohandezh",

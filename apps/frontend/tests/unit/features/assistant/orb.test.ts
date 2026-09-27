@@ -73,6 +73,36 @@ describe('orbState (requirement 17)', () => {
   });
 });
 
+describe('orbState with a recorded answer (REQ-058)', () => {
+  it('is agent while a recorded answer plays and the conversation is idle', () => {
+    expect(
+      orbState(signals({ status: 'idle', isRecordingPlaying: true })),
+    ).toBe('agent');
+  });
+
+  it('defaults the signal to false, so the widget and the live screens are unchanged (REQ-064)', () => {
+    expect(orbState(signals({ status: 'idle' }))).toBe('idle');
+  });
+
+  it('never overrides a live status: the recording signal only counts at idle', () => {
+    expect(
+      orbState(signals({ status: 'connecting', isRecordingPlaying: true })),
+    ).toBe('idle');
+    expect(
+      orbState(signals({ status: 'error', isRecordingPlaying: true })),
+    ).toBe('ended');
+  });
+
+  it('breathes on the synthetic envelope, since a file element has no stream to measure', () => {
+    const recording = signals({ status: 'idle', isRecordingPlaying: true });
+
+    expect(levelTarget(recording, null, 1234)).toBeCloseTo(
+      speechEnvelope(1234),
+      6,
+    );
+  });
+});
+
 describe('speechEnvelope', () => {
   it('is deterministic: the same instant always produces the same value', () => {
     expect(speechEnvelope(1234)).toBe(speechEnvelope(1234));

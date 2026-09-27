@@ -23,6 +23,12 @@ export interface OrbSignals {
   isUserSpeaking: boolean;
   isAvatarSpeaking: boolean;
   isMicMuted: boolean;
+  /**
+   * A recorded answer from the library is playing (REQ-058). It only counts while the live
+   * conversation is `idle`, because a recorded answer never runs next to a live one. Absent means
+   * false, so the widget and the live screens are unchanged.
+   */
+  isRecordingPlaying?: boolean;
 }
 
 /** What one frame writes onto the DOM. */
@@ -117,6 +123,7 @@ export function orbState(signals: OrbSignals): OrbState {
   if (status === 'ending' || status === 'ended' || status === 'error') {
     return 'ended';
   }
+  if (status === 'idle' && signals.isRecordingPlaying) return 'agent';
   if (status !== 'connected') return 'idle';
   if (isAvatarSpeaking) return 'agent';
   if (isMicMuted) return 'muted';

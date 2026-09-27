@@ -27,3 +27,25 @@ test('the panel switches to English', async ({ page }) => {
 
   await expect(page.getByRole('dialog', { name: 'Dr. Kohandezh Assistant' })).toBeVisible();
 });
+
+test('the widget loads no answer library code and asks for no library route (REQ-064, SC-018)', async ({ page }) => {
+  const libraryRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/library')) libraryRequests.push(request.url());
+  });
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'گفتگو با دکتر کهن‌دژ' }).click();
+  await expect(page.getByRole('dialog', { name: 'دستیار دکتر کهن‌دژ' })).toBeVisible();
+
+  // The dev mock answers inside the page, so no request would show on the network. What the page
+  // loaded is the stronger proof: without the library's modules, nothing can call its routes.
+  const libraryModules = await page.evaluate(() =>
+    performance
+      .getEntriesByType('resource')
+      .map((entry) => entry.name)
+      .filter((name) => name.includes('/library-entry/') || name.includes('/answer-library/')),
+  );
+  expect(libraryModules).toEqual([]);
+  expect(libraryRequests).toEqual([]);
+});
