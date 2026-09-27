@@ -10,7 +10,8 @@ import asyncio
 import logging
 import os
 import re
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -193,6 +194,7 @@ async def change_entry_status(
     video_asset_id: UUID | None = None,
     importing: bool = False,
     from_status: str | None = None,
+    conn: asyncpg.Connection | None = None,
 ) -> asyncpg.Record:
     """Move an entry along one row of LIBRARY_TRANSITIONS, with its video step and its review row,
     in one transaction. Returns the entry as the admin list shows it.
@@ -202,9 +204,14 @@ async def change_entry_status(
     caller allowed an import_only row. `from_status`, when given, must be the status found under
     the lock: the target `ready` means "mark ready" from pending and "reject the video" from
     draft, and a caller that expected one must never run the other.
+
+    `conn` runs the change inside a transaction the caller holds: the import writes all its rows in
+    one (REQ-024). The change then commits or rolls back with the caller's writes, so the caller
+    logs it after its own commit.
     """
+    held = conn is not None
     try:
-        async with database.transaction() as conn:
+        async with _held_or_own(database, conn) as conn:
             entry = await database.lock_library_entry(conn, entry_id)
             if entry is None:
                 raise NotFoundError("library entry")
@@ -261,6 +268,8 @@ async def change_entry_status(
             changed = await database.get_library_entry(entry_id, conn=conn)
     except asyncpg.UniqueViolationError as exc:
         raise _unique_conflict(exc) from exc
+    if held:
+        return changed
     logger.info(
         "library_entry_status_changed",
         extra={
@@ -271,6 +280,18 @@ async def change_entry_status(
         },
     )
     return changed
+
+
+@asynccontextmanager
+async def _held_or_own(
+    database: Database, conn: asyncpg.Connection | None
+) -> AsyncIterator[asyncpg.Connection]:
+    """The caller's connection, whose transaction the caller commits, or a new transaction."""
+    if conn is not None:
+        yield conn
+        return
+    async with database.transaction() as own:
+        yield own
 
 
 def _require_answer(answer_text: str | None) -> None:

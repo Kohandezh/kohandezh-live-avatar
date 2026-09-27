@@ -287,7 +287,7 @@ tables, no change to an existing one.
 | `category_title`   | text               |                                                                    |
 | `section_type`     | text               | `knowledge`, `identity`, `sizing`, `meeting`, `commercial`, `casual`. Gives the funnel stage |
 | `technical`        | text               | `technical`, `non-technical`, `classify`. Admin metadata only      |
-| `import_metadata`  | jsonb              | from the import (`batch`, `bridge_type`, `section`). Never shown to users |
+| `import_metadata`  | jsonb              | from the import: `batch` and `bridge_type` of a rendered row (each only when the row has it), or `section` and `source_technical` (the source's own `technical`, before a verdict) of a source row. Never shown to users |
 | `video_asset_id`   | uuid (null)        | unique, references `video_assets(id)`. Null in `pending` and `ready`, set in `draft` and `published` |
 | `status`           | text               | `pending`, `ready`, `draft`, `published`, `withdrawn`              |
 | `position`         | integer            | display order: the last position plus one at creation              |
@@ -325,6 +325,13 @@ The library reads these `video_assets` columns (created by `001_initial.sql`): `
 `duration_ms`, and `status`: `DRAFT` while recording, `VIDEO_GENERATED` once the file is probed,
 `VIDEO_APPROVED` after review, `REJECTED`. An entry never uses `video_assets.status` for its own
 state: the question's review and the media's render are two lifecycles.
+
+A video from the import (`library_import --results`) is always a new row. Its `external_id` is
+`LIB_<external_id of the render>` and its file is `VIDEO_CACHE_DIR/LIB_<external_id of the
+render>.mp4`, a copy of the render's MP4. It starts `VIDEO_GENERATED`, with `audio_asset_id` null,
+`duration_ms` and `metadata.ffprobe` from the import's own probe, and
+`metadata.imported_from` `{sheet_video_asset_id, sheet_external_id, sheet_audio_asset_id}`: the
+render server's ids, kept as provenance only and never looked up (REQ-023).
 
 ## Adding a model
 

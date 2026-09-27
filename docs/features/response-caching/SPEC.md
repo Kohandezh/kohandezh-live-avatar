@@ -1114,9 +1114,11 @@ The commands print reason codes, not translated text: `bad_format`, `bad_key`, `
 `bad_answer`, `bad_answer_original`, `bad_category`, `bad_section_type`, `bad_technical`,
 `bad_language`, `bad_video_asset_id`, `bad_duration`, `bad_file`, `file_missing`, `file_exists`,
 `external_id_taken`, `duplicate_key`, `duplicate_external_id`, `probe_failed`,
-`duration_mismatch`, `answer_text_mismatch`, `write_failed` (phase 2), and three that are not
-failures: `already_imported`, `not_rendered` and `attached` (REQ-028). A failure writes nothing
-(REQ-027), so a fixed file can simply be run again.
+`duration_mismatch`, `answer_text_mismatch`, `language_mismatch` (a results row whose `language`
+differs from the `ready` or `pending` entry it would attach to), `write_failed` (phase 2), and three
+that are not failures: `already_imported`, `not_rendered` and `attached` (REQ-028). A failure writes
+nothing (REQ-027), so a fixed file can simply be run again. The export prints `not_ready` for a
+`--key` that names no `ready` entry, and then writes no file.
 
 ## 9. Security and privacy
 
