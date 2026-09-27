@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth, RequireRole } from '@/features/authentication';
 import { AdminDashboardPage } from '@/pages/admin/dashboard/AdminDashboardPage';
+import { AdminLibraryPage } from '@/pages/admin/library/AdminLibraryPage';
 import { AdminUsersPage } from '@/pages/admin/users/AdminUsersPage';
 import { ForbiddenPage } from '@/pages/forbidden/ForbiddenPage';
 import { LoginPage } from '@/pages/login/LoginPage';
@@ -23,6 +24,7 @@ export function Router() {
             <Route element={<AdminLayout />}>
               <Route index element={<AdminDashboardPage />} />
               <Route path="users" element={<AdminUsersPage />} />
+              <Route path="library" element={<AdminLibraryPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Route>

@@ -148,9 +148,9 @@ export interface ChangeLibraryStatusInput {
   status: LibraryStatus;
   videoAssetId?: string;
   /**
-   * The status the screen showed. Send it: a target such as `ready` means one thing from
-   * `pending` (mark ready) and another from `draft` (reject the video), so the backend answers
-   * `409 invalid_status_transition` instead of running the other one on a stale screen.
+   * The status the screen showed. Required (owner, 2026-09-26): a target such as `ready` means one
+   * thing from `pending` (mark ready) and another from `draft` (reject the video), so the backend
+   * answers `409 invalid_status_transition` instead of running the other one on a stale screen.
    */
-  fromStatus?: LibraryStatus;
+  fromStatus: LibraryStatus;
 }

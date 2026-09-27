@@ -30,6 +30,7 @@ export function AdminLayout() {
   const items = [
     { to: '/', label: t('nav.dashboard'), end: true },
     { to: '/users', label: t('nav.users'), end: false },
+    { to: '/library', label: t('nav.library'), end: false },
   ];
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>

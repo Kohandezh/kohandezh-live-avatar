@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- The admin target has an Answer library screen (`/library`, "Answer library" in the sidebar).
+  Staff search the entries by key or question and filter them by status, language, category,
+  section type and technical, page by page. Opening an entry shows a panel for its state: a
+  `pending` entry gets an editor for the spoken answer with the six rewrite rules beside it and a
+  live character counter (a warning above 350, Mark ready disabled above 480); `ready` and `draft`
+  entries keep their question and category fields editable; a `draft` or `published` entry plays
+  its video, downloaded as a blob through the API client. The actions are Mark ready, Reopen
+  text, Publish, Reject video, Unpublish and Withdraw; Withdraw and Reject video ask for
+  confirmation first. Every status change sends the status the screen showed (`fromStatus` is now
+  required in the entity's type), and when another admin changed the entry meanwhile the panel
+  says so and shows the current state. What the admin typed stays in the field when the field is
+  still editable, and otherwise shows next to the server's text as "Your unsaved text" until they
+  dismiss it or close the panel. Recording an answer is not on
+  this screen yet. English and Persian, right to left in Persian.
 - The answer library can be filled from the render sprint's files. `library_import --results`
   reads a render run's results JSON and MP4 files into `draft` entries, each with a new video row
   and a copy of its MP4 (`LIB_<external_id>.mp4`), or attaches a video to the `ready` or `pending`
@@ -24,7 +38,7 @@
   `cache_hit` true and no user id, and plays are limited to 60 per user per hour
   (`LIBRARY_PLAYBACK_RATE_LIMIT_PER_HOUR`), with a `Retry-After` header on the `429`. The widget's
   embed key gets `401` on every library route. The frontend has the `library-entry` entity and the
-  mock routes; no screen uses them yet.
+  mock routes.
 - ElevenLabs speech now reports a plan payment problem clearly. The client raises
   `elevenlabs_payment` instead of the generic `elevenlabs_stream_error`, on both WebSocket paths
   (`apps/api/services/elevenlabs/client.py`), when the speech WebSocket answers with an error

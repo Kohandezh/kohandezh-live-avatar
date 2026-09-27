@@ -158,6 +158,18 @@ describe('mock library API, admin routes', () => {
     );
   });
 
+  it('answers the review player with 404, because the mock holds no media', async () => {
+    mockSession.set('u-admin');
+    const [draft] = (await entries(createClient(), { status: 'draft' })).items;
+    const url = `/api/assets/video/${draft?.videoAssetId}`;
+
+    await expectError(createClient().get(url), 404, 'not_found');
+    mockSession.set('u-user');
+    await expectError(createClient().get(url), 403);
+    mockSession.clear();
+    await expectError(createClient().get(url), 401);
+  });
+
   it('lists every status, newest first, and filters them', async () => {
     mockSession.set('u-admin');
 
