@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The daily retention sweep now deletes library media. It removes the MP4 and the video row of a
+  withdrawn library entry, and of a video that was rejected from an entry and that no entry uses.
+  The entry and every audit row stay. A file that cannot be deleted is skipped and keeps its row,
+  so the next run tries it again, and the sweep still deletes the others.
 - The admin target has an Answer library screen (`/library`, "Answer library" in the sidebar).
   Staff search the entries by key or question and filter them by status, language, category,
   section type and technical, page by page. Opening an entry shows a panel for its state: a

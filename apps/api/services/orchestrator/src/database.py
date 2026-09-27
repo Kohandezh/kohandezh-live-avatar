@@ -190,6 +190,28 @@ LIBRARY_EDITABLE_COLUMNS = (
     "technical",
 )
 
+# The videos the sweep may delete under REQ-072: rejected, named by a video_rejected review row
+# (REQ-069), and used by no entry. The list and the delete repeat the same conditions, because the
+# delete runs later and must not delete a video that changed since the list. Keep the two in step.
+_REJECTED_MEDIA_LIST = """
+    SELECT DISTINCT ON (v.id) r.entry_id, v.id AS video_asset_id, v.video_path
+    FROM video_assets AS v
+    JOIN library_entry_reviews AS r ON r.video_asset_id = v.id AND r.decision = 'video_rejected'
+    WHERE v.status = 'REJECTED'
+      AND NOT EXISTS (SELECT 1 FROM library_entries AS e WHERE e.video_asset_id = v.id)
+    ORDER BY v.id, r.created_at DESC
+"""
+_REJECTED_MEDIA_DELETE = """
+    DELETE FROM video_assets AS v
+    WHERE v.id = $1 AND v.status = 'REJECTED'
+      AND EXISTS (
+          SELECT 1 FROM library_entry_reviews AS r
+          WHERE r.video_asset_id = v.id AND r.decision = 'video_rejected'
+      )
+      AND NOT EXISTS (SELECT 1 FROM library_entries AS e WHERE e.video_asset_id = v.id)
+    RETURNING v.id
+"""
+
 
 def _usage_values(data: dict[str, Any]) -> tuple[Any, ...]:
     """The columns of one usage row. Keys that are not named here never reach the table."""
@@ -988,3 +1010,48 @@ class Database:
                 """
             )
         )
+
+    async def withdrawn_library_media(self) -> list[asyncpg.Record]:
+        """The videos of withdrawn entries (REQ-016), with the entry that holds each. A
+        RENDER_FAILED row is never deleted (ADR 0015, item 5), so it is not listed."""
+        return list(
+            await self._pool().fetch(
+                """
+                SELECT e.id AS entry_id, v.id AS video_asset_id, v.video_path
+                FROM library_entries AS e JOIN video_assets AS v ON v.id = e.video_asset_id
+                WHERE e.status = 'withdrawn' AND v.status <> 'RENDER_FAILED'
+                ORDER BY e.withdrawn_at, e.id
+                """
+            )
+        )
+
+    async def delete_withdrawn_library_video(self, entry_id: UUID, video_asset_id: UUID) -> bool:
+        """Clear a withdrawn entry's video and delete the video row, in one transaction (REQ-016).
+        False when the entry no longer holds this video; then nothing changes. The entry and every
+        review row stay."""
+        async with self.transaction() as conn:
+            cleared = await conn.fetchval(
+                """
+                UPDATE library_entries SET video_asset_id = NULL, updated_at = now()
+                WHERE id=$1 AND status = 'withdrawn' AND video_asset_id=$2
+                  AND NOT EXISTS (SELECT 1 FROM video_assets WHERE id=$2 AND status = 'RENDER_FAILED')
+                RETURNING id
+                """,
+                entry_id,
+                video_asset_id,
+            )
+            if cleared is None:
+                return False
+            await conn.execute("DELETE FROM video_assets WHERE id=$1", video_asset_id)
+            return True
+
+    async def rejected_library_media(self) -> list[asyncpg.Record]:
+        """The videos REQ-069 rejected that no entry uses (REQ-072), each with the entry whose last
+        video_rejected row names it."""
+        return list(await self._pool().fetch(_REJECTED_MEDIA_LIST))
+
+    async def delete_rejected_library_video(self, video_asset_id: UUID) -> bool:
+        """Delete a video REQ-069 rejected, only while no entry uses it (REQ-072). False when it no
+        longer qualifies; then nothing changes. Its asset_reviews rows stay."""
+        deleted = await self._pool().fetchval(_REJECTED_MEDIA_DELETE, video_asset_id)
+        return deleted is not None

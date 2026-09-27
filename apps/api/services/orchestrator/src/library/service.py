@@ -446,3 +446,56 @@ async def unused_recordings(
     rows = [row for row in await database.unused_video_recordings() if _has_content(row["video_path"])]
     start = (page - 1) * page_size
     return rows[start : start + page_size], len(rows)
+
+
+async def _delete_file(path: str) -> None:
+    """Delete a media file. A missing file is not an error (REQ-016)."""
+    await asyncio.to_thread(Path(path).unlink, missing_ok=True)
+
+
+async def _sweep_media(
+    rows: list[asyncpg.Record], delete_row: Callable[[asyncpg.Record], Awaitable[bool]]
+) -> tuple[int, int]:
+    """Delete each row's file, then its rows. Returns how many were deleted and how many skipped.
+
+    The file goes first. A crash between the two leaves the rows without their file: the entry is
+    withdrawn or the video rejected, so no route serves it, and the next sweep finds the same rows,
+    skips the missing file, and deletes the rows. The other order could leave a file no row names.
+    A file that cannot be deleted is skipped: its rows stay, so the next sweep tries again, and the
+    other rows still go.
+    """
+    deleted = skipped = 0
+    for row in rows:
+        entry_id = str(row["entry_id"])
+        try:
+            await _delete_file(row["video_path"])
+        except OSError:
+            # The entry id only. No exception text: it carries the path.
+            logger.warning("media_delete_failed", extra={"entry_id": entry_id})
+            skipped += 1
+            continue
+        if await delete_row(row):
+            deleted += 1
+            # The sweep is no admin (REQ-017, the house shape of every library event).
+            logger.info(
+                "library_media_deleted",
+                extra={"entry_id": entry_id, "video_asset_id": str(row["video_asset_id"]), "admin_id": None},
+            )
+    return deleted, skipped
+
+
+async def sweep_withdrawn_media(database: Database) -> tuple[int, int]:
+    """REQ-016: the MP4 and the video row of each withdrawn entry. The entry and its review rows
+    stay, and so do the video's asset_reviews rows."""
+    return await _sweep_media(
+        await database.withdrawn_library_media(),
+        lambda row: database.delete_withdrawn_library_video(row["entry_id"], row["video_asset_id"]),
+    )
+
+
+async def sweep_rejected_media(database: Database) -> tuple[int, int]:
+    """REQ-072: the MP4 and the video row of each video REQ-069 rejected that no entry uses."""
+    return await _sweep_media(
+        await database.rejected_library_media(),
+        lambda row: database.delete_rejected_library_video(row["video_asset_id"]),
+    )

@@ -224,7 +224,7 @@ Job types:
 | `job_type`        | `max_attempts` | What it does                                                 |
 | ----------------- | -------------- | ------------------------------------------------------------ |
 | `finalize_video`  | 3              | Enqueued by `POST /api/assets/video/{id}/finalize` with `dedupe_key` `finalize_video:<asset id>` and `input` `{ "asset_id" }`. When Egress has stopped, the job is made due and `input` gains `file_wait_from` (ISO time), where the wait for the MP4 starts. Waits for the MP4, then probes it and moves the asset from `DRAFT` to `VIDEO_GENERATED` in the transaction that marks the job done. `output` is the finalize result (`docs/API.md`) |
-| `retention_sweep` | 1              | Daily. Deletes `done` jobs finished more than 30 days ago. Never deletes a `failed` job. `created_by` is null. The next run is enqueued one day ahead when the current one closes, whatever its outcome |
+| `retention_sweep` | 1              | Daily. Deletes `done` jobs finished more than 30 days ago, then library media (see the library tables below). Never deletes a `failed` job, a `RENDER_FAILED` video row, an `asset_reviews` or `library_entry_reviews` row, or a video no rule below names. `created_by` is null. `output` is `{ deleted_done_jobs, deleted_withdrawn_media, deleted_rejected_media, skipped_media }`. A media file that cannot be deleted is skipped: its rows stay, it is logged as `media_delete_failed` and counted in `skipped_media`, the other media are still deleted, the run ends `done`, and the next run tries it again. The next run is enqueued one day ahead when the current one closes, whatever its outcome |
 
 Failed jobs are kept with no end date, and each holds the `created_by` user id. A user deletion
 must also clear that column on their failed jobs (ADR 0015, consequences).
@@ -325,6 +325,16 @@ The library reads these `video_assets` columns (created by `001_initial.sql`): `
 `duration_ms`, and `status`: `DRAFT` while recording, `VIDEO_GENERATED` once the file is probed,
 `VIDEO_APPROVED` after review, `REJECTED`. An entry never uses `video_assets.status` for its own
 state: the question's review and the media's render are two lifecycles.
+
+The daily `retention_sweep` deletes library media in two steps. For a `withdrawn` entry with a
+video (REQ-016), and for a `REJECTED` video that a `video_rejected` review row names and no entry
+uses (REQ-072), it deletes the MP4 first (a missing file is not an error), then the `video_assets`
+row. For a withdrawn entry, clearing its `video_asset_id` and deleting the video row are one
+transaction. The entry, its review rows and the video's `asset_reviews` rows stay; the review rows
+keep the bare id of the deleted video. If the process stops between the file and the row, the rows
+stay without their file. No route serves them (a withdrawn entry or a rejected video is never
+servable), and the next run finds them again and deletes the rows. Each deleted media writes the log
+event `library_media_deleted` with `entry_id`, `video_asset_id` and `admin_id` null.
 
 A video from the import (`library_import --results`) is always a new row. Its `external_id` is
 `LIB_<external_id of the render>` and its file is `VIDEO_CACHE_DIR/LIB_<external_id of the
