@@ -90,6 +90,11 @@ CLI, follow the CLI and fix this skill in the same change.
 
 ## Leader pane
 
+Name the leader pane `foreman` before briefing anyone, and again after any Herdr server
+restart (the name is lost): `herdr agent rename "$HERDR_PANE_ID" foreman`. After a restart,
+also rerun `herdr integration status`, and reinstall the Claude integration if it reads
+`outdated`.
+
 Foreman's pane can be anywhere in the current Herdr session. Foreman coordinates through
 stable agent names, so its location never constrains the topology. Keep the leader pane
 alive for the whole mission.
@@ -143,8 +148,8 @@ complete. It must contain:
 
 ## Communication protocol
 
-Every role communicates through Herdr with `herdr agent send`, followed by
-`herdr pane send-keys <pane-id> Enter` to submit it. Teach the protocol to every worker in
+Every role communicates through Herdr with `herdr agent prompt <target> "<text>"`, which
+sends and submits in one call. Teach the protocol to every worker in
 its first prompt. Give every worker:
 
 - its stable agent name, unique among live agents, matching `[a-z][a-z0-9_-]{0,31}`
@@ -271,7 +276,7 @@ Before removal:
    before any worktree removal. Never delete unrelated files. If any other uncommitted or
    untracked file remains, stop and ask the user.
 5. Ask each agent to exit its normal session. Verify with `herdr agent get`. Use
-   `herdr pane send-keys <pane-id> ctrl-c` only if a session does not exit normally.
+   `herdr agent send-keys <agent-name> ctrl+c` only if a session does not exit normally.
 6. Close only sessions, panes, tabs, and workspaces this mission created. Never close
    anything else.
 

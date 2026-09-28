@@ -30,7 +30,7 @@ personal config directory:
 ```
 
 A Claude session started without `CLAUDE_CONFIG_DIR` reads `~/.claude`, never fires that
-hook, and never reports its state. `herdr agent wait --status idle` then blocks until it
+hook, and never reports its state. `herdr agent wait --until idle` then blocks until it
 times out, and Foreman cannot drive a turn. Missing env is a silent hang, not an error.
 
 Check the integration before starting any agent:
@@ -51,31 +51,29 @@ another agent kind.
 
 ## Starting a session
 
-The installed CLI is authoritative. On herdr 0.7.4 `herdr agent start` takes the full
-command line after `--`, and has no `--kind` and no `--pane`:
+The installed CLI is authoritative. On herdr 0.9.1 `herdr agent start` needs an existing pane
+at an interactive shell prompt, and it cannot set environment variables. So a session starts
+in two calls: `herdr pane split` makes the pane with the working directory and
+`CLAUDE_CONFIG_DIR`, then `herdr agent start` runs Claude in it.
 
 ```text
-herdr agent start <name> [--cwd PATH] [--workspace ID] [--tab ID]
-                         [--split right|down] [--env KEY=VALUE]
-                         [--focus|--no-focus] -- <argv...>
+herdr pane split <pane> --direction right|down --cwd <path> --env KEY=VALUE --no-focus
+herdr agent start <name> --kind claude --pane <pane-id> [--timeout MS] -- <claude args>
 ```
-
-So the program name is part of `argv`:
 
 ```bash
-herdr agent start <maker-name> \
-  --tab <team-tab-id> --cwd <maker-path> --split right --no-focus \
-  --env CLAUDE_CONFIG_DIR="$HOME/.claude-personal" \
-  -- claude --model opus --effort high
+herdr pane split <team-root-pane> --direction right --cwd <maker-path> \
+  --env CLAUDE_CONFIG_DIR="$HOME/.claude-personal" --no-focus      # -> .result.pane.pane_id
+herdr agent start <maker-name> --kind claude --pane <maker-pane> -- --model opus --effort high
 
-herdr agent start <checker-name> \
-  --tab <team-tab-id> --cwd <checker-path> --split right --no-focus \
-  --env CLAUDE_CONFIG_DIR="$HOME/.claude-personal" \
-  -- claude --model opus --effort high
+herdr pane split <maker-pane> --direction down --cwd <checker-path> \
+  --env CLAUDE_CONFIG_DIR="$HOME/.claude-personal" --no-focus
+herdr agent start <checker-name> --kind claude --pane <checker-pane> -- --model opus --effort high
 ```
 
-Re-verify the flag names with `herdr agent start --help` before a mission. If they differ
-from the block above, follow the installed CLI and fix this file in the same change.
+`--kind claude` names the executable, so the arguments after `--` start with the first flag.
+Re-verify with `herdr agent start --help` and `herdr pane split --help` before a mission. If
+they differ from the block above, follow the installed CLI and fix this file in the same change.
 
 These are normal interactive sessions. Never use `claude -p`, `claude --print`, or any
 other one-shot runner to force a model or a level.
@@ -154,14 +152,18 @@ escalation can name what produced each position.
 
 ## Delivering a brief
 
-`herdr agent prompt` does not exist on the installed CLI. Write the prompt block to
-`briefs/` first, then send the pointer and submit it:
+Write the prompt block to `briefs/` first, then send the pointer. On herdr 0.9.1
+`herdr agent prompt` sends the text and submits it in one call (`agent send` is gone):
 
 ```bash
-herdr agent send <agent-name> "Read <absolute-brief-path>, acknowledge with the envelope, then do only that assignment."
-herdr pane send-keys <pane-id> Enter
+herdr agent prompt <agent-name> "Read <absolute-brief-path>, acknowledge with the envelope, then do only that assignment."
 ```
 
-`herdr agent send` writes literal text and does not submit. The Enter is a separate call,
-so keep each agent's pane id in `ledger.md` next to its name. Get it from
-`herdr agent get <name>` right after start.
+`--wait` waits for the next settled state and may time out while the agent works; the prompt
+was still delivered. Never assume a brief landed: read the pane after about 15 seconds. A
+Claude Code dialog, "Teach auto mode about your environment?", appears after a session's first
+turn and swallows the next prompt (a worker that shows `done` with no new handoff is the tell).
+Cancel it with `herdr agent send-keys <agent-name> esc`, never accept it (it offers to scan the
+owner's shell history and other repositories), then send the prompt again.
+
+To end a session: `herdr agent prompt <agent-name> "/exit"`.

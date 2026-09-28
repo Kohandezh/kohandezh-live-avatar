@@ -5,7 +5,7 @@ Read this before creating any Herdr resource.
 ## Never change the user's view
 
 Pass `--no-focus` to every `herdr worktree create`, `herdr worktree open`,
-`herdr tab create`, and `herdr agent start`. Never run `herdr tab focus`, `herdr agent
+`herdr tab create`, and `herdr pane split`. Never run `herdr tab focus`, `herdr agent
 focus`, or another focus command. A new worktree appears in the sidebar without being
 opened in front of the user.
 
@@ -99,14 +99,11 @@ For an existing workspace, create a tab instead:
 herdr tab create --workspace <maker-workspace-id> --cwd <maker-path> --label <team-id> --no-focus
 ```
 
-Do not pre-split the tab. On the installed CLI `herdr agent start` has no `--pane`: it
-makes its own pane from `--tab` plus `--split`, and it is the only call that can put
-`CLAUDE_CONFIG_DIR` into the session's environment. Start the maker in the tab, then start
-the checker with `--split right`, each with its own `--cwd`. The exact commands are in
-[agents-and-models.md](agents-and-models.md).
-
-If the tab is narrow, use `--split down` for the checker. For tracing, give the checker
-`<maker-path>` as its `--cwd` too.
+Split the tab's root pane once per session with `herdr pane split`: that call carries the
+session's `--cwd` and `CLAUDE_CONFIG_DIR`, and `herdr agent start --kind claude --pane` then
+runs Claude in the new pane. The maker's pane splits right, the checker's pane splits down from
+it. The exact commands are in [agents-and-models.md](agents-and-models.md). For tracing, give
+the checker `<maker-path>` as its `--cwd` too.
 
 Read each pane id back after start and record it in `ledger.md`, because submitting a
 brief needs it:
@@ -128,12 +125,12 @@ herdr pane rename <checker-pane-id> <checker-role>
 Write each prompt block to `briefs/` first. Then send a short prompt that points at it:
 
 ```bash
-herdr agent send <agent-name> "Read <absolute-brief-path>, acknowledge with the envelope, then do only that assignment."
-herdr pane send-keys <agent-pane-id> Enter
+herdr agent prompt <agent-name> "Read <absolute-brief-path>, acknowledge with the envelope, then do only that assignment."
 ```
 
-`herdr agent send` writes literal text and does not submit it. The Enter is a second call,
-against the pane id, not the agent name.
+`herdr agent prompt` sends and submits in one call. Read the pane afterwards; see
+"Delivering a brief" in [agents-and-models.md](agents-and-models.md) for the dialog that can
+swallow a prompt.
 
 Do not pass a one-shot prompt as a native agent argument. Start the normal session first.
 If an agent becomes blocked, inspect `herdr agent get` and `herdr agent read` before
