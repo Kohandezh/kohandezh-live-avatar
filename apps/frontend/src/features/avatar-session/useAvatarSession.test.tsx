@@ -50,6 +50,23 @@ describe('useAvatarSession', () => {
     expect(result.current.canStart).toBe(false);
   });
 
+  it('asks for a session capped at 300 seconds, so one answer fits one session (REQ-035)', async () => {
+    let body: unknown;
+    server.use(
+      http.post('*/api/avatar/session', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(fixtures.session);
+      }),
+    );
+    const { Wrapper } = providersWrapper();
+    const { result } = renderHook(() => useAvatarSession(), { wrapper: Wrapper });
+
+    act(() => result.current.start.mutate());
+    await waitFor(() => expect(result.current.status).toBe('connected'));
+
+    expect(body).toEqual({ max_session_duration: 300 });
+  });
+
   it('surfaces the configuration error from the orchestrator without retrying', async () => {
     server.use(
       http.post('*/api/avatar/session', () =>

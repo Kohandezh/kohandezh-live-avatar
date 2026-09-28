@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { describeError, isApiError } from '@/shared/api';
+import { isApiError } from '@/shared/api';
+import { speechErrorKey } from '@/features/text-to-speech';
 import { Button, InlineAlert } from '@/shared/ui';
 import type { AvatarSessionController } from './useAvatarSession';
 
@@ -11,13 +12,23 @@ interface Props {
   recordingActive: boolean;
 }
 
+/** The backend's code under a message, left to right, so an admin can quote it (section 8). */
+function ErrorCode({ error }: { error: unknown }) {
+  if (!isApiError(error) || !error.serverCode) return null;
+  return (
+    <span dir="ltr" className="block text-xs">
+      {error.serverCode}
+    </span>
+  );
+}
+
 export function AvatarControls({ controller, text, recordingActive }: Props) {
   const { t } = useTranslation();
+  const { t: tAdmin } = useTranslation('admin');
   const { status, session, online, start, speak, interrupt, close } = controller;
   const blank = text.trim().length === 0;
   const canClose = online && session !== null && status !== 'closing' && !recordingActive;
   const startError = start.error;
-  const configError = isApiError(startError) && startError.serverCode === 'configuration_error';
 
   return (
     <div className="flex flex-col gap-3">
@@ -64,19 +75,19 @@ export function AvatarControls({ controller, text, recordingActive }: Props) {
       {status === 'error' && startError && (
         <InlineAlert
           status="danger"
-          title={configError ? t('session.configError') : t('session.error')}
-          onRetry={configError ? undefined : () => start.mutate()}
+          title={tAdmin('library.record.errors.sessionFailed')}
+          onRetry={() => start.mutate()}
         >
-          <span className="ltr text-xs">{describeError(startError)}</span>
+          <ErrorCode error={startError} />
         </InlineAlert>
       )}
       {speak.error && (
         <InlineAlert
           status="danger"
-          title={t('session.speakError')}
+          title={tAdmin(speechErrorKey(speak.error))}
           onRetry={() => speak.mutate(text)}
         >
-          <span className="ltr text-xs">{describeError(speak.error)}</span>
+          <ErrorCode error={speak.error} />
         </InlineAlert>
       )}
     </div>

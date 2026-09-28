@@ -120,6 +120,93 @@ const SPEC_WORDING: Record<string, { en: string; fa: string }> = {
     en: 'Longer than 480 characters. Shorten it before marking it ready.',
     fa: 'بیش از ۴۸۰ نویسه است. پیش از تأیید آن را کوتاه کنید.',
   },
+  // Foreman ruling 5 (contract revision 4): the hint while Record waits for the audio.
+  'library.record.needsAudio': {
+    en: 'Generate the audio first, so its length can be checked.',
+    fa: 'اول صدا را بسازید تا طول آن بررسی شود.',
+  },
+  // Foreman ruling 11 (contract revision 5): why Attach is off for another answer's recording.
+  'library.record.otherAnswer': {
+    en: 'This recording is of another answer. You can find it in the list below.',
+    fa: 'این ضبط برای پاسخ دیگری است. آن را در فهرست پایین می‌بینید.',
+  },
+  // The admin recording flow table of section 8 (REQ-039 to REQ-042, REQ-074).
+  'library.record.needsAccounts': {
+    en: 'Recording needs an active LiveAvatar account and a paid ElevenLabs plan.',
+    fa: 'ضبط به حساب فعال LiveAvatar و اشتراک پرداخت‌شده ElevenLabs نیاز دارد.',
+  },
+  'library.record.errors.sessionFailed': {
+    en: 'The avatar session could not start. Check that the LiveAvatar account is active, then try again.',
+    fa: 'جلسه آواتار شروع نشد. بررسی کنید که حساب LiveAvatar فعال باشد و دوباره امتحان کنید.',
+  },
+  'library.record.errors.speechPayment': {
+    en: 'ElevenLabs refused the speech because the plan is not paid. Pay the ElevenLabs plan, then try again.',
+    fa: 'ElevenLabs صدا را نساخت چون هزینه اشتراک پرداخت نشده است. اشتراک ElevenLabs را پرداخت کنید و دوباره امتحان کنید.',
+  },
+  'library.record.errors.speechBusy': {
+    en: 'ElevenLabs is busy or its quota is used up. Wait a minute, then try again.',
+    fa: 'ElevenLabs مشغول است یا سهمیه آن تمام شده است. یک دقیقه صبر کنید و دوباره امتحان کنید.',
+  },
+  'library.record.errors.speechFailed': {
+    en: 'The avatar could not speak the answer. Check that the ElevenLabs plan is paid and active, then try again.',
+    fa: 'آواتار نتوانست پاسخ را بگوید. بررسی کنید که اشتراک ElevenLabs پرداخت‌شده و فعال باشد و دوباره امتحان کنید.',
+  },
+  'library.record.errors.recordingUnavailable': {
+    en: 'Recording is not available on this server. It needs the BYO transport and a public LiveKit address.',
+    fa: 'ضبط روی این سرور در دسترس نیست. به حالت BYO و یک نشانی عمومی LiveKit نیاز دارد.',
+  },
+  'library.record.errors.recordingDuplicate': {
+    en: 'This recording has already started. Stop it, or start a new avatar session.',
+    fa: 'این ضبط قبلاً شروع شده است. آن را متوقف کنید یا جلسه آواتار تازه‌ای شروع کنید.',
+  },
+  'library.record.errors.recordingFailed': {
+    en: 'The recording could not start. Try again.',
+    fa: 'ضبط شروع نشد. دوباره امتحان کنید.',
+  },
+  'library.record.errors.finalizeFileMissing': {
+    en: 'The video file did not appear in time. Record the answer again.',
+    fa: 'فایل ویدیو به‌موقع آماده نشد. پاسخ را دوباره ضبط کنید.',
+  },
+  'library.record.errors.finalizeInvalid': {
+    en: 'The video file is damaged or has no sound. Record the answer again.',
+    fa: 'فایل ویدیو خراب است یا صدا ندارد. پاسخ را دوباره ضبط کنید.',
+  },
+  'library.record.errors.finalizeLost': {
+    en: 'The server restarted while it processed the recording. Record the answer again.',
+    fa: 'سرور هنگام پردازش ضبط دوباره راه‌اندازی شد. پاسخ را دوباره ضبط کنید.',
+  },
+  'library.record.errors.finalizeFailed': {
+    en: 'Processing the recording failed. Record the answer again.',
+    fa: 'پردازش ضبط ناموفق بود. پاسخ را دوباره ضبط کنید.',
+  },
+  'library.record.job.queued': {
+    en: 'Waiting to process the recording',
+    fa: 'در انتظار پردازش ضبط',
+  },
+  'library.record.job.running': {
+    en: 'Processing the recording',
+    fa: 'در حال پردازش ضبط',
+  },
+  'library.record.job.done': {
+    en: 'The recording is ready. Save it to the library.',
+    fa: 'ضبط آماده است. آن را در کتابخانه ذخیره کنید.',
+  },
+  'library.record.job.slow': {
+    en: 'The recording is still being processed. Check again in a minute.',
+    fa: 'ضبط هنوز در حال پردازش است. یک دقیقه دیگر دوباره بررسی کنید.',
+  },
+  'library.record.job.checkAgain': {
+    en: 'Check again',
+    fa: 'بررسی دوباره',
+  },
+  'library.record.unsaved': {
+    en: 'Finished recordings not in the library',
+    fa: 'ضبط‌های آماده‌ای که در کتابخانه نیستند',
+  },
+  'library.record.attach': {
+    en: 'Attach to this answer',
+    fa: 'افزودن به این پاسخ',
+  },
 };
 
 type Tree = { [key: string]: string | Tree };

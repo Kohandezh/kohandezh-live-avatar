@@ -4,10 +4,11 @@ export { useTtsGeneration } from './useTtsGeneration';
 export {
   composerReducer,
   setComposerText,
-  setLastAudioAssetId,
+  setLastAudio,
   selectComposerText,
-  selectLastAudioAssetId,
+  selectLastAudio,
   DEFAULT_COMPOSER_TEXT,
   MAX_TEXT_LENGTH,
 } from './composerSlice';
-export type { ComposerState, WithComposer } from './composerSlice';
+export type { ComposerState, LastAudio, WithComposer } from './composerSlice';
+export { speechErrorKey } from './speechErrors';

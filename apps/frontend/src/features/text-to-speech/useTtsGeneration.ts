@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux';
 import { assetsApi, describeError } from '@/shared/api';
 import { audioAssetFromDto, type AudioAsset } from '@/entities/audio-asset';
 import { useDiagnosticsLog } from '@/features/diagnostics';
-import { setLastAudioAssetId } from './composerSlice';
+import { setLastAudio } from './composerSlice';
 
 /**
  * Generate Audio: text -> POST /tts/generate -> AudioAsset. The server deduplicates identical
@@ -18,8 +18,8 @@ export function useTtsGeneration() {
       const dto = await assetsApi.generateTts({ text });
       return audioAssetFromDto(dto);
     },
-    onSuccess: (asset) => {
-      dispatch(setLastAudioAssetId(asset.id));
+    onSuccess: (asset, text) => {
+      dispatch(setLastAudio({ id: asset.id, durationMs: asset.durationMs, text }));
       log.info('tts', asset.cacheHit ? 'Audio served from cache' : 'ElevenLabs audio generated', {
         asset_id: asset.id,
         duration_ms: asset.durationMs,

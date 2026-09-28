@@ -270,8 +270,8 @@ export const mockJobIds = {
 const MOCK_FINALIZED_VIDEO_ID = '33333333-3333-4333-8333-333333333333';
 
 /**
- * Fixture jobs, each with the user who started it (null: a system job, admin only). The mock
- * has no recording routes, so nothing enqueues a job here: finalize is backend only.
+ * Fixture jobs, each with the user who started it (null: a system job, admin only). The jobs the
+ * mock's own finalize starts are further down, with the recording chain.
  */
 const mockJobs: Record<string, { createdBy: string | null; body: unknown }> = {
   [mockJobIds.done]: {
@@ -417,8 +417,8 @@ export function resetMockLibrary(): void {
     ...recording,
   }));
   mockLibrary.created = 0;
+  resetMockRecordingChain();
 }
-resetMockLibrary();
 
 /** Mirrors the backend's transition table: target status, and the statuses it may start from. */
 const LIBRARY_TRANSITIONS: Record<LibraryStatus, readonly LibraryStatus[]> = {
@@ -794,12 +794,16 @@ const libraryRoutes: MockRoute[] = [
     },
   },
   {
-    // The admin review player's source. The mock has no asset media: only the user video route
-    // serves its one fixture.
+    // The admin review player's source. Only a video the mock's own recording chain finished has
+    // media (the one fixture); the seeded videos have none.
     method: 'get',
     path: /^\/api\/assets\/video\/[^/]+$/,
     handle(request) {
       requireAdmin(request);
+      const id = decodeURIComponent(request.url.pathname.split('/').pop() ?? '');
+      if (mockChain.videos.get(id)?.status === 'VIDEO_GENERATED') {
+        return { body: recordedAnswerBlob() };
+      }
       throw new MockHttpError(404, 'not_found', 'video asset was not found');
     },
   },
@@ -817,6 +821,292 @@ const libraryRoutes: MockRoute[] = [
         }),
       );
       return { body: page(items, request.url.searchParams) };
+    },
+  },
+];
+
+
+/*
+ * The Phase 1 recording chain behind the Record answer screen: TTS, the avatar session, speak,
+ * the Egress recording and its finalize job (docs/API.md, "Phase 1 workbench endpoints"). Nothing
+ * reaches a provider. A finalize job answers `queued`, then `running`, then `done`, one step per
+ * poll, and its video then shows up as a finished recording no entry uses (REQ-042).
+ */
+
+/** The mock's speech rate: the generated audio lasts this long per character of text. */
+export const MOCK_TTS_MS_PER_CHARACTER = 70;
+
+/**
+ * A marker anywhere in the text picks a failure, so every state of the screen can be walked:
+ * `speechPayment` makes speak answer `502 elevenlabs_payment` (REQ-040), `finalizeFails` ends the
+ * finalize job `failed` with `egress_failure`, and `finalizeSlow` keeps it `running` for good.
+ */
+export const mockRecordingTriggers = {
+  speechPayment: '#payment',
+  finalizeFails: '#fail',
+  finalizeSlow: '#slow',
+} as const;
+
+/** Mirrors the request schema's limit (`.../src/schemas.py:70`). */
+const MOCK_MAX_SESSION_SECONDS = 3600;
+
+interface MockChainVideo {
+  id: string;
+  externalId: string;
+  sessionId: string;
+  text: string;
+  status: 'DRAFT' | 'VIDEO_GENERATED';
+  jobId: string | null;
+}
+
+interface MockChainJob {
+  createdBy: string;
+  video: MockChainVideo;
+  outcome: 'done' | 'failed' | 'slow';
+  polls: number;
+}
+
+const mockChain = {
+  sessions: new Set<string>(),
+  /** The Egress running in a session: session id to video id. */
+  egress: new Map<string, string>(),
+  videos: new Map<string, MockChainVideo>(),
+  jobs: new Map<string, MockChainJob>(),
+  counter: 0,
+};
+
+function resetMockRecordingChain(): void {
+  mockChain.sessions.clear();
+  mockChain.egress.clear();
+  mockChain.videos.clear();
+  mockChain.jobs.clear();
+  mockChain.counter = 0;
+}
+
+/** A UUID-shaped id that starts with `prefix` (8 hex digits), unique until the next reset. */
+function mockChainId(prefix: string): string {
+  mockChain.counter += 1;
+  return `${prefix}-0000-4000-8000-${String(mockChain.counter).padStart(12, '0')}`;
+}
+
+function spokenDurationMs(text: string): number {
+  return text.trim().replace(/\s+/g, ' ').length * MOCK_TTS_MS_PER_CHARACTER;
+}
+
+function requireChainSession(body: unknown): string {
+  const sessionId = readString(body, 'session_id');
+  if (!mockChain.sessions.has(sessionId)) {
+    throw new MockHttpError(404, 'not_found', 'session was not found');
+  }
+  return sessionId;
+}
+
+/** Done or failed: its third poll answered `done` or `failed`. A slow job never finishes. */
+function isChainJobFinished(job: MockChainJob): boolean {
+  return job.outcome !== 'slow' && job.polls >= 3;
+}
+
+/** The job's answer for this poll. Moving on to `done` stores the finished recording. */
+function pollChainJob(job: MockChainJob): unknown {
+  job.polls += 1;
+  if (job.polls === 1) return { status: 'queued' };
+  if (job.polls === 2 || job.outcome === 'slow') return { status: 'running' };
+  if (job.outcome === 'failed') {
+    return {
+      status: 'failed',
+      error: { code: 'egress_failure', message: 'The recording file did not appear in time.' },
+    };
+  }
+  const { video } = job;
+  const durationMs = spokenDurationMs(video.text);
+  if (video.status === 'DRAFT') {
+    video.status = 'VIDEO_GENERATED';
+    mockLibrary.recordings.push({
+      videoAssetId: video.id,
+      externalId: video.externalId,
+      answerText: video.text.trim().replace(/\s+/g, ' '),
+      durationMs,
+      createdAt: new Date().toISOString(),
+      status: 'VIDEO_GENERATED',
+    });
+  }
+  return {
+    status: 'done',
+    result: {
+      id: video.id,
+      status: 'VIDEO_GENERATED',
+      media_url: `/api/assets/video/${video.id}`,
+      probe: {
+        container: 'mp4',
+        video_codec: 'h264',
+        audio_codec: 'aac',
+        width: 1280,
+        height: 720,
+        duration_ms: durationMs,
+        frame_rate: 25,
+      },
+    },
+  };
+}
+
+const ttsRequestSchema = z.object({ text: z.string().trim().min(1).max(5000) });
+const sessionRequestSchema = z.object({
+  max_session_duration: z.number().int().min(1).max(MOCK_MAX_SESSION_SECONDS).optional(),
+});
+
+const recordingRoutes: MockRoute[] = [
+  {
+    method: 'post',
+    path: /^\/api\/tts\/generate$/,
+    handle(request) {
+      requireAdmin(request);
+      const parsed = ttsRequestSchema.safeParse(request.body);
+      if (!parsed.success) throw libraryValidationError();
+      const id = mockChainId('88888888');
+      return {
+        body: {
+          id,
+          cache_key: id.replace(/-/g, '').padEnd(64, '0'),
+          status: 'AUDIO_GENERATED',
+          duration_ms: spokenDurationMs(parsed.data.text),
+          sample_rate: 24000,
+          format: 'pcm_s16le',
+          media_url: `/api/assets/audio/${id}`,
+          cache_hit: false,
+        },
+      };
+    },
+  },
+  {
+    // A quarter second of silence: the mock has no voice, only a playable preview.
+    method: 'get',
+    path: /^\/api\/assets\/audio\/[^/]+$/,
+    handle(request) {
+      requireAdmin(request);
+      return { body: new ArrayBuffer((24000 / 4) * 2) };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/avatar\/session$/,
+    handle(request) {
+      requireAdmin(request);
+      if (!sessionRequestSchema.safeParse(request.body ?? {}).success) {
+        throw libraryValidationError();
+      }
+      const id = mockChainId('22222222');
+      mockChain.sessions.add(id);
+      return {
+        body: {
+          id,
+          provider_session_id: `mock-provider-${id}`,
+          room_name: `mock-room-${mockChain.counter}`,
+          livekit_url: 'wss://livekit.mock.invalid',
+          livekit_client_token: 'mock-livekit-client-token',
+          sandbox: true,
+          transport: 'byo',
+        },
+      };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/avatar\/speak$/,
+    handle(request) {
+      requireAdmin(request);
+      requireChainSession(request.body);
+      if (readString(request.body, 'text').includes(mockRecordingTriggers.speechPayment)) {
+        throw new MockHttpError(
+          502,
+          'elevenlabs_payment',
+          'ElevenLabs refused the speech because the plan is not paid.',
+        );
+      }
+      return {
+        body: {
+          event_id: mockChainId('99999999'),
+          audio_asset_id: null,
+          cache_hit: false,
+          interrupted: false,
+        },
+      };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/avatar\/interrupt$/,
+    handle(request) {
+      requireAdmin(request);
+      requireChainSession(request.body);
+      return { body: { status: 'interrupted' } };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/avatar\/close$/,
+    handle(request) {
+      requireAdmin(request);
+      const sessionId = requireChainSession(request.body);
+      mockChain.sessions.delete(sessionId);
+      return { body: { status: 'closed' } };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/assets\/generate-video$/,
+    handle(request) {
+      requireAdmin(request);
+      const sessionId = requireChainSession(request.body);
+      if (mockChain.egress.has(sessionId)) {
+        throw new MockHttpError(
+          409,
+          'duplicate_generation',
+          'A recording of this session is already running.',
+        );
+      }
+      const video: MockChainVideo = {
+        id: mockChainId('77777777'),
+        externalId: readString(request.body, 'asset_id') || `AVATAR_${mockChain.counter}`,
+        sessionId,
+        text: readString(request.body, 'text'),
+        status: 'DRAFT',
+        jobId: null,
+      };
+      mockChain.videos.set(video.id, video);
+      mockChain.egress.set(sessionId, video.id);
+      return { body: { id: video.id, egress_id: `EG_MOCK_${mockChain.counter}`, status: 'RECORDING' } };
+    },
+  },
+  {
+    method: 'post',
+    path: /^\/api\/assets\/video\/[^/]+\/finalize$/,
+    handle(request) {
+      const admin = requireAdmin(request);
+      const id = decodeURIComponent(request.url.pathname.split('/').at(-2) ?? '');
+      const video = mockChain.videos.get(id);
+      if (!video) throw new MockHttpError(404, 'not_found', 'video asset was not found');
+      const current = video.jobId ? mockChain.jobs.get(video.jobId) : undefined;
+      // A repeated finalize while the job is queued or running gets the same job (docs/API.md).
+      if (video.jobId && current && !isChainJobFinished(current)) {
+        return { status: 202, body: { jobId: video.jobId } };
+      }
+      if (video.status !== 'DRAFT') {
+        throw new MockHttpError(409, 'invalid_status_transition', 'The video is not a draft.');
+      }
+      const jobId = mockChainId('44444444');
+      mockChain.jobs.set(jobId, {
+        createdBy: admin.id,
+        video,
+        outcome: video.text.includes(mockRecordingTriggers.finalizeFails)
+          ? 'failed'
+          : video.text.includes(mockRecordingTriggers.finalizeSlow)
+            ? 'slow'
+            : 'done',
+        polls: 0,
+      });
+      video.jobId = jobId;
+      mockChain.egress.delete(video.sessionId);
+      return { status: 202, body: { jobId } };
     },
   },
 ];
@@ -1133,6 +1423,10 @@ export const routes: MockRoute[] = [
     handle(request) {
       const user = requireUser(request);
       const jobId = decodeURIComponent(request.url.pathname.split('/').pop() ?? '');
+      const chainJob = mockChain.jobs.get(jobId);
+      if (chainJob && (user.role === 'admin' || chainJob.createdBy === user.id)) {
+        return { body: pollChainJob(chainJob) };
+      }
       const job = mockJobs[jobId];
       // Same rule as the backend: the job's creator or an admin. Anyone else gets the same 404
       // as an unknown id.
@@ -1143,4 +1437,7 @@ export const routes: MockRoute[] = [
     },
   },
   ...libraryRoutes,
+  ...recordingRoutes,
 ];
+
+resetMockLibrary();

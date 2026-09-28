@@ -6,14 +6,15 @@ PWA, or a script embedded on the customer's own website. Everything runs in Live
 no credits are spent, and every session ends after about 60 seconds.
 
 The repository also still has the Phase 1 workbench: a local, Dockerized proof for a hybrid
-cached/live Persian avatar, at `/avatar` on the web target. The page still opens, but every API call
-it makes needs an admin session. See the Phase 1 section
+cached/live Persian avatar. It is now the Record answer screen of the admin target
+(`/library/record`), and needs an admin session. See the Phase 1 section
 below. WordPress, CRM, RAG, and payments are permanently out of scope for this repository.
 
 ## Architecture
 
 This diagram and the "Services", "Provider contracts", and "One real smoke test" sections below
-describe the Phase 1 workbench only (the LiveAvatar LITE stack at `/avatar` on the web target).
+describe the Phase 1 workbench only (the LiveAvatar LITE stack behind Record answer, `/library/record`
+on the admin target).
 The assistant, the phone login, and the website widget run through the same `orchestrator`
 container but do not need LiveKit, Egress, or a public `wss://` endpoint; see `docs/API.md` and
 `ARCHITECTURE.md` for that part of the system.
@@ -129,13 +130,13 @@ One codebase builds four targets: `mobile` (`http://localhost:5173`), `web`
 (`http://localhost:5174`), `admin` (`http://localhost:5175`), and `widget`
 (`http://localhost:5176`, the demo page for the website widget). The assistant lives at
 `/assistant` on the mobile and web targets, and it is the screen a user lands on after login. The
-Phase 1 workbench lives on the web target at `/avatar` as a development tool; it is not part of
-the product a user sees. The page still opens, but every API call it makes needs an admin session.
+Phase 1 workbench is the Record answer screen of the admin target (`/library/record`), where staff
+record answers for the answer library; it is not part of the product a user sees.
 
 ```text
 apps/frontend/src
 ├── app/        one entry per target (mobile, web, admin, widget), providers, router, store
-├── pages/      home, assistant, avatar-session (the workbench), login, profile, admin, not-found
+├── pages/      home, assistant, login, profile, admin (Record answer is the workbench), not-found
 ├── features/   assistant, avatar-session, text-to-speech, recording, diagnostics, authentication, settings
 ├── entities/   assistant-session, session, audio-asset, video-asset, user, dashboard (DTO -> domain mapping)
 ├── i18n/       en and fa resources

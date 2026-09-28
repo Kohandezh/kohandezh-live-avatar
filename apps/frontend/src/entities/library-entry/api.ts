@@ -5,6 +5,7 @@ import {
   adminLibraryEntrySchema,
   libraryRecordingPageSchema,
   librarySuggestionListSchema,
+  type AdminLibraryEntry,
   type ChangeLibraryStatusInput,
   type CreateLibraryEntryInput,
   type LibraryEntryListParams,
@@ -60,6 +61,19 @@ export async function listLibraryEntries(params: LibraryEntryListParams = {}) {
     params,
   });
   return adminLibraryEntryPageSchema.parse(data);
+}
+
+/**
+ * Admin only. Every `ready` entry, read page by page: the Attach picker of the Record answer
+ * screen (REQ-042) matches a recording's text against all of them.
+ */
+export async function listReadyLibraryEntries() {
+  const entries: AdminLibraryEntry[] = [];
+  for (let page = 1; ; page += 1) {
+    const result = await listLibraryEntries({ status: 'ready', page, pageSize: 100 });
+    entries.push(...result.items);
+    if (result.items.length === 0 || entries.length >= result.total) return entries;
+  }
 }
 
 /**

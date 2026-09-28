@@ -1,19 +1,31 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
-import { describeError, isApiError } from '@/shared/api';
+import { isApiError } from '@/shared/api';
 import { useOnline } from '@/shared/hooks';
 import { formatNumber } from '@/i18n';
 import { Card, TextField, Label, TextArea as HeroTextArea, Description } from '@heroui/react';
 import { Button, InlineAlert } from '@/shared/ui';
 import { AudioPreview } from './AudioPreview';
 import { MAX_TEXT_LENGTH, selectComposerText, setComposerText } from './composerSlice';
+import { speechErrorKey } from './speechErrors';
 import { useTtsGeneration } from './useTtsGeneration';
 
+interface Props {
+  /**
+   * An approved text to speak as it is (REQ-074). The field shows it read only, and the
+   * operator's own draft stays in the composer slice untouched.
+   */
+  lockedText?: string;
+}
+
 /** Persian text composer + Generate Audio + playback of the resulting asset. */
-export function TtsComposer() {
+export function TtsComposer({ lockedText }: Props) {
   const { t, i18n } = useTranslation();
+  const { t: tAdmin } = useTranslation('admin');
   const dispatch = useDispatch();
-  const text = useSelector(selectComposerText);
+  const draft = useSelector(selectComposerText);
+  const text = lockedText ?? draft;
+  const isLocked = lockedText !== undefined;
   const online = useOnline();
   const tts = useTtsGeneration();
   const blank = text.trim().length === 0;
@@ -24,14 +36,16 @@ export function TtsComposer() {
         <h2 className="text-base font-semibold text-foreground">{t('tts.title')}</h2>
       </div>
       <div className="flex flex-col gap-4">
-        <TextField isDisabled={tts.isPending} fullWidth>
+        <TextField isDisabled={tts.isPending} isReadOnly={isLocked} fullWidth>
           <Label>{t('tts.label')}</Label>
           <HeroTextArea
             id="tts-text"
             name="text"
             rows={5}
             value={text}
-            onChange={(event) => dispatch(setComposerText(event.target.value))}
+            onChange={(event) => {
+              if (!isLocked) dispatch(setComposerText(event.target.value));
+            }}
             maxLength={MAX_TEXT_LENGTH}
             placeholder={t('tts.placeholder')}
             dir="auto"
@@ -63,12 +77,15 @@ export function TtsComposer() {
         {tts.error && (
           <InlineAlert
             status="danger"
-            title={t('tts.error')}
-            onRetry={
-              isApiError(tts.error) && !tts.error.isRetryable ? undefined : () => tts.generate(text)
-            }
+            title={tAdmin(speechErrorKey(tts.error))}
+            onRetry={() => tts.generate(text)}
           >
-            <span className="ltr text-xs">{describeError(tts.error)}</span>
+            {/* The code stays on its own line, in LTR, so an admin can quote it. */}
+            {isApiError(tts.error) && tts.error.serverCode ? (
+              <span dir="ltr" className="block text-xs">
+                {tts.error.serverCode}
+              </span>
+            ) : null}
           </InlineAlert>
         )}
 

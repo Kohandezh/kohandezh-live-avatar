@@ -24,6 +24,12 @@ import {
 import type { RoomCallbacks } from './types';
 
 /**
+ * LiveAvatar production ends a session after 300 seconds, and one answer must fit one session
+ * (REQ-035). The request schema allows up to 3600, so the cap is set here.
+ */
+const MAX_SESSION_SECONDS = 300;
+
+/**
  * Drives the avatar session lifecycle:
  *   Start  -> POST /avatar/session -> LiveKit connect with the scoped browser token
  *   Speak  -> POST /avatar/speak (server: ElevenLabs -> LiveAvatar; waits for speak_ended)
@@ -74,7 +80,7 @@ export function useAvatarSession() {
   const start = useMutation({
     mutationFn: async (): Promise<AvatarSession> => {
       dispatch(sessionStarting());
-      const dto = await avatarApi.createSession({});
+      const dto = await avatarApi.createSession({ max_session_duration: MAX_SESSION_SECONDS });
       const session = sessionFromDto(dto);
       dispatch(sessionCreated(session));
       log.info('avatar', 'Session created; scoped browser token received (not logged)', {

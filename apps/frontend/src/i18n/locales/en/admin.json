@@ -110,6 +110,7 @@
       "save": "Save changes",
       "markReady": "Mark ready",
       "reopen": "Reopen text",
+      "record": "Record this answer",
       "publish": "Publish",
       "reject": "Reject video",
       "unpublish": "Unpublish",
@@ -166,6 +167,35 @@
       "counter": "{{count}} characters",
       "overSoft": "Longer than 350 characters. This is allowed only when the answer has a phone number.",
       "overHard": "Longer than 480 characters. Shorten it before marking it ready."
+    },
+    "record": {
+      "title": "Record answer",
+      "save": "Save to library",
+      "needsAccounts": "Recording needs an active LiveAvatar account and a paid ElevenLabs plan.",
+      "needsAudio": "Generate the audio first, so its length can be checked.",
+      "errors": {
+        "sessionFailed": "The avatar session could not start. Check that the LiveAvatar account is active, then try again.",
+        "speechPayment": "ElevenLabs refused the speech because the plan is not paid. Pay the ElevenLabs plan, then try again.",
+        "speechBusy": "ElevenLabs is busy or its quota is used up. Wait a minute, then try again.",
+        "speechFailed": "The avatar could not speak the answer. Check that the ElevenLabs plan is paid and active, then try again.",
+        "recordingUnavailable": "Recording is not available on this server. It needs the BYO transport and a public LiveKit address.",
+        "recordingDuplicate": "This recording has already started. Stop it, or start a new avatar session.",
+        "recordingFailed": "The recording could not start. Try again.",
+        "finalizeFileMissing": "The video file did not appear in time. Record the answer again.",
+        "finalizeInvalid": "The video file is damaged or has no sound. Record the answer again.",
+        "finalizeLost": "The server restarted while it processed the recording. Record the answer again.",
+        "finalizeFailed": "Processing the recording failed. Record the answer again."
+      },
+      "job": {
+        "queued": "Waiting to process the recording",
+        "running": "Processing the recording",
+        "done": "The recording is ready. Save it to the library.",
+        "slow": "The recording is still being processed. Check again in a minute.",
+        "checkAgain": "Check again"
+      },
+      "unsaved": "Finished recordings not in the library",
+      "attach": "Attach to this answer",
+      "otherAnswer": "This recording is of another answer. You can find it in the list below."
     }
   }
 }

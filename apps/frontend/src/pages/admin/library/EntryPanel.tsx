@@ -40,13 +40,14 @@ type Action =
   | 'save'
   | 'markReady'
   | 'reopen'
+  | 'record'
   | 'publish'
   | 'reject'
   | 'unpublish'
   | 'withdraw';
 
 /** The status each action asks for, through the one status route (REQ-065). */
-const ACTION_TARGET: Record<Exclude<Action, 'save'>, LibraryStatus> = {
+const ACTION_TARGET: Record<Exclude<Action, 'save' | 'record'>, LibraryStatus> = {
   markReady: 'ready',
   reopen: 'pending',
   publish: 'published',
@@ -57,12 +58,11 @@ const ACTION_TARGET: Record<Exclude<Action, 'save'>, LibraryStatus> = {
 
 /**
  * The actions of each status. An action the transition table would refuse is not rendered
- * (section 10). Record this answer (REQ-074) belongs to the Record answer screen, a later step,
- * so `ready` does not offer it yet.
+ * (section 10). Record this answer (REQ-074) opens the Record answer screen with the entry.
  */
 const STATUS_ACTIONS: Record<LibraryStatus, readonly Action[]> = {
   pending: ['save', 'withdraw', 'markReady'],
-  ready: ['save', 'withdraw', 'reopen'],
+  ready: ['save', 'withdraw', 'reopen', 'record'],
   draft: ['save', 'withdraw', 'reject', 'publish'],
   published: ['withdraw', 'unpublish'],
   withdrawn: [],
@@ -179,7 +179,7 @@ export function EntryPanelContent({ row }: { row: AdminLibraryEntry }) {
   const unsavedQuestion = unsavedText('question');
   const unsavedAnswer = unsavedText('answerText');
 
-  async function run(action: Action) {
+  async function run(action: Exclude<Action, 'record'>) {
     // The status the screen shows now. A status change sends it, so a stale screen gets a 409.
     const fromStatus = entry.status;
     setErrorKey(null);
@@ -224,7 +224,7 @@ export function EntryPanelContent({ row }: { row: AdminLibraryEntry }) {
   }
 
   const actionVariant = (action: Action) =>
-    action === 'markReady' || action === 'publish'
+    action === 'markReady' || action === 'publish' || action === 'record'
       ? 'primary'
       : action === 'withdraw' || action === 'reject'
         ? 'danger-soft'
@@ -383,7 +383,10 @@ export function EntryPanelContent({ row }: { row: AdminLibraryEntry }) {
                   isPending={running === action}
                   isDisabled={isActionDisabled(action)}
                   onPress={() => {
-                    if (action === 'withdraw' || action === 'reject') {
+                    if (action === 'record') {
+                      const query = new URLSearchParams({ entry: entry.id, key: entry.key });
+                      navigate(`/library/record?${query.toString()}`);
+                    } else if (action === 'withdraw' || action === 'reject') {
                       setConfirming(action);
                     } else {
                       void run(action);

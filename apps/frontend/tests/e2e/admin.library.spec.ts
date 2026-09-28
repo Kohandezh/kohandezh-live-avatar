@@ -161,3 +161,70 @@ test('a non-admin at /library gets the forbidden page (section 10)', async ({
   await expect(page).toHaveURL(/\/forbidden$/);
   await expect(page.getByRole('heading', { name: 'No access' })).toBeVisible();
 });
+
+/**
+ * Moved from `web.contrast.spec.ts` with the workbench (REQ-037). The workbench once pinned itself
+ * to light with `data-theme="light"` and painted white cards on a near-black page. Nothing on the
+ * Record answer screen may be light enough to read as white in dark.
+ */
+test('dark: the Record answer screen follows the theme instead of pinning itself to light', async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    window.localStorage.setItem(
+      'settings',
+      JSON.stringify({ language: 'en', theme: 'dark', reduceTransparency: 0 }),
+    ),
+  );
+  await openLibrary(page);
+  await page.getByRole('link', { name: 'Record answer' }).click();
+  await page.getByRole('heading', { name: 'Text to speech' }).waitFor();
+
+  await expect(page.locator('[data-theme="light"]')).toHaveCount(0);
+
+  // Paints each colour on a canvas to resolve `oklch()` and `color-mix()`, then counts opaque
+  // backgrounds whose luminance reads as white. Stringified, so it holds no closure values.
+  const nearWhite = await page.evaluate(`(() => {
+    function toRgba(input) {
+      const key = String(input || '').trim();
+      if (!key || key === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, 1, 1);
+      ctx.fillStyle = key;
+      ctx.fillRect(0, 0, 1, 1);
+      const onBlack = ctx.getImageData(0, 0, 1, 1).data;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 1, 1);
+      ctx.fillStyle = key;
+      ctx.fillRect(0, 0, 1, 1);
+      const onWhite = ctx.getImageData(0, 0, 1, 1).data;
+      let alpha = 0;
+      for (let i = 0; i < 3; i += 1) alpha += 1 - (onWhite[i] - onBlack[i]) / 255;
+      alpha = Math.min(1, Math.max(0, alpha / 3));
+      if (alpha === 0) return { r: 0, g: 0, b: 0, a: 0 };
+      return { r: onBlack[0] / alpha, g: onBlack[1] / alpha, b: onBlack[2] / alpha, a: alpha };
+    }
+    function luminance(c) {
+      const channel = (v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+    }
+    let count = 0;
+    for (const el of document.querySelectorAll('main *')) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 4 || rect.height < 4) continue;
+      const own = toRgba(getComputedStyle(el).backgroundColor);
+      if (own.a < 0.5) continue;
+      if (luminance(own) > 0.7) count += 1;
+    }
+    return count;
+  })()`);
+
+  expect(nearWhite as number).toBe(0);
+});

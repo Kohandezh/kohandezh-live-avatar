@@ -26,8 +26,9 @@ function WebShell() {
   const audioMatch = useMatch('/audio');
   const settingsMatch = useMatch('/settings/*');
 
-  // Named product routes only, so a mistyped URL, `/forbidden`, or the Phase 1
-  // workbench at `/avatar` never show chrome that belongs to a page it isn't.
+  // Named product routes only, so a mistyped URL or `/forbidden` never shows chrome that
+  // belongs to a page it isn't. (The Phase 1 workbench left this target: it is Record answer,
+  // `/library/record`, on the admin target.)
   const isProductRoute = Boolean(videoMatch || audioMatch || settingsMatch);
 
   // Same routes as MobileLayout's `isFullBleedRoute`, and the same reason: `/video` and
