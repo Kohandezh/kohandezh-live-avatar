@@ -90,8 +90,7 @@ out-of-scope but real, count it as `info` at minimum and say it is pre-existing.
 
 ## Reply
 
-After the file is written, answer the leader only, through Herdr with `herdr agent send`
-plus `herdr pane send-keys <your-pane-id> Enter`, using the envelope from your task block.
+After the file is written, answer the leader only, through Herdr with `herdr agent prompt foreman "<envelope>"`, using the envelope from your task block.
 Send `CHANGES_REQUESTED` when material findings remain and `ACCEPTED` when the patch is
 mergeable as-is. Put the
 report path in `ARTIFACTS` and the verdict gist in `SUMMARY`. Do not message the

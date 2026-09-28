@@ -75,6 +75,6 @@ risk as `info` at minimum.
 ## Reply
 
 After the file is written, send `ACCEPTED` or `CHANGES_REQUESTED` to the leader only,
-through Herdr with `herdr agent send` plus `herdr pane send-keys <your-pane-id> Enter`,
+through Herdr with `herdr agent prompt foreman "<envelope>"`,
 using the envelope from your task block. Put the
 report path in `ARTIFACTS`. Do not paste the report into the message.
