@@ -529,9 +529,9 @@ so a refused request never reaches a provider:
 - `403 account_disabled` for a disabled account.
 
 An admin gets the route's own answer, including its `404`, `409` and `422` errors. `/ws/status`
-stays open: it sends only the number of active LITE sessions. The web `/avatar` workbench now
-gets `401` or `403` for anyone who is not an admin, because recording moves into the admin target
-(ADR 0014, item 7: Option B first).
+stays open: it sends only the number of active LITE sessions. The workbench that calls these
+routes is Record answer (`/library/record`) on the admin target; the web `/avatar` page is gone,
+because recording moved into the admin target (ADR 0014, item 7: Option B first).
 
 ### PATCH /api/assets/{kind}/{id}/status
 

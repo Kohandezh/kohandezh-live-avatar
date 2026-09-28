@@ -139,10 +139,6 @@
       "title": "Language",
       "description": "The language of the interface."
     },
-    "avatarConsole": {
-      "title": "Avatar console",
-      "description": "Phase 1 workbench for staff."
-    },
     "account": {
       "title": "Account"
     }
@@ -204,7 +200,6 @@
     "previewError": "Audio could not be loaded.",
     "assetId": "Audio asset",
     "download": "Download PCM",
-    "error": "Audio generation failed.",
     "blank": "Enter some text first."
   },
   "session": {
@@ -241,9 +236,7 @@
       "enableAudio": "Enable audio",
       "label": "Avatar video stream"
     },
-    "configError": "The server is not configured for a real LiveAvatar session yet (PUBLIC_LIVEKIT_URL must be a public wss:// endpoint).",
     "error": "The session could not be started.",
-    "speakError": "Sending text to the avatar failed.",
     "labels": {
       "session": "Session",
       "provider": "Provider session",
@@ -402,9 +395,7 @@
     "starting": "Starting Egress…",
     "stop": "Stop recording",
     "finalizing": "Finalizing MP4…",
-    "waiting": "Waiting for the MP4 file",
     "jobId": "Finalize job",
-    "timeout": "The MP4 was not ready after 3 minutes. Retry to check again.",
     "recording": "Recording via LiveKit Egress",
     "needsSession": "Start an avatar session before recording.",
     "idle": "No recording in progress.",
@@ -412,16 +403,6 @@
     "egressId": "Egress",
     "download": "Open generated MP4",
     "probe": "Probe",
-    "done": "MP4 generated. Manual approval is still required.",
-    "error": "Recording failed.",
-    "errors": {
-      "egress_failure": "The MP4 file did not appear in time. Retry to wait for it again.",
-      "egress_invalid_mp4": "The recorded file is not a valid MP4 with H.264 video and audio.",
-      "invalid_status_transition": "This video is no longer a draft, so it cannot be finalized. It may have been rejected.",
-      "not_found": "This video no longer exists.",
-      "worker_lost": "The server stopped while it finalized the MP4. Retry.",
-      "generic": "Finalizing the MP4 failed on the server. Retry."
-    },
     "status": {
       "idle": "Idle",
       "starting": "Starting",

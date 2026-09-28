@@ -19,6 +19,11 @@ import {
 interface FieldProps {
   values: EntryFormValues;
   onChange: <K extends EntryField>(field: K, value: EntryFormValues[K]) => void;
+  /**
+   * Whether a blank required field shows its error. False on an empty new form until the admin
+   * first tries to save, so the form does not open covered in errors.
+   */
+  showErrors?: boolean;
 }
 
 function TextInputField({
@@ -27,6 +32,7 @@ function TextInputField({
   maxLength,
   values,
   onChange,
+  showErrors = true,
   multiline = false,
 }: FieldProps & {
   field: 'question' | 'category' | 'categoryTitle';
@@ -35,7 +41,7 @@ function TextInputField({
   multiline?: boolean;
 }) {
   const { t } = useTranslation('admin');
-  const isInvalid = isBlank(values, field);
+  const isInvalid = showErrors && isBlank(values, field);
 
   return (
     <TextField
@@ -80,6 +86,7 @@ export function QuestionField(props: FieldProps) {
 export function LabelFields({
   values,
   onChange,
+  showErrors,
   withLanguage,
 }: FieldProps & { withLanguage: boolean }) {
   const { t } = useTranslation('admin');
@@ -102,6 +109,7 @@ export function LabelFields({
       <TextInputField
         values={values}
         onChange={onChange}
+        showErrors={showErrors}
         field="category"
         label={t('library.fields.category')}
         maxLength={100}
@@ -109,6 +117,7 @@ export function LabelFields({
       <TextInputField
         values={values}
         onChange={onChange}
+        showErrors={showErrors}
         field="categoryTitle"
         label={t('library.fields.categoryTitle')}
         maxLength={200}

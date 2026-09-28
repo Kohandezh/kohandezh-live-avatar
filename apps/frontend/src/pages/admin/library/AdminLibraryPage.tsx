@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   Card,
   Chip,
@@ -11,8 +11,10 @@ import {
   SearchField,
   Table,
   TextField,
+  buttonVariants,
 } from '@heroui/react';
 import {
+  adminLibraryEntrySchema,
   useLibraryEntries,
   type AdminLibraryEntry,
   type LibraryLanguage,
@@ -45,19 +47,36 @@ interface SelectFilters {
   technical?: LibraryTechnical;
 }
 
+/** The entry another screen asked to open (Record answer, after a save or an attach). */
+function entryToOpen(state: unknown): AdminLibraryEntry | null {
+  if (!state || typeof state !== 'object' || !('openEntry' in state)) return null;
+  const parsed = adminLibraryEntrySchema.safeParse(state.openEntry);
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * The answer library (REQ-031): every entry, newest first, with filters and a search. Opening a
  * row shows the panel of its state (REQ-032).
  */
 export function AdminLibraryPage() {
   const { t, i18n } = useTranslation('admin');
+  const location = useLocation();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [filters, setFilters] = useState<SelectFilters>({});
   const [page, setPage] = useState(1);
   // The row stays set while the drawer animates closed, so its content does not vanish first.
-  const [openRow, setOpenRow] = useState<AdminLibraryEntry | null>(null);
-  const [isPanelOpen, setPanelOpen] = useState(false);
+  const [openRow, setOpenRow] = useState<AdminLibraryEntry | null>(() =>
+    entryToOpen(location.state),
+  );
+  const [isPanelOpen, setPanelOpen] = useState(() => entryToOpen(location.state) !== null);
+
+  // The entry was opened once. Clear the request, so a reload or Back does not open it again.
+  const hasOpenRequest = entryToOpen(location.state) !== null;
+  useEffect(() => {
+    if (hasOpenRequest) navigate('.', { replace: true, state: null });
+  }, [hasOpenRequest, navigate]);
   const q = useDebouncedValue(search.trim(), 300);
   const categoryFilter = useDebouncedValue(category.trim(), 300);
 
@@ -105,21 +124,26 @@ export function AdminLibraryPage() {
           </h1>
           <p className="mt-1 text-sm text-muted">{t('library.subtitle')}</p>
         </div>
-        <SearchField
-          aria-label={t('library.search')}
-          value={search}
-          onChange={(value) => {
-            setSearch(value);
-            setPage(1);
-          }}
-          className="w-full sm:w-72"
-        >
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder={t('library.search')} />
-            <SearchField.ClearButton aria-label={t('library.clearSearch')} />
-          </SearchField.Group>
-        </SearchField>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <Link to="/library/record" className={buttonVariants({ variant: 'primary' })}>
+            {t('library.record.title')}
+          </Link>
+          <SearchField
+            aria-label={t('library.search')}
+            value={search}
+            onChange={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
+            className="w-full sm:w-72"
+          >
+            <SearchField.Group>
+              <SearchField.SearchIcon />
+              <SearchField.Input placeholder={t('library.search')} />
+              <SearchField.ClearButton aria-label={t('library.clearSearch')} />
+            </SearchField.Group>
+          </SearchField>
+        </div>
       </header>
 
       <div

@@ -17,7 +17,11 @@ describe('useTtsGeneration', () => {
       cacheHit: false,
       sampleRate: 24000,
     });
-    expect(store.getState().composer.lastAudioAssetId).toBe(result.current.asset?.id);
+    expect(store.getState().composer.lastAudio).toEqual({
+      id: result.current.asset?.id,
+      durationMs: 1500,
+      text: 'سلام',
+    });
     const [event] = store.getState().diagnostics.events;
     expect(event?.source).toBe('tts');
     expect(event?.message).toMatch(/ElevenLabs/);

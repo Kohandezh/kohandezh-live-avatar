@@ -69,7 +69,7 @@ demo page rather than the app shell. Everything else is shared. Rules:
 
 ### Navigation
 
-The mobile and web routers share one route tree (web adds the public `/avatar`), guarded the
+The mobile and web routers share one route tree, guarded the
 same way. The admin router guards almost everything behind the admin role instead.
 
 | Route                                                  | mobile                            | web                               | admin                          |
@@ -80,7 +80,7 @@ same way. The admin router guards almost everything behind the admin role instea
 | `/onboarding`                                             | name capture (auth)                | name capture (auth)                |                                  |
 | `/video`, `/audio`                                        | conversation (auth + profile)      | conversation (auth + profile)      |                                  |
 | `/settings`, `/settings/personal`, `/settings/appearance` | account (auth + profile)           | account (auth + profile)           |                                  |
-| `/avatar`                                                 |                                     | Phase 1 workbench (page public; its API calls need an admin session; linked from `/settings` for admins) |                                  |
+| `/library/record`                                        |                                     |                                     | Record answer, the Phase 1 workbench (auth + admin) |
 | `/users`                                                  |                                     |                                     | user table (auth + admin)       |
 | anything else                                             | not found (public)                 | not found (public)                 | not found (auth + admin)        |
 

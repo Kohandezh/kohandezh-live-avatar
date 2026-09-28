@@ -13,6 +13,7 @@ import {
   getLibrarySuggestions,
   listLibraryEntries,
   listLibraryRecordings,
+  listReadyLibraryEntries,
   updateLibraryEntry,
 } from './api';
 import type {
@@ -34,6 +35,7 @@ export const libraryEntryKeys = {
   list: (params: LibraryEntryListParams) =>
     [...libraryEntryKeys.all, 'list', params] as const,
   detail: (id: string) => [...libraryEntryKeys.all, 'detail', id] as const,
+  ready: () => [...libraryEntryKeys.all, 'ready'] as const,
   recordings: (params: RecordingParams) =>
     [...libraryEntryKeys.all, 'recordings', params] as const,
 };
@@ -80,6 +82,26 @@ export function useLibraryEntry(row: AdminLibraryEntry) {
     queryKey: libraryEntryKeys.detail(row.id),
     queryFn: () => getLibraryEntry(row),
     initialData: row,
+  });
+}
+
+/**
+ * One entry found by its id and key, for a screen opened from a link (the Record answer screen of
+ * REQ-074). Shares the panel's cache entry. No request while `ref` is null.
+ */
+export function useLibraryEntryByKey(ref: { id: string; key: string } | null) {
+  return useQuery({
+    queryKey: libraryEntryKeys.detail(ref?.id ?? ''),
+    queryFn: () => getLibraryEntry(ref ?? { id: '', key: '' }),
+    enabled: ref !== null,
+  });
+}
+
+/** Every `ready` entry, for the Attach picker of the unsaved recordings (REQ-042). */
+export function useReadyLibraryEntries() {
+  return useQuery({
+    queryKey: libraryEntryKeys.ready(),
+    queryFn: listReadyLibraryEntries,
   });
 }
 

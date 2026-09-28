@@ -94,7 +94,7 @@ A pass only proves the SMS path. Real login also needs `OTP_DELIVERY=asanak` in 
 | W12 | Account page | Open `/profile` | Avatar initials, name, phone (LTR), email, role chip, member since, Settings with the language select, Log out. |
 | W13 | Logout | Press Log out | Back to the landing, nav links gone, `/assistant` redirects to `/login`. |
 | W14 | Expired session | Delete the `kd_session` cookie, then open `/profile` | Redirect to `/login`; after login you return to `/profile`. |
-| W15 | Admin link | Sign in as admin | Header shows "Avatar console" (`/avatar`); a normal user never sees it but can still open the URL. |
+| W15 | No workbench on web | Sign in as admin, open `/avatar` | The not-found page, and Settings has no "Avatar console" row. The workbench is Record answer (`/library/record`) on the admin target, admin only. |
 | W16 | Offline | DevTools, Network, Offline | Offline banner at the top; login and Start disabled with an offline message; comes back when online. |
 | W17 | Not found | Open `/nothing` | "Page not found" with a button back to home. |
 | W18 | PWA | Production build (`pnpm build:web`, `pnpm preview:web`), install the app, publish a new build | Installs with the Kohandezh icon and name; the update prompt offers Reload; offline shell loads. |

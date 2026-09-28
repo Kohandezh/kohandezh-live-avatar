@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- The admin target has a Record answer screen (`/library/record`, "Record answer" on the Answer
+  library screen). It is the Phase 1 workbench (text to speech, avatar session, recording,
+  diagnostics) and says in one line that recording needs an active LiveAvatar account and a paid
+  ElevenLabs plan. The avatar session is capped at 300 seconds. Record stays off until the audio
+  of the text on screen is generated, so its length is known, and when that audio is longer than
+  4 minutes 30 seconds. While a recording runs, the text is locked, so the avatar says the text
+  that was checked. Every failure shows one message with the server's
+  code under it, including an unpaid ElevenLabs plan (`elevenlabs_payment`). After Stop, the
+  finalize job is polled every 2 seconds with a status line; after 3 minutes it says the recording
+  is still processing and offers Check again. Leaving the screen stops the polling and coming back
+  resumes it. A finished recording is saved to the library as a new entry waiting for video review.
+  "Record this answer" on a ready entry opens the screen with the approved text read only, and
+  "Attach to this answer" gives the entry its video (a recording of another answer's text cannot
+  be attached, and the screen says so). Finished recordings that are not in the
+  library are listed under the steps, with Save to library and, for a ready entry with the same
+  text, Attach. The mock API now runs the whole recording chain, so the screen can be tried
+  without providers.
+- The web route `/avatar` and its Settings row are gone (the workbench moved to the admin target).
+  `/avatar` now shows the not-found page.
 - The daily retention sweep now deletes library media. It removes the MP4 and the video row of a
   withdrawn library entry, and of a video that was rejected from an entry and that no entry uses.
   The entry and every audit row stay. A file that cannot be deleted is skipped and keeps its row,

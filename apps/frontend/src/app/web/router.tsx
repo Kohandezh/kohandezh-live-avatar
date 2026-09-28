@@ -1,6 +1,5 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth, RequireProfile } from '@/features/authentication';
-import { AvatarSessionPage } from '@/pages/avatar-session/AvatarSessionPage';
 import { AudioConversationPage } from '@/pages/conversation/AudioConversationPage';
 import { VideoConversationPage } from '@/pages/conversation/VideoConversationPage';
 import { ForbiddenPage } from '@/pages/forbidden/ForbiddenPage';
@@ -14,10 +13,8 @@ import { SettingsLayout } from '@/pages/settings/SettingsLayout';
 import { WebLayout } from './WebLayout';
 
 /**
- * Same tree as the mobile router, with one extra public route kept from today: the
- * Phase 1 avatar workbench at `/avatar`. It stays unguarded, as it is today. Its only
- * link now lives on `/settings` (admin role, web target only), since the header that
- * used to carry that link is gone (requirement 6).
+ * Same tree as the mobile router. The Phase 1 avatar workbench that used to sit at `/avatar`
+ * moved to the admin target as Record answer (REQ-037), so `/avatar` is the not-found page here.
  */
 export function Router() {
   return (
@@ -26,7 +23,6 @@ export function Router() {
         <Route element={<WebLayout />}>
           <Route index element={<LoginPage redirectTo="/video" />} />
           <Route path="login" element={<LoginPage redirectTo="/video" />} />
-          <Route path="avatar" element={<AvatarSessionPage />} />
           <Route path="forbidden" element={<ForbiddenPage />} />
 
           <Route element={<RequireAuth />}>

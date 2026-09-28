@@ -1,4 +1,7 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { errorBody, server } from '@tests/utils/server';
 import { renderWithProviders } from '@tests/utils/renderWithProviders';
 import { AvatarSessionPanel } from './AvatarSessionPanel';
 import type { AvatarSessionState } from './types';
@@ -102,5 +105,51 @@ describe('AvatarSessionPanel states', () => {
     expect(
       screen.getByRole('button', { name: /send to avatar/i }),
     ).toBeDisabled();
+  });
+});
+
+describe('AvatarSessionPanel errors (section 8)', () => {
+  it('maps any failed session start to one message, with the code and a retry', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post('*/api/avatar/session', () =>
+        HttpResponse.json(errorBody('configuration_error', 'PUBLIC_LIVEKIT_URL must be wss://'), {
+          status: 503,
+        }),
+      ),
+    );
+    renderWithProviders(<AvatarSessionPanel text="سلام" recordingActive={false} />);
+
+    await user.click(screen.getByRole('button', { name: /start avatar/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'The avatar session could not start. Check that the LiveAvatar account is active, then try again.',
+    );
+    expect(screen.getByText('configuration_error')).toHaveAttribute('dir', 'ltr');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+  });
+
+  it.each([
+    ['elevenlabs_payment', 'ElevenLabs refused the speech because the plan is not paid.'],
+    ['elevenlabs_quota', 'ElevenLabs is busy or its quota is used up.'],
+    ['elevenlabs_stream_error', 'The avatar could not speak the answer.'],
+  ])('maps a failed speak with %s to its speech message', async (code, message) => {
+    const user = userEvent.setup();
+    server.use(
+      http.post('*/api/avatar/speak', () =>
+        HttpResponse.json(errorBody(code, 'Fixed English text.'), { status: 502 }),
+      ),
+    );
+    renderWithProviders(<AvatarSessionPanel text="سلام" recordingActive={false} />, {
+      preloadedState: { avatarSession: connected },
+    });
+
+    await user.click(screen.getByRole('button', { name: /send to avatar/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(message);
+    expect(screen.getByText(code)).toHaveAttribute('dir', 'ltr');
+    expect(screen.queryByText(/Fixed English text/)).toBeNull();
   });
 });

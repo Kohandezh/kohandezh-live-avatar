@@ -14,7 +14,22 @@ interface Props {
   audioAssetId: string | null;
   /** Recording needs a room we own. "managed" sessions run in LiveAvatar's room. */
   transport: 'managed' | 'byo' | null;
+  /**
+   * Why Record stays off, if it does (REQ-036, ruling 5): no generated audio of this text yet, so
+   * its length is unknown, or audio too long for one session.
+   */
+  recordBlock: 'needsAudio' | 'tooLong' | null;
+  /**
+   * False when the finished recording is not this screen's to use (another answer's text,
+   * ruling 7). Then the "ready" line is left out.
+   */
+  isResultForThisScreen?: boolean;
 }
+
+const RECORD_BLOCK_KEYS = {
+  needsAudio: 'library.record.needsAudio',
+  tooLong: 'library.errors.tooLong',
+} as const;
 
 type StatusTone = NonNullable<ChipProps['color']>;
 
@@ -27,14 +42,35 @@ const TONE: Record<RecordingStatus, StatusTone> = {
   error: 'danger',
 };
 
-export function RecordingControls({ sessionId, text, audioAssetId, transport }: Props) {
+export function RecordingControls({
+  sessionId,
+  text,
+  audioAssetId,
+  transport,
+  recordBlock,
+  isResultForThisScreen = true,
+}: Props) {
   const { t, i18n } = useTranslation();
+  const { t: tAdmin } = useTranslation('admin');
   const online = useOnline();
   const rec = useRecording();
   const unsupported = transport === 'managed';
   const canStart =
-    online && sessionId !== null && !unsupported && !rec.isActive && rec.status !== 'starting';
+    online &&
+    sessionId !== null &&
+    !unsupported &&
+    recordBlock === null &&
+    !rec.isActive &&
+    rec.status !== 'starting';
   const canStop = online && rec.isActive && rec.status !== 'finalizing';
+
+  // The job status line of REQ-041. One polite live region, so each change is announced once.
+  let jobLine: string | null = null;
+  if (rec.status === 'done') {
+    if (isResultForThisScreen) jobLine = tAdmin('library.record.job.done');
+  } else if (rec.job.isSlow) jobLine = tAdmin('library.record.job.slow');
+  else if (rec.job.status === 'queued') jobLine = tAdmin('library.record.job.queued');
+  else if (rec.job.status === 'running') jobLine = tAdmin('library.record.job.running');
 
   return (
     <Card>
@@ -60,10 +96,16 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
               isPending={rec.stop.isPending}
               onPress={() => rec.stop.mutate()}
             >
-              {rec.stop.isPending ? t('recording.finalizing') : t('recording.stop')}
+              {rec.status === 'finalizing' ? t('recording.finalizing') : t('recording.stop')}
             </Button>
           )}
         </div>
+
+        {recordBlock && !rec.isActive ? (
+          <p className={recordBlock === 'tooLong' ? 'text-sm text-danger' : 'text-sm text-muted'}>
+            {tAdmin(RECORD_BLOCK_KEYS[recordBlock])}
+          </p>
+        ) : null}
 
         {unsupported ? (
           <InlineAlert status="info" title={t('recording.unsupported.title')}>
@@ -86,20 +128,34 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
             />
           </InlineAlert>
         )}
+
+        <div aria-live="polite" className="flex flex-col gap-2">
+          {jobLine !== null ? (
+            <p className={rec.status === 'done' ? 'text-sm text-success' : 'text-sm text-foreground'}>
+              {jobLine}
+            </p>
+          ) : null}
+        </div>
+        {rec.job.isSlow ? (
+          <div>
+            <Button size="sm" variant="secondary" onPress={rec.job.checkAgain}>
+              {tAdmin('library.record.job.checkAgain')}
+            </Button>
+          </div>
+        ) : null}
         {rec.status === 'finalizing' && rec.active && (
-          <InlineAlert status="info" title={t('recording.waiting')}>
-            <KeyValue
-              items={[
-                { label: t('recording.assetId'), value: rec.active.externalId, ltr: true },
-                ...(rec.jobId ? [{ label: t('recording.jobId'), value: rec.jobId, ltr: true }] : []),
-              ]}
-            />
-          </InlineAlert>
+          <KeyValue
+            items={[
+              { label: t('recording.assetId'), value: rec.active.externalId, ltr: true },
+              ...(rec.jobId ? [{ label: t('recording.jobId'), value: rec.jobId, ltr: true }] : []),
+            ]}
+          />
         )}
-        {rec.status === 'error' && rec.error && (
+
+        {rec.status === 'error' && rec.errorKey && (
           <InlineAlert
             status="danger"
-            title={t('recording.error')}
+            title={tAdmin(rec.errorKey)}
             onRetry={rec.isActive ? () => rec.stop.mutate() : undefined}
             actions={
               !rec.isActive ? (
@@ -109,57 +165,45 @@ export function RecordingControls({ sessionId, text, audioAssetId, transport }: 
               ) : undefined
             }
           >
-            {rec.errorKey ? (
-              <span className="text-xs">{t(rec.errorKey)}</span>
-            ) : (
-              <span className="ltr text-xs">{rec.error}</span>
-            )}
+            {/* The code stays on its own line, in LTR, so an admin can quote it. */}
+            {rec.errorCode ? (
+              <span dir="ltr" className="block text-xs">
+                {rec.errorCode}
+              </span>
+            ) : null}
           </InlineAlert>
         )}
         {rec.status === 'done' && rec.result && (
-          <InlineAlert
-            status="success"
-            title={t('recording.done')}
-            actions={
-              <Button size="sm" variant="ghost" onClick={rec.reset}>
-                {t('app.dismiss')}
-              </Button>
-            }
-          >
-            <div className="mt-1 flex flex-col gap-2">
-              <a href={assetsApi.videoUrl(rec.result.id)} target="_blank" rel="noreferrer">
-                {t('recording.download')}
-              </a>
-              <KeyValue
-                items={[
-                  { label: t('recording.assetId'), value: rec.result.id, ltr: true },
-                  { label: t('health.status'), value: rec.result.status, ltr: true },
-                  {
-                    label: t('recording.probe'),
-                    value:
-                      [
-                        rec.result.probe.videoCodec,
-                        rec.result.probe.audioCodec,
-                        rec.result.probe.width && rec.result.probe.height
-                          ? `${rec.result.probe.width}×${rec.result.probe.height}`
-                          : undefined,
-                        rec.result.probe.durationMs !== undefined
-                          ? t('tts.seconds', {
-                              value: formatNumber(
-                                rec.result.probe.durationMs / 1000,
-                                i18n.language,
-                              ),
-                            })
-                          : undefined,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ') || '—',
-                    ltr: true,
-                  },
-                ]}
-              />
-            </div>
-          </InlineAlert>
+          <div className="flex flex-col gap-2">
+            <a href={assetsApi.videoUrl(rec.result.id)} target="_blank" rel="noreferrer">
+              {t('recording.download')}
+            </a>
+            <KeyValue
+              items={[
+                { label: t('recording.assetId'), value: rec.result.id, ltr: true },
+                { label: t('health.status'), value: rec.result.status, ltr: true },
+                {
+                  label: t('recording.probe'),
+                  value:
+                    [
+                      rec.result.probe.videoCodec,
+                      rec.result.probe.audioCodec,
+                      rec.result.probe.width && rec.result.probe.height
+                        ? `${rec.result.probe.width}×${rec.result.probe.height}`
+                        : undefined,
+                      rec.result.probe.durationMs !== undefined
+                        ? t('tts.seconds', {
+                            value: formatNumber(rec.result.probe.durationMs / 1000, i18n.language),
+                          })
+                        : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || '—',
+                  ltr: true,
+                },
+              ]}
+            />
+          </div>
         )}
         {rec.status === 'idle' && sessionId !== null && !unsupported && (
           <p className="text-sm text-muted">{t('recording.idle')}</p>

@@ -76,29 +76,21 @@ describe('Settings (requirements 5, 15)', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('hides the admin-only avatar console row for a normal user, and shows it for an admin, only on the web target', async () => {
+    it('has no avatar console row, not even for an admin on the web target (SC-019)', async () => {
       const originalAppTarget = env.appTarget;
-      // `env.appTarget` is 'test' under Vitest, so the row would be hidden no
-      // matter what `hasRole` says unless this is forced to 'web' here: the
-      // real gate is `hasRole(user, ['admin']) && env.appTarget === 'web'`, and
-      // this test has to exercise both halves of that condition to be able to
-      // fail if either one were removed.
+      // The row used to show for an admin on `web` only, so force `web` to prove it is gone.
       (env as { appTarget: string }).appTarget = 'web';
 
       try {
-        mockSession.set('u-user');
-        const normalUser = renderSettings('/settings');
-        await screen.findByRole('link', { name: /Personal information/ });
-        expect(
-          screen.queryByRole('link', { name: /Avatar console/ }),
-        ).not.toBeInTheDocument();
-        normalUser.unmount();
-
         mockSession.set('u-admin');
         renderSettings('/settings');
+        await screen.findByRole('link', { name: /Personal information/ });
+        expect(screen.queryByRole('link', { name: /Avatar console/ })).toBeNull();
         expect(
-          await screen.findByRole('link', { name: /Avatar console/ }),
-        ).toBeInTheDocument();
+          screen
+            .getAllByRole('link')
+            .filter((link) => link.getAttribute('href') === '/avatar'),
+        ).toHaveLength(0);
       } finally {
         (env as { appTarget: string }).appTarget = originalAppTarget;
       }

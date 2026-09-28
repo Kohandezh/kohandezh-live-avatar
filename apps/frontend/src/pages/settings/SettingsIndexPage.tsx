@@ -2,9 +2,7 @@ import { Card } from '@heroui/react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { hasRole, useSession } from '@/features/authentication';
 import { LanguageSwitcher } from '@/features/settings';
-import { env } from '@/shared/config/env';
 import { ScreenHeader } from '@/shared/ui';
 
 /** Points to the next row. Mirrored in RTL so it keeps pointing "forward". */
@@ -73,14 +71,6 @@ function SettingsControlRow({ children }: { children: ReactNode }) {
  */
 export function SettingsIndexPage() {
   const { t } = useTranslation();
-  const { user } = useSession();
-
-  // Requirement 6 deletes the header, the workbench's only entry point. This
-  // row is a stopgap so staff do not lose access while the route stays live
-  // at `/avatar`; the real fix is moving the workbench to the admin target,
-  // which is a separate task.
-  const showAvatarConsole =
-    hasRole(user, ['admin']) && env.appTarget === 'web';
 
   return (
     <>
@@ -110,13 +100,6 @@ export function SettingsIndexPage() {
                   {t('settings.language.description')}
                 </p>
               </SettingsControlRow>
-              {showAvatarConsole ? (
-                <SettingsNavRow
-                  to="/avatar"
-                  title={t('settings.avatarConsole.title')}
-                  description={t('settings.avatarConsole.description')}
-                />
-              ) : null}
             </ul>
           </Card.Content>
         </Card>

@@ -257,32 +257,3 @@ test('dark: every card has an edge against the page behind it', async ({ page })
 
   expect(worst as number).toBeGreaterThanOrEqual(BOUNDARY_FLOOR);
 });
-
-test('dark: the avatar workbench follows the theme instead of pinning itself to light', async ({
-  page,
-}) => {
-  await useTheme(page, 'dark');
-  await page.goto('/avatar');
-  await page.getByRole('heading', { name: 'Text to speech' }).waitFor();
-
-  // It used to carry data-theme="light" and paint four white cards on a
-  // near-black page. Nothing on it may be light enough to read as white.
-  await expect(page.locator('[data-theme="light"]')).toHaveCount(0);
-
-  const nearWhite = await page.evaluate(
-    `(() => {
-      ${CONTRAST_HELPERS}
-      let count = 0;
-      for (const el of document.querySelectorAll('*')) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width < 4 || rect.height < 4) continue;
-        const own = toRgba(getComputedStyle(el).backgroundColor);
-        if (own.a < 0.5) continue;
-        if (luminance(over(own, groundOf(el.parentElement))) > 0.7) count += 1;
-      }
-      return count;
-    })()`,
-  );
-
-  expect(nearWhite as number).toBe(0);
-});
