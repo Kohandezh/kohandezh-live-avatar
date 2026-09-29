@@ -10,14 +10,23 @@ export interface SuggestedQuestionsProps {
   pendingId: string | null;
   /** Offline: nothing can be downloaded, so nothing can be pressed. */
   isDisabled: boolean;
-  /** Receives the keyboard focus when set, for example the question that was just played. */
+  /**
+   * Receives the keyboard focus when set, for example the question that was just played. When that
+   * question is not in the list (a follow-up was played), the first question takes the focus.
+   */
   focusId: string | null;
+  /**
+   * A visible heading, for a list inside another section: the follow-ups of the lead card
+   * (REQ-077). Without it the list is named by the hidden heading `library.suggestionsTitle`.
+   */
+  title?: string;
 }
 
 /**
- * The suggested questions under Start (REQ-056). Full-width glass buttons, one per question,
- * each a 44 px target. A long question is clamped to two lines on screen; the button's accessible
- * name is still the whole question, because the clamp only hides overflow.
+ * The suggested questions under Start (REQ-056), and the follow-ups on the lead card (REQ-077),
+ * which play the same way. Full-width glass buttons, one per question, each a 44 px target. A
+ * long question is clamped to two lines on screen; the button's accessible name is still the whole
+ * question, because the clamp only hides overflow.
  */
 export function SuggestedQuestions({
   items,
@@ -25,20 +34,29 @@ export function SuggestedQuestions({
   pendingId,
   isDisabled,
   focusId,
+  title,
 }: SuggestedQuestionsProps) {
   const { t } = useTranslation();
   const headingId = useId();
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
 
   useEffect(() => {
-    if (focusId) buttonRefs.current.get(focusId)?.focus();
+    if (!focusId) return;
+    const buttons = buttonRefs.current;
+    (buttons.get(focusId) ?? buttons.values().next().value)?.focus();
   }, [focusId]);
 
   return (
     <section aria-labelledby={headingId} className="w-full">
-      <h2 id={headingId} className="sr-only">
-        {t('library.suggestionsTitle')}
-      </h2>
+      {title ? (
+        <h3 id={headingId} className="mb-2 text-sm font-semibold text-foreground">
+          {title}
+        </h3>
+      ) : (
+        <h2 id={headingId} className="sr-only">
+          {t('library.suggestionsTitle')}
+        </h2>
+      )}
       <ul aria-labelledby={headingId} className="flex w-full flex-col gap-2">
         {items.map((entry) => (
           <li key={entry.id}>

@@ -164,6 +164,12 @@ export interface AssistantOrbProps {
   /** A recorded answer from the library is playing. See `OrbSignals`. Defaults to false. */
   isRecordingPlaying?: boolean;
   /**
+   * The page hides its Start button (the lead card of the answer library holds the one primary
+   * action). At idle the caption would say "Press start", so the orb says nothing then. Defaults to
+   * false, so the widget and every other caller keep the caption.
+   */
+  isStartHidden?: boolean;
+  /**
    * The media element of the screen that renders this orb. The avatar's audio track rides on
    * it as a `MediaStream`, which is where the real loudness is measured.
    */
@@ -202,6 +208,7 @@ export function AssistantOrb({
   isAvatarSpeaking,
   isMicMuted,
   isRecordingPlaying = false,
+  isStartHidden = false,
   mediaRef,
   className,
 }: AssistantOrbProps) {
@@ -332,7 +339,8 @@ export function AssistantOrb({
     }
   }, [isAnimating, restingHalo, state]);
 
-  const message = t(messageKey(signals));
+  const message =
+    status === 'idle' && isStartHidden && !isRecordingPlaying ? '' : t(messageKey(signals));
   const [announced, setAnnounced] = useState(message);
 
   useEffect(() => {
@@ -415,7 +423,9 @@ export function AssistantOrb({
         aria-hidden="true"
         className="shrink-0 text-center text-sm font-medium text-foreground"
       >
-        {message}
+        {/* A no-break space keeps the line's height when there is no caption, so the sphere
+            above does not grow and shrink with it. */}
+        {message || '\u00a0'}
       </p>
 
       {/* A screen reader gets it once the turn has settled. */}

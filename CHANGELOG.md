@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- After a recorded answer, `/video` and `/audio` in the mobile app and the web app show a lead
+  card in place of Start and the suggested questions, with the keyboard focus on its heading. It
+  offers «درخواست مشاوره» (Request a consultation), which starts the live assistant the same way
+  as Start; a contact card with the two office numbers, the two sales numbers, the email address
+  and the website; up to three related questions, which play like a suggestion; and "Other
+  questions", which brings the list back with focus on the question that was played. The phone
+  numbers are grouped ("021 2623 0054") and use Persian digits in Persian. When the start from the
+  lead card fails, for example while LiveAvatar is inactive, the existing error shows with the
+  contact card under it and the line "The live assistant is not available right now". A failed
+  plain Start still shows the error alone. When the related questions cannot load, the card shows
+  without them. The contact details are fixed in `contactChannels.ts` and never come from the
+  server; they are underlined like the app's other links. The card is never cut: on a small screen
+  the page scrolls to its end. While it shows, the orb on `/audio` no longer says "Press start".
+  After «درخواست مشاوره» the keyboard focus moves to the screen's heading. The widget does not
+  change.
 - The admin target has a Record answer screen (`/library/record`, "Record answer" on the Answer
   library screen). It is the Phase 1 workbench (text to speech, avatar session, recording,
   diagnostics) and says in one line that recording needs an active LiveAvatar account and a paid
@@ -31,8 +46,7 @@
   API client and plays it from a local `blob:` URL: `/video` shows the video over the stage,
   `/audio` plays its sound while the orb speaks. Both show a "Recorded answer" label and the
   answer text. Stop, the end of the answer, a new tap, Start and leaving the screen each stop the
-  answer and free its memory; after an answer the list comes back with focus on the played
-  question. A refused autoplay shows "Tap to play the answer". An answer that was withdrawn meanwhile
+  answer and free its memory; after an answer the lead card shows (see the entry above). A refused autoplay shows "Tap to play the answer". An answer that was withdrawn meanwhile
   leaves the list, too many plays ask the user to wait, and an offline or failed download offers
   Retry. The widget does not change. The mock now serves a small real MP4, so the
   player can be tried without a backend.
