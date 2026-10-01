@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Drawer } from '@heroui/react';
 import {
+  LeadCard,
   RecordedAnswerCaption,
   RecordedAnswerLabel,
   RecordedAnswerPanel,
@@ -77,6 +78,7 @@ export function AudioConversationPage() {
   const [isComposerOpen, setComposerOpen] = useState(false);
   const endedRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const {
     status,
@@ -102,12 +104,21 @@ export function AudioConversationPage() {
     enableAudio,
   } = controller;
 
-  const { suggestions, recorded } = useAnswerLibrary(status);
+  const { suggestions, recorded, playSuggestion, isFollowUpPlaying, startLive, lead } =
+    useAnswerLibrary(status, start);
   const isIdle = status === 'idle';
   const isRecordedShown =
     isIdle && (recorded.phase === 'playing' || recorded.phase === 'blocked');
   // Mounted from the tap on, so the element exists when the file arrives.
   const isPlayerMounted = isIdle && (recorded.phase === 'loading' || isRecordedShown);
+
+  /*
+    A lead card, in either form, is never clipped and never scrolls in a box of its own (ruling
+    6). While one shows, the lower half lets it run past its end and the page lets its content
+    overflow, so the layout's `<main>` scrolls the whole screen down to the card's end. The two
+    halves keep their sizes, so the orb does not move. Every other state keeps the locked screen.
+  */
+  const isCardShown = (isIdle && lead.isShown) || lead.isFallbackShown;
 
   const isBusy = status === 'requesting' || status === 'connecting';
   const hasFinished = status === 'ended' || status === 'error';
@@ -183,15 +194,6 @@ export function AudioConversationPage() {
   const handleType = useCallback(() => setComposerOpen(true), []);
 
   /*
-    Start stops a recorded answer first and revokes its URL, then starts the live session as
-    today, so two voices never play at once (REQ-060).
-  */
-  const handleStart = () => {
-    recorded.cancel();
-    void start();
-  };
-
-  /*
     The conversation is over, so the keyboard is moved to the news rather than left on a
     control that no longer exists. From here Tab reaches Restart.
 
@@ -202,11 +204,12 @@ export function AudioConversationPage() {
   */
   /* `ghost` keeps HeroUI from painting a filled background under the glass; the `glass` utility
      sits in Tailwind's utilities layer, which comes after HeroUI's component layer, so the
-     material wins. */
+     material wins. `startLive` stops a recorded answer and revokes its URL first, so two voices
+     never play at once (REQ-060). */
   const startButton = (
     <Button
       variant="ghost"
-      onPress={handleStart}
+      onPress={startLive}
       isPending={isBusy}
       isDisabled={!canStart}
       className="glass glass-fringe min-h-14 shrink-0 rounded-full px-7 text-base font-semibold text-foreground"
@@ -214,6 +217,16 @@ export function AudioConversationPage() {
       {t(hasFinished ? 'assistant.restart' : 'assistant.start')}
     </Button>
   );
+
+  /*
+    The lead card, and the button that was pressed, leave as the session is requested. The
+    screen's heading stays through every status, so the keyboard goes there rather than to the
+    document body (ruling 10).
+  */
+  const handleConsult = () => {
+    lead.consult();
+    titleRef.current?.focus();
+  };
 
   useEffect(() => {
     if (status === 'ended') endedRef.current?.focus();
@@ -247,7 +260,12 @@ export function AudioConversationPage() {
     .join(' · ');
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-background">
+    <div
+      className={cn(
+        'relative flex h-full w-full flex-col bg-background',
+        !isCardShown && 'overflow-hidden',
+      )}
+    >
       {/* Not shown, only heard. See the note on the component. */}
       <div className="sr-only">
         <ConversationStage controller={controller} mediaRef={stageRef} />
@@ -267,7 +285,9 @@ export function AudioConversationPage() {
           CONTROL_COLUMN_BOTTOM,
         )}
       >
-        <h1 className="sr-only">{t('conversation.audio.title')}</h1>
+        <h1 ref={titleRef} tabIndex={-1} className="sr-only">
+          {t('conversation.audio.title')}
+        </h1>
 
         {/* Set once per session and never touched again. `px-16` keeps it clear of the two
             48 px circles beside it, and one clamped line means a long Persian string can never
@@ -308,6 +328,8 @@ export function AudioConversationPage() {
               isAvatarSpeaking={isAvatarSpeaking}
               isMicMuted={isMicMuted}
               isRecordingPlaying={isIdle && recorded.phase === 'playing'}
+              // "Press start" would point at a button the lead card hides (ruling 4).
+              isStartHidden={lead.isShown}
               mediaRef={stageRef}
             />
 
@@ -343,12 +365,18 @@ export function AudioConversationPage() {
 
           {/* The Start slot: always 56 px, the height of Start, whether Start is there or not.
               Start is here only at idle; after a session "Start again" follows the ended message
-              below. */}
+              below. While the lead card shows, its consultation button is the one primary action,
+              so Start is hidden and the slot stays empty (REQ-075). */}
           <div className="flex h-14 w-full shrink-0 items-center justify-center">
-            {isIdle && startButton}
+            {isIdle && !lead.isShown && startButton}
           </div>
 
-          <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-4 overflow-y-auto">
+          <div
+            className={cn(
+              'flex min-h-0 w-full flex-1 flex-col items-center gap-4',
+              !isCardShown && 'overflow-y-auto',
+            )}
+          >
             {status === 'error' && error && (
               <div
                 ref={errorRef}
@@ -369,6 +397,15 @@ export function AudioConversationPage() {
               </div>
             )}
 
+            {/* The contact card is the fallback channel when the start from the lead card failed
+                (REQ-078). After a plain Start the error stays alone. */}
+            {lead.isFallbackShown && (
+              // `dock-clear`: the page scrolls to the card's end, clear of the floating menu.
+              <div className="dock-clear w-full max-w-sm p-1">
+                <LeadCard form="fallback" />
+              </div>
+            )}
+
             {status === 'ended' && endReason && (
               <div ref={endedRef} tabIndex={-1} className="w-full outline-none">
                 <InlineAlert status="info" title={t('assistant.ended.title')}>
@@ -381,10 +418,28 @@ export function AudioConversationPage() {
                 the message when the session ends, and the next Tab has to reach this. */}
             {status === 'ended' && startButton}
 
-            {/* At idle, the suggested questions under Start (REQ-056). */}
+            {/* At idle, the suggested questions under Start (REQ-056), or after a recorded answer
+                the lead card in their place (REQ-075). The card starts at the top of this half,
+                the consultation button first, and runs past it; the page scrolls to its end. */}
             {isIdle && (
-              <div className="w-full p-1">
-                <RecordedAnswerPanel recorded={recorded} suggestions={suggestions} />
+              <div className={cn('w-full p-1', lead.isShown && 'dock-clear')}>
+                {lead.isShown ? (
+                  <LeadCard
+                    form="offer"
+                    isConsultDisabled={!canStart}
+                    onConsult={handleConsult}
+                    followUps={lead.followUps}
+                    onSelectFollowUp={lead.playFollowUp}
+                    onBack={lead.showQuestions}
+                  />
+                ) : (
+                  <RecordedAnswerPanel
+                    recorded={recorded}
+                    suggestions={suggestions}
+                    onPlay={playSuggestion}
+                    isFollowUpPlaying={isFollowUpPlaying}
+                  />
+                )}
               </div>
             )}
 

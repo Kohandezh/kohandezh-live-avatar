@@ -51,6 +51,37 @@ export function suggestionList(page: Page, name: string = fa.library.suggestions
   return page.getByRole('list', { name });
 }
 
+/** The lead card after a recorded answer (REQ-075): a region named by its heading. */
+export function leadCard(page: Page, name: string = fa.library.lead.title) {
+  return page.getByRole('region', { name });
+}
+
+/**
+ * Ruling 6: the lead card is never clipped. Nothing between the card and the layout's `<main>`
+ * clips or scrolls, and once `<main>` is scrolled to its end the card's bottom border is on screen,
+ * above the floating menu.
+ */
+export async function expectLeadCardReachable(page: Page, menuName: string = fa.nav.menu) {
+  const card = leadCard(page);
+  await expect(card).toBeVisible();
+
+  const clippers = await card.evaluate((element) => {
+    const found: string[] = [];
+    for (let node = element.parentElement; node && node.tagName !== 'MAIN'; node = node.parentElement) {
+      const { overflowY } = getComputedStyle(node);
+      if (overflowY !== 'visible') found.push(`${node.tagName}.${node.className} (${overflowY})`);
+    }
+    return found;
+  });
+  expect(clippers).toEqual([]);
+
+  await page.locator('main').evaluate((main) => main.scrollTo(0, main.scrollHeight));
+  const cardBox = await card.boundingBox();
+  const menuBox = await page.getByRole('navigation', { name: menuName }).boundingBox();
+  if (!cardBox || !menuBox) throw new Error('not rendered');
+  expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(menuBox.y);
+}
+
 /**
  * Changes the mock library the way an admin elsewhere would: through the mock's own admin routes,
  * inside the page. The mock lives in the browser (an axios adapter), so there is no network

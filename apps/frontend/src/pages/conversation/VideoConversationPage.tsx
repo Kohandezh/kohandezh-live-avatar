@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  LeadCard,
   RecordedAnswerCaption,
   RecordedAnswerLabel,
   RecordedAnswerPanel,
@@ -40,7 +41,8 @@ const NOTICE_TONE = {
  *
  * Idle is deliberately plain. Start sits in the middle of the stage as the one primary action,
  * and under it the suggested questions of the answer library (REQ-056), which play a recorded
- * answer without starting a live session. With an empty library, Start is all there is.
+ * answer without starting a live session. With an empty library, Start is all there is. After a
+ * recorded answer, the lead card takes the place of Start and the list (REQ-075).
  *
  * The session belongs to this page. Walking to `/audio` or `/settings` unmounts the page,
  * which closes the provider session and the backend row. The floating menu asks first.
@@ -51,6 +53,7 @@ export function VideoConversationPage() {
   const [isComposerOpen, setComposerOpen] = useState(false);
   const endedRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const {
     status,
@@ -74,11 +77,19 @@ export function VideoConversationPage() {
     enableAudio,
   } = controller;
 
-  const { suggestions, recorded } = useAnswerLibrary(status);
+  const { suggestions, recorded, playSuggestion, isFollowUpPlaying, startLive, lead } =
+    useAnswerLibrary(status, start);
   const isIdle = status === 'idle';
   const isRecordedShown = recorded.phase === 'playing' || recorded.phase === 'blocked';
   // Mounted from the tap on, so the element exists when the file arrives.
   const isPlayerMounted = recorded.phase === 'loading' || isRecordedShown;
+
+  /*
+    A lead card, in either form, is never clipped and never scrolls in a box of its own (ruling
+    6). While one shows, the page lets its content overflow, so the layout's `<main>` scrolls the
+    whole screen down to the card's end. Every other state keeps the locked, full-bleed screen.
+  */
+  const isCardShown = (isIdle && lead.isShown) || lead.isFallbackShown;
 
   const isBusy = status === 'requesting' || status === 'connecting';
   const hasFinished = status === 'ended' || status === 'error';
@@ -141,12 +152,13 @@ export function VideoConversationPage() {
   const handleType = useCallback(() => setComposerOpen(true), []);
 
   /*
-    Start stops a recorded answer first and revokes its URL, then starts the live session as
-    today, so two voices never play at once (REQ-060).
+    The lead card, and the button that was pressed, leave as the session is requested, and Start
+    is not shown then either. The screen's heading stays through every status, so the keyboard
+    goes there rather than to the document body (ruling 10).
   */
-  const handleStart = () => {
-    recorded.cancel();
-    void start();
+  const handleConsult = () => {
+    lead.consult();
+    titleRef.current?.focus();
   };
 
   useEffect(() => {
@@ -174,7 +186,12 @@ export function VideoConversationPage() {
     .join(' · ');
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-background">
+    <div
+      className={cn(
+        'relative h-full w-full bg-background',
+        !isCardShown && 'overflow-hidden',
+      )}
+    >
       <ConversationStage controller={controller} mediaRef={stageRef} />
 
       {/* The recorded answer covers the stage, full bleed like it (REQ-057). Only at idle: a
@@ -204,7 +221,9 @@ export function VideoConversationPage() {
         >
           {/* The screen's name. A visible title would crowd the one primary action, but a
               screen still needs a name for a screen reader. */}
-          <h1 className="sr-only">{t('conversation.video.title')}</h1>
+          <h1 ref={titleRef} tabIndex={-1} className="sr-only">
+            {t('conversation.video.title')}
+          </h1>
 
           {/* `px-16` keeps it clear of the two 48 px circles beside it, and one clamped line
               means a long Persian string can never wrap down over the avatar's face. */}
@@ -216,7 +235,16 @@ export function VideoConversationPage() {
             )}
           </p>
 
-          <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+          {/* Centred, except under a failed start from the lead card: the error and the contact
+              card are taller than a phone's column, and centring would push their top out of reach,
+              so they start at the top (ruling 12). Not Tailwind's safe centring: iOS WebKit before
+              17.6 drops `safe center`, and every block here would lose its centring. */}
+          <div
+            className={cn(
+              'relative flex min-h-0 flex-1 flex-col items-center gap-4',
+              lead.isFallbackShown ? 'justify-start' : 'justify-center',
+            )}
+          >
             {/* The browser refused to play the sound because no gesture preceded it, which is
                 common on iOS after a route change. The video becomes the button that fixes
                 it: an overlay over what is already the biggest thing on the screen, so the
@@ -236,14 +264,22 @@ export function VideoConversationPage() {
               questions, the loading line, the caption) can move it (REQ-056). The upper half
               holds the "Recorded answer" label.
             */}
-            {isIdle && (
+            {isIdle && !lead.isShown && (
               <div className="flex min-h-0 w-full flex-1 flex-col items-center">
                 {isRecordedShown && <RecordedAnswerLabel />}
               </div>
             )}
 
-            {/* `shrink-0`, so the news and the one control below it keep their full size. */}
-            <div className="pointer-events-auto flex w-full shrink-0 flex-col items-center gap-4 empty:hidden">
+            {/* `shrink-0`, so the news and the one control below it keep their full size. With the
+                contact card under a failed start (REQ-078) it can be taller than the column: it
+                then runs past it, the page scrolls, and `dock-clear` keeps the card's end clear
+                of the floating menu. */}
+            <div
+              className={cn(
+                'pointer-events-auto flex w-full shrink-0 flex-col items-center gap-4 empty:hidden',
+                lead.isFallbackShown && 'dock-clear',
+              )}
+            >
               {status === 'error' && error && (
                 <div
                   ref={errorRef}
@@ -264,6 +300,14 @@ export function VideoConversationPage() {
                 </div>
               )}
 
+              {/* The contact card is the fallback channel when the start from the lead card
+                  failed (REQ-078). After a plain Start the error stays alone. */}
+              {lead.isFallbackShown && (
+                <div className="w-full max-w-sm">
+                  <LeadCard form="fallback" />
+                </div>
+              )}
+
               {status === 'ended' && endReason && (
                 <div ref={endedRef} tabIndex={-1} className="w-full outline-none">
                   <InlineAlert status="info" title={t('assistant.ended.title')}>
@@ -277,10 +321,12 @@ export function VideoConversationPage() {
                 background under the glass; the `glass` utility sits in Tailwind's utilities
                 layer, which comes after HeroUI's component layer, so the material wins.
               */}
-              {!isSessionOpen && status !== 'error' && (
+              {!isSessionOpen && status !== 'error' && !lead.isShown && (
                 <Button
                   variant="ghost"
-                  onPress={handleStart}
+                  // Stops a recorded answer and revokes its URL first, so two voices never play
+                  // at once (REQ-060).
+                  onPress={startLive}
                   isPending={isBusy}
                   isDisabled={!canStart}
                   className="glass glass-fringe min-h-14 rounded-full px-7 text-base font-semibold text-foreground"
@@ -306,10 +352,34 @@ export function VideoConversationPage() {
               )}
             </div>
 
-            {isIdle && (
+            {/* The lead card replaces Start and the list, so it gets the whole middle of the
+                column. `m-auto` centres it while it fits; when it does not, it starts at the top,
+                the consultation button first (section 10), runs past the column and the page
+                scrolls. `dock-clear` keeps its end clear of the floating menu. */}
+            {isIdle && lead.isShown && (
+              <div className="flex min-h-0 w-full flex-1 flex-col p-1">
+                <div className="pointer-events-auto dock-clear m-auto w-full max-w-sm">
+                  <LeadCard
+                    form="offer"
+                    isConsultDisabled={!canStart}
+                    onConsult={handleConsult}
+                    followUps={lead.followUps}
+                    onSelectFollowUp={lead.playFollowUp}
+                    onBack={lead.showQuestions}
+                  />
+                </div>
+              </div>
+            )}
+
+            {isIdle && !lead.isShown && (
               <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-3 overflow-y-auto p-1">
                 <div className="pointer-events-auto w-full max-w-sm">
-                  <RecordedAnswerPanel recorded={recorded} suggestions={suggestions} />
+                  <RecordedAnswerPanel
+                    recorded={recorded}
+                    suggestions={suggestions}
+                    onPlay={playSuggestion}
+                    isFollowUpPlaying={isFollowUpPlaying}
+                  />
                 </div>
                 {/* The caption at the bottom of the video (REQ-057), still above the bottom
                     clearance this column pays. */}

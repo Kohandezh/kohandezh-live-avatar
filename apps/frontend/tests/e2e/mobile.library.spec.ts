@@ -4,8 +4,10 @@ import {
   FIRST_QUESTION,
   SECOND_QUESTION,
   allSources,
+  expectLeadCardReachable,
   expectRecordedAnswerPlaying,
   fa,
+  leadCard,
   loginToVideo,
   recordedVideo,
   suggestionList,
@@ -39,7 +41,7 @@ test.describe('playback', () => {
     await loginToVideo(page);
   });
 
-  test('Start does not move when the list arrives, while an answer loads, plays, or after Stop (REQ-056)', async ({ page }) => {
+  test('Start does not move when the list arrives, while an answer loads, plays, or back from the lead card (REQ-056)', async ({ page }) => {
     const start = page.getByRole('button', { name: fa.assistant.start });
     const before = await box(start);
 
@@ -51,8 +53,36 @@ test.describe('playback', () => {
     expect(await box(start)).toEqual(before);
 
     await page.getByRole('button', { name: fa.library.stop }).click();
+    // The lead card holds the one primary action, so Start is hidden while it shows (REQ-075).
+    await expect(leadCard(page)).toBeVisible();
+    await expect(start).toHaveCount(0);
+
+    await leadCard(page).getByRole('button', { name: fa.library.lead.backToQuestions }).click();
     await expect(suggestionList(page)).toBeVisible();
     expect(await box(start)).toEqual(before);
+  });
+
+  test('every control and link of the lead card is a 44 px target, and the card fits the phone width (section 10)', async ({ page }) => {
+    await suggestionList(page).getByRole('button', { name: FIRST_QUESTION }).click();
+    await page.getByRole('button', { name: fa.library.stop }).click();
+    const card = leadCard(page);
+    await expect(card.getByRole('list', { name: fa.library.lead.followUpsTitle })).toBeVisible();
+
+    const targets = card.locator('a, button');
+    // Consultation, four phones, email, website, one follow-up, Other questions.
+    await expect(targets).toHaveCount(9);
+    const width = page.viewportSize()?.width ?? 0;
+    for (const target of await targets.all()) {
+      await target.scrollIntoViewIfNeeded();
+      const bounds = await box(target);
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
   });
 
   test('every suggested question and Stop is a 44 px target (section 10)', async ({ page }) => {
@@ -68,7 +98,7 @@ test.describe('playback', () => {
     expect((await box(stop)).height).toBeGreaterThanOrEqual(44);
   });
 
-  test('/video plays the real file from a blob URL, with the label and the caption, and returns focus after Stop (REQ-057, REQ-061)', async ({ page }) => {
+  test('/video plays the real file from a blob URL, with the label and the caption, and moves focus to the lead card after Stop (REQ-057, REQ-061)', async ({ page }) => {
     await suggestionList(page).getByRole('button', { name: FIRST_QUESTION }).click();
 
     await expect(page.getByText(fa.library.recordedLabel)).toBeVisible();
@@ -83,9 +113,33 @@ test.describe('playback', () => {
     await page.getByRole('button', { name: fa.library.stop }).click();
 
     await expect(
-      suggestionList(page).getByRole('button', { name: FIRST_QUESTION }),
+      leadCard(page).getByRole('heading', { name: fa.library.lead.title }),
     ).toBeFocused();
     await expect(recordedVideo(page)).toHaveCount(0);
+  });
+
+  test('/audio shows the lead card under the orb, and «Request a consultation» that fails leaves the contact card (REQ-075, REQ-078)', async ({ page }) => {
+    await page.route(LIVEAVATAR_API_GLOB, (route) => route.abort());
+    await openAudio(page, fa.nav.audio);
+    const orb = page.locator('[data-sphere-state]');
+    await suggestionList(page).getByRole('button', { name: FIRST_QUESTION }).click();
+    await page.getByRole('button', { name: fa.library.stop }).click();
+
+    await expect(leadCard(page).getByRole('heading', { name: fa.library.lead.title })).toBeFocused();
+    await expect(page.getByRole('button', { name: fa.assistant.start })).toHaveCount(0);
+    expect((await box(leadCard(page))).y).toBeGreaterThan((await box(orb)).y);
+
+    await leadCard(page).getByRole('button', { name: fa.library.lead.consult }).click();
+
+    // Exact: the orb's caption says the same, with a full stop.
+    await expect(page.getByText(fa.assistant.errors.title, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(leadCard(page).getByText(fa.library.lead.liveUnavailable)).toBeVisible();
+    await expect(leadCard(page).getByRole('link', { name: 'تماس با دفتر: ۰۲۱ ۲۶۲۳ ۰۰۵۴' })).toHaveAttribute(
+      'href',
+      'tel:+982126230054',
+    );
   });
 
   test('/audio plays the sound with the orb speaking, the caption shown and no video visible (REQ-058)', async ({ page }) => {
@@ -226,4 +280,31 @@ test.describe('the orb keeps its box when Start is pressed (REQ-056, ruling 5)',
       end: fa.assistant.end,
     });
   });
+});
+
+/** Ruling 6 in the mobile shell, at the phone size the Foreman named. */
+test.describe('in the mobile app on a 390 x 844 phone the whole lead card can be reached (ruling 6)', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  for (const route of ['/video', '/audio'] as const) {
+    test(`${route}: after an answer, then under a failed consultation start`, async ({ page }) => {
+      await page.route(LIVEAVATAR_API_GLOB, (r) => r.abort());
+      await loginToVideo(page);
+      if (route === '/audio') await openAudio(page, fa.nav.audio);
+      await suggestionList(page).getByRole('button', { name: FIRST_QUESTION }).click();
+      await page.getByRole('button', { name: fa.library.stop }).click();
+      await expect(
+        leadCard(page).getByRole('list', { name: fa.library.lead.followUpsTitle }),
+      ).toBeVisible();
+
+      await expectLeadCardReachable(page);
+
+      await leadCard(page).getByRole('button', { name: fa.library.lead.consult }).click();
+      await expect(leadCard(page).getByText(fa.library.lead.liveUnavailable)).toBeVisible({
+        timeout: 15_000,
+      });
+
+      await expectLeadCardReachable(page);
+    });
+  }
 });

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import fa from '../../src/i18n/locales/fa/common.json' with { type: 'json' };
 
 // The demo page loads the widget with data-lang="fa", so the UI starts in Persian.
 // Playwright locators reach into the Shadow DOM, so no extra handle is needed.
@@ -48,4 +49,7 @@ test('the widget loads no answer library code and asks for no library route (REQ
   );
   expect(libraryModules).toEqual([]);
   expect(libraryRequests).toEqual([]);
+  // No lead card and no contact links in the widget (REQ-075).
+  await expect(page.getByRole('region', { name: fa.library.lead.title })).toHaveCount(0);
+  await expect(page.locator('a[href^="tel:"], a[href^="mailto:"]')).toHaveCount(0);
 });

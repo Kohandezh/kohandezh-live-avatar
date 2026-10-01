@@ -10,6 +10,13 @@ import type { RecordedAnswer } from './useRecordedAnswer';
 export interface RecordedAnswerPanelProps {
   recorded: RecordedAnswer;
   suggestions: UseQueryResult<LibrarySuggestion[]>;
+  /** A tap on a suggested question. */
+  onPlay: (entry: LibrarySuggestion) => void;
+  /**
+   * The loading answer is a follow-up, tapped on the lead card. The list was not on screen then,
+   * so it does not come back while the answer loads: the loading line and Stop show alone.
+   */
+  isFollowUpPlaying: boolean;
 }
 
 /** Retry is offered for these two only (ruling 2). A `404` answer is gone, a `429` must wait. */
@@ -23,11 +30,14 @@ const RETRYABLE = new Set(['generic', 'offline']);
  *   (ruling 1), then the loading line and Stop.
  * - `playing`, `blocked`: the list is hidden and Stop takes its place.
  * - `error`: the error line, with Retry when a retry can help, and the list under it.
- * - `finished`: see the lead card slot below.
+ * - `finished`: the page shows the lead card instead of this panel (REQ-075). After its "Other
+ *   questions", the list comes back with focus on the question that was played (REQ-061).
  */
 export function RecordedAnswerPanel({
   recorded,
   suggestions,
+  onPlay,
+  isFollowUpPlaying,
 }: RecordedAnswerPanelProps) {
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
@@ -35,15 +45,18 @@ export function RecordedAnswerPanel({
   const errorRef = useRef<HTMLDivElement>(null);
   const { phase, entry, errorKind } = recorded;
   const isPlaying = phase === 'playing' || phase === 'blocked';
+  const isListHidden = phase === 'loading' && isFollowUpPlaying;
 
   useEffect(() => {
-    // The list, and with it the tapped question, leaves as the answer starts. Stop is its
-    // replacement, so a keyboard user whose focus went with the list lands there.
-    if (phase === 'playing' && document.activeElement === document.body) {
+    // The list, and with it the tapped question, leaves as the answer starts; a tapped follow-up
+    // left with the lead card. Stop is their replacement, so a keyboard user whose focus went with
+    // them lands there.
+    const isStopAlone = phase === 'playing' || (phase === 'loading' && isFollowUpPlaying);
+    if (isStopAlone && document.activeElement === document.body) {
       stopRef.current?.focus();
     }
     if (phase === 'error') errorRef.current?.focus();
-  }, [phase]);
+  }, [phase, isFollowUpPlaying]);
 
   const stopButton = (
     <Button
@@ -63,13 +76,10 @@ export function RecordedAnswerPanel({
   const list = (
     <SuggestionList
       suggestions={suggestions}
-      onSelect={recorded.play}
+      onSelect={onPlay}
       pendingId={phase === 'loading' ? (entry?.id ?? null) : null}
       isDisabled={!isOnline}
-      // The lead card slot (REQ-075, REQ-061, step 9 of the rollout in spec section 11). At
-      // `finished` the lead card goes HERE, in place of this list, with focus on its heading; its
-      // "Other questions" button then brings the list back with focus on the played question.
-      // Until step 9 the list comes back at once, with that focus.
+      // Back from the lead card: the question that was played takes the focus (REQ-061).
       focusId={phase === 'finished' ? (entry?.id ?? null) : null}
     />
   );
@@ -101,7 +111,7 @@ export function RecordedAnswerPanel({
         </div>
       )}
 
-      {list}
+      {!isListHidden && list}
 
       {/* Always mounted, so a screen reader hears the line when it is filled in: many read a live
           region only if it existed before its text changed. */}

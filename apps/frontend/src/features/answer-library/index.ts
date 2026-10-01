@@ -4,6 +4,7 @@ export {
   RecordedAnswerPlayer,
   TapToPlayButton,
 } from './RecordedAnswerPlayer';
+export { LeadCard, type LeadCardProps } from './LeadCard';
 export { RecordedAnswerPanel } from './RecordedAnswerPanel';
 export { useAnswerLibrary } from './useAnswerLibrary';
 export {

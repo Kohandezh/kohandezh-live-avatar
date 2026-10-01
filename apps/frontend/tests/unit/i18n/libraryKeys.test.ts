@@ -11,10 +11,10 @@ function leaves(node: unknown, prefix: string): [string, unknown][] {
 }
 
 /**
- * The user screen keys of spec section 8 that the playback step renders, with their wording. The
- * lead card keys (`library.lead.*`) arrive with the lead card, step 9.
+ * The user screen keys of spec section 8, with their wording: the playback keys and the lead card
+ * keys (`library.lead.*`, step 9).
  */
-const PLAYBACK_KEYS: Record<string, { en: string; fa: string }> = {
+const SECTION_8_KEYS: Record<string, { en: string; fa: string }> = {
   'library.suggestionsTitle': {
     en: 'Suggested questions',
     fa: 'پرسش‌های پیشنهادی',
@@ -50,6 +50,33 @@ const PLAYBACK_KEYS: Record<string, { en: string; fa: string }> = {
     en: 'The recorded answer could not play. Try again, or start a live conversation.',
     fa: 'پاسخ ضبط‌شده پخش نشد. دوباره امتحان کنید یا گفت‌وگوی زنده را شروع کنید.',
   },
+  'library.lead.title': {
+    en: 'What would you like to do next?',
+    fa: 'قدم بعدی شما چیست؟',
+  },
+  'library.lead.consult': {
+    en: 'Request a consultation',
+    fa: 'درخواست مشاوره',
+  },
+  'library.lead.consultHint': {
+    en: 'Talk to our live assistant. It asks a few questions about your needs.',
+    fa: 'با دستیار زنده ما گفت‌وگو کنید. چند سؤال درباره نیاز شما می‌پرسد.',
+  },
+  'library.lead.liveUnavailable': {
+    en: 'The live assistant is not available right now. Please use the contact details below.',
+    fa: 'دستیار زنده در حال حاضر در دسترس نیست. لطفاً از راه‌های تماس زیر استفاده کنید.',
+  },
+  'library.lead.contactTitle': { en: 'Contact us', fa: 'تماس با ما' },
+  'library.lead.office': { en: 'Office', fa: 'دفتر' },
+  'library.lead.sales': { en: 'Sales', fa: 'فروش' },
+  'library.lead.email': { en: 'Email', fa: 'ایمیل' },
+  'library.lead.website': { en: 'Website', fa: 'وب‌سایت' },
+  'library.lead.callLabel': {
+    en: 'Call {{label}}: {{number}}',
+    fa: 'تماس با {{label}}: {{number}}',
+  },
+  'library.lead.followUpsTitle': { en: 'Related questions', fa: 'پرسش‌های مرتبط' },
+  'library.lead.backToQuestions': { en: 'Other questions', fa: 'پرسش‌های دیگر' },
 };
 
 describe('library keys in common.json (section 8, SC-022)', () => {
@@ -67,7 +94,7 @@ describe('library keys in common.json (section 8, SC-022)', () => {
     }
   });
 
-  it.each(Object.entries(PLAYBACK_KEYS))(
+  it.each(Object.entries(SECTION_8_KEYS))(
     '%s uses the wording of section 8',
     (key, wording) => {
       expect(english.get(key)).toBe(wording.en);
