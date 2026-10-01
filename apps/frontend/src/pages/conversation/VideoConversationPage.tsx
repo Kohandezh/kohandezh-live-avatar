@@ -85,9 +85,10 @@ export function VideoConversationPage() {
   const isPlayerMounted = recorded.phase === 'loading' || isRecordedShown;
 
   /*
-    A lead card, in either form, is never clipped and never scrolls in a box of its own (ruling
-    6). While one shows, the page lets its content overflow, so the layout's `<main>` scrolls the
-    whole screen down to the card's end. Every other state keeps the locked, full-bleed screen.
+    A lead card, in either form, is never clipped and never scrolls in a box of its own, so all of
+    it can be reached on a phone too. While one shows, the page lets its content overflow, so the
+    layout's `<main>` scrolls the whole screen down to the card's end. Every other state keeps the
+    locked, full-bleed screen.
   */
   const isCardShown = (isIdle && lead.isShown) || lead.isFallbackShown;
 
@@ -154,7 +155,7 @@ export function VideoConversationPage() {
   /*
     The lead card, and the button that was pressed, leave as the session is requested, and Start
     is not shown then either. The screen's heading stays through every status, so the keyboard
-    goes there rather than to the document body (ruling 10).
+    goes there rather than to the document body.
   */
   const handleConsult = () => {
     lead.consult();
@@ -237,7 +238,7 @@ export function VideoConversationPage() {
 
           {/* Centred, except under a failed start from the lead card: the error and the contact
               card are taller than a phone's column, and centring would push their top out of reach,
-              so they start at the top (ruling 12). Not Tailwind's safe centring: iOS WebKit before
+              so they start at the top. Not Tailwind's safe centring: iOS WebKit before
               17.6 drops `safe center`, and every block here would lose its centring. */}
           <div
             className={cn(

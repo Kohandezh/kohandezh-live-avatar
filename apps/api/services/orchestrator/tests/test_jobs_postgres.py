@@ -1105,7 +1105,7 @@ async def test_each_deleted_media_logs_its_ids_and_no_text(media, caplog):
 
 
 async def test_a_file_that_cannot_be_deleted_is_skipped_and_retried_by_the_next_run(media, caplog):
-    """Foreman ruling: one file the sweep cannot delete does not fail the run. Its rows stay with
+    """One file the sweep cannot delete does not fail the run. Its rows stay with
     their file, the other media are still deleted, the run counts it as skipped and ends done, and
     the next run tries it again."""
     stuck_entry, stuck_video, stuck_path = await media.withdrawn_with_video()

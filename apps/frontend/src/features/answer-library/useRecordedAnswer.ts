@@ -55,7 +55,7 @@ interface State {
 const IDLE: State = { phase: 'idle', entry: null, errorKind: null };
 
 /**
- * Rulings 2 and 3 of the playback contract: a failure with no response at all is `offline`,
+ * The error table of section 8: a failure with no response at all is `offline`,
  * whatever `navigator.onLine` says, and a timeout is `generic`.
  */
 function errorKindOf(error: unknown): RecordedAnswerErrorKind {

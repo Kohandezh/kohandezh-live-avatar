@@ -236,12 +236,12 @@ test.describe('after a session ends, the next Tab from the ended message reaches
 });
 
 /**
- * Ruling 5 of the playback contract: on `/audio`, Start sits in the middle at idle, and the orb's
+ * REQ-056: on `/audio`, Start sits in the middle at idle, and the orb's
  * box keeps its size and place from idle through the start of the session. Checked with an empty
  * library (English: the library is Persian only), where nothing is under Start, and with
  * suggestions (Persian), where the list leaves as the session starts.
  */
-test.describe('the orb keeps its box when Start is pressed (REQ-056, ruling 5)', () => {
+test.describe('the orb keeps its box when Start is pressed (REQ-056)', () => {
   async function expectOrbStillThroughStart(page: Page, labels: { start: string; end: string }) {
     // The live start is held at the provider forever, so the session stays in "connecting".
     await page.route(LIVEAVATAR_API_GLOB, () => {});
@@ -282,8 +282,8 @@ test.describe('the orb keeps its box when Start is pressed (REQ-056, ruling 5)',
   });
 });
 
-/** Ruling 6 in the mobile shell, at the phone size the Foreman named. */
-test.describe('in the mobile app on a 390 x 844 phone the whole lead card can be reached (ruling 6)', () => {
+/** The lead card is never clipped in the mobile shell, on a 390 x 844 phone (an iPhone 12 to 14). */
+test.describe('in the mobile app on a 390 x 844 phone the whole lead card can be reached', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   for (const route of ['/video', '/audio'] as const) {

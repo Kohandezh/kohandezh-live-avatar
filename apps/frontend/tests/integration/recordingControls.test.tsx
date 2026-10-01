@@ -126,7 +126,7 @@ describe('RecordingControls', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps Record off and says why when no audio of the text exists (ruling 5)', () => {
+  it('keeps Record off and says why when no audio of the text exists (REQ-036: its length must be known)', () => {
     renderControls('en', 'needsAudio');
 
     expect(screen.getByRole('button', { name: 'Start recording' })).toBeDisabled();

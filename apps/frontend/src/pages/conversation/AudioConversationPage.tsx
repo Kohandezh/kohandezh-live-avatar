@@ -113,10 +113,11 @@ export function AudioConversationPage() {
   const isPlayerMounted = isIdle && (recorded.phase === 'loading' || isRecordedShown);
 
   /*
-    A lead card, in either form, is never clipped and never scrolls in a box of its own (ruling
-    6). While one shows, the lower half lets it run past its end and the page lets its content
-    overflow, so the layout's `<main>` scrolls the whole screen down to the card's end. The two
-    halves keep their sizes, so the orb does not move. Every other state keeps the locked screen.
+    A lead card, in either form, is never clipped and never scrolls in a box of its own, so all of
+    it can be reached on a phone too. While one shows, the lower half lets it run past its end and
+    the page lets its content overflow, so the layout's `<main>` scrolls the whole screen down to
+    the card's end. The two halves keep their sizes, so the orb does not move. Every other state
+    keeps the locked screen.
   */
   const isCardShown = (isIdle && lead.isShown) || lead.isFallbackShown;
 
@@ -221,7 +222,7 @@ export function AudioConversationPage() {
   /*
     The lead card, and the button that was pressed, leave as the session is requested. The
     screen's heading stays through every status, so the keyboard goes there rather than to the
-    document body (ruling 10).
+    document body.
   */
   const handleConsult = () => {
     lead.consult();
@@ -300,7 +301,7 @@ export function AudioConversationPage() {
           Below the session line: the orb's half, the Start slot, and the lower half. The two
           halves share the height equally in every status, and the Start slot keeps its height
           even when Start is gone, so Start sits in the middle at idle (as on `/video`) and the
-          orb's box stays the same from idle through the whole session (REQ-056, ruling 5).
+          orb's box stays the same from idle through the whole session (REQ-056).
           Everything that comes and goes (the suggested questions, an error, the notice line,
           the transcript) lives in the lower half.
         */}
@@ -309,7 +310,7 @@ export function AudioConversationPage() {
               picture, it has a calm drained look for an ended or failed session, and
               `data-sphere-state` is what a test reads. */}
           {/* The orb's half. Its size and place depend on nothing below it, so pressing Start,
-              the control layer arriving and the notice line filling in move nothing (ruling 5).
+              the control layer arriving and the notice line filling in move nothing (REQ-056).
               Inside it the orb is the part that gives way, to a recorded answer's caption.
               `min-h-0` is what lets a flex item shrink below its content. */}
           <div className="relative flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-3 overflow-hidden">
@@ -328,7 +329,7 @@ export function AudioConversationPage() {
               isAvatarSpeaking={isAvatarSpeaking}
               isMicMuted={isMicMuted}
               isRecordingPlaying={isIdle && recorded.phase === 'playing'}
-              // "Press start" would point at a button the lead card hides (ruling 4).
+              // "Press start" would point at a button the lead card hides (REQ-075).
               isStartHidden={lead.isShown}
               mediaRef={stageRef}
             />

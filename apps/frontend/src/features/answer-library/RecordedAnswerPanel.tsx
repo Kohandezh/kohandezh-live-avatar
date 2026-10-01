@@ -19,7 +19,7 @@ export interface RecordedAnswerPanelProps {
   isFollowUpPlaying: boolean;
 }
 
-/** Retry is offered for these two only (ruling 2). A `404` answer is gone, a `429` must wait. */
+/** Retry is offered for these two only. A `404` answer is gone (REQ-062), a `429` must wait. */
 const RETRYABLE = new Set(['generic', 'offline']);
 
 /**
@@ -27,7 +27,7 @@ const RETRYABLE = new Set(['generic', 'offline']);
  * while an answer loads or plays, the loading line and Stop. The page renders it only at `idle`.
  *
  * - `loading`: the list stays, the tapped question shows a spinner and the others are disabled
- *   (ruling 1), then the loading line and Stop.
+ *   (REQ-056), then the loading line and Stop.
  * - `playing`, `blocked`: the list is hidden and Stop takes its place.
  * - `error`: the error line, with Retry when a retry can help, and the list under it.
  * - `finished`: the page shows the lead card instead of this panel (REQ-075). After its "Other

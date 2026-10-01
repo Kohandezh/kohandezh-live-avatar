@@ -115,7 +115,7 @@ function RecordAnswer({ entry }: { entry: ReadyEntry | null }) {
   const recording = useAppSelector(selectRecording);
 
   // While a recording runs, the composer shows the text it records and Send to avatar speaks it,
-  // so the video says the text that was checked (REQ-003, REQ-036, ruling 10).
+  // so the video says the text that was checked (REQ-003, REQ-036).
   const recordedText =
     recordingActive || recording.status === 'starting'
       ? recording.recordedText
@@ -123,7 +123,7 @@ function RecordAnswer({ entry }: { entry: ReadyEntry | null }) {
   const lockedText = entry?.answerText ?? recordedText ?? undefined;
   const text = lockedText ?? draft;
   // The audio only counts while it is the audio of the text on screen. Without it the length is
-  // unknown, so Record waits for it (REQ-036, ruling 5).
+  // unknown, so Record waits for it (REQ-036).
   const audio = lastAudio?.text === text ? lastAudio : null;
   const recordBlock =
     audio === null
@@ -136,7 +136,7 @@ function RecordAnswer({ entry }: { entry: ReadyEntry | null }) {
     recording.result?.status === 'VIDEO_GENERATED'
       ? recording.result.id
       : null;
-  // In entry mode only a recording of the entry's own text counts (ruling 7): the slice may still
+  // In entry mode only a recording of the entry's own text counts (REQ-003): the slice may still
   // hold another answer's recording from earlier in this tab.
   const isResultForThisScreen =
     entry === null ||
@@ -175,7 +175,7 @@ function RecordAnswer({ entry }: { entry: ReadyEntry | null }) {
         </Card>
       ) : null}
 
-      {/* The workflow order on every width (ruling 8): text, avatar session, recording, then
+      {/* The order the work is done in, on every width: text, avatar session, recording, then
           save or attach. Two columns on a wide screen keep the same reading order. */}
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <TtsComposer lockedText={lockedText} />

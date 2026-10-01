@@ -196,7 +196,7 @@ async function choose(
 }
 
 /**
- * The counter is two elements side by side (Foreman ruling, revision 2): the text of
+ * The counter is two elements side by side: the text of
  * `library.rules.counter` on its own, and the limit it is measured against.
  */
 function expectCounter(panel: HTMLElement, count: string, limit: string) {

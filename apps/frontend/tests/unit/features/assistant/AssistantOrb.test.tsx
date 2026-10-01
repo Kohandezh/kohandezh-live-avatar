@@ -6,7 +6,7 @@ import en from '@/i18n/locales/en/common.json';
 import { renderWithProviders } from '../../../utils/renderWithProviders';
 
 /**
- * The orb's caption, and the `isStartHidden` signal of Foreman ruling 4: while the lead card hides
+ * The orb's caption, and its `isStartHidden` signal: while the lead card hides
  * Start on `/audio`, the idle caption "Press start, then speak." would point at a button that is
  * not there, so the orb says nothing at idle then.
  */
@@ -37,7 +37,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('AssistantOrb caption and isStartHidden (ruling 4)', () => {
+describe('AssistantOrb caption and isStartHidden', () => {
   it('says "Press start, then speak." at idle by default, for every other caller', () => {
     vi.useFakeTimers();
     renderOrb();

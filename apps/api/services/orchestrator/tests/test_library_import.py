@@ -689,7 +689,7 @@ async def test_a_results_row_for_an_entry_in_another_state_is_already_imported(s
     ("status", "answer_text"), [("pending", None), ("pending", SPOKEN), ("ready", SPOKEN)]
 )
 async def test_a_results_row_in_another_language_than_the_entry_fails(sprint, status, answer_text):
-    """Contract revision 3: a row attaches only to an entry in its own language."""
+    """A row attaches only to an entry in its own language (language_mismatch)."""
     entry_id = await sprint.add_entry("C10Q08", status, answer_text=answer_text, language="en")
     before = await sprint.entry("C10Q08")
     results = sprint.results_file("results.json", [sprint.rendered("C10Q08", language="fa")])
@@ -891,7 +891,7 @@ async def test_a_verdict_that_is_not_technical_or_non_technical_fails_the_run(sp
 
 
 async def test_the_same_verdict_for_a_key_in_two_files_is_accepted(sprint):
-    """Contract revision 3: agreeing verdicts are fine."""
+    """Agreeing verdicts are fine."""
     source = sprint.write("source.json", [sprint.source_row("C13Q10", technical="classify")])
     first = sprint.write("batch-1.json", _verdicts(("C13Q10", "non-technical")))
     second = sprint.write("batch-2.json", _verdicts(("C13Q10", "non-technical")))

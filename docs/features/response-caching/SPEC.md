@@ -637,10 +637,10 @@ place; REQ-065 and later were added on 2026-09-26.
   and only when `status === 'idle'` (owner decision 3). Under Start, the list's arrival never moves
   the Start button. While an answer downloads, the tapped question shows a spinner (`isPending`),
   the other suggestion buttons are disabled, and Stop is shown; from the moment playback starts the
-  list is hidden and Stop is shown in its place (playback contract, ruling 1). On `/audio`, Start
+  list is hidden and Stop is shown in its place (before that, the tapped button stays in view to show its spinner, as section 10 says). On `/audio`, Start
   sits in the middle of the column at idle, as on `/video`, and the orb's box keeps the same size
   and place from idle through the start of the session: pressing Start moves nothing, whether the
-  list is there or the library is empty (playback contract, ruling 5). While the lead card shows,
+  list is there or the library is empty. While the lead card shows,
   the list is hidden too (REQ-075).
 - **REQ-057.** On `/video`, the player shows the video above the stage, full bleed like the stage
   (`ConversationStage.tsx:58-65`), with the "Recorded answer" label at the top and the answer text as
@@ -866,7 +866,7 @@ and `finalize`) stays in the workbench chain and in dependency (b).
   mock suggestions route answers two Persian entries (none in English, like the rendered library),
   and the mock follow-ups route answers one of them. The mock video route serves one small real MP4 (a 4 second test pattern with
   a tone, `src/data/mock/recorded-answer.mp4`) for every servable entry and `404 not_found` for any
-  other, so the player itself can be walked with the mock (playback contract, ruling 4). The
+  other, so the player itself can be walked with the mock. The
   mock also answers `GET /api/assets/video/{videoAssetId}`, which the admin review player uses
   (REQ-032), with the same `404 not_found`; `tests/integration/adminLibraryPage.test.tsx` intercepts
   that request with the same fixture MP4.
