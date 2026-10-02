@@ -1,7 +1,7 @@
 # 0014. Conversation data retention
 
 Status: Accepted (2026-09-25). The owner decided every item. Items 1, 2, 3 and 7 changed the
-proposal. Item 3 depends on a new ADR for a signed-in widget.
+proposal. Item 3 depends on a new ADR for a signed-in widget. Proposed change: ADR 0016.
 Date: 2026-09-23
 
 ## Context
