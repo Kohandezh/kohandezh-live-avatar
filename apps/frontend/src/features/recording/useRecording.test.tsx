@@ -205,7 +205,7 @@ describe('useRecording', () => {
     await waitFor(() => expect(result.current.status).toBe('done'));
   });
 
-  it('keeps polling through a 500 the server marks not retryable, then shows done (ruling 6)', async () => {
+  it('keeps polling through a 500 the server marks not retryable, then shows done (REQ-041)', async () => {
     let polls = 0;
     server.use(
       http.get('*/api/jobs/:jobId', () => {

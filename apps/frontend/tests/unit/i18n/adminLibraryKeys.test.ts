@@ -120,12 +120,12 @@ const SPEC_WORDING: Record<string, { en: string; fa: string }> = {
     en: 'Longer than 480 characters. Shorten it before marking it ready.',
     fa: 'بیش از ۴۸۰ نویسه است. پیش از تأیید آن را کوتاه کنید.',
   },
-  // Foreman ruling 5 (contract revision 4): the hint while Record waits for the audio.
+  // The hint while Record waits for the audio (REQ-036: its length must be known).
   'library.record.needsAudio': {
     en: 'Generate the audio first, so its length can be checked.',
     fa: 'اول صدا را بسازید تا طول آن بررسی شود.',
   },
-  // Foreman ruling 11 (contract revision 5): why Attach is off for another answer's recording.
+  // Why Attach is off for another answer's recording.
   'library.record.otherAnswer': {
     en: 'This recording is of another answer. You can find it in the list below.',
     fa: 'این ضبط برای پاسخ دیگری است. آن را در فهرست پایین می‌بینید.',

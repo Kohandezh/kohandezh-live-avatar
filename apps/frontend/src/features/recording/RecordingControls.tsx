@@ -15,13 +15,13 @@ interface Props {
   /** Recording needs a room we own. "managed" sessions run in LiveAvatar's room. */
   transport: 'managed' | 'byo' | null;
   /**
-   * Why Record stays off, if it does (REQ-036, ruling 5): no generated audio of this text yet, so
+   * Why Record stays off, if it does (REQ-036): no generated audio of this text yet, so
    * its length is unknown, or audio too long for one session.
    */
   recordBlock: 'needsAudio' | 'tooLong' | null;
   /**
    * False when the finished recording is not this screen's to use (another answer's text,
-   * ruling 7). Then the "ready" line is left out.
+   * REQ-003). Then the "ready" line is left out.
    */
   isResultForThisScreen?: boolean;
 }

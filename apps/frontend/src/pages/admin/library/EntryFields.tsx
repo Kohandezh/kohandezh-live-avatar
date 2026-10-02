@@ -273,7 +273,7 @@ export function SpokenAnswerEditor({ values, onChange }: FieldProps) {
         {/*
           Plain elements, not HeroUI's Description: TextField hides its description while the
           field is invalid, and the counter must stay in view above 480 characters too. The count
-          and the limit it is measured against are two elements (Foreman ruling, revision 2).
+          and the limit it is measured against are two elements (the counter key holds the count only).
           Digits follow the language, as the durations do (section 10).
         */}
         <p

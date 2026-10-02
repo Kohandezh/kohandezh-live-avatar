@@ -57,7 +57,7 @@ export function leadCard(page: Page, name: string = fa.library.lead.title) {
 }
 
 /**
- * Ruling 6: the lead card is never clipped. Nothing between the card and the layout's `<main>`
+ * The lead card is never clipped. Nothing between the card and the layout's `<main>`
  * clips or scrolls, and once `<main>` is scrolled to its end the card's bottom border is on screen,
  * above the floating menu.
  */

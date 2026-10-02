@@ -468,7 +468,7 @@ describe('playing a recorded answer on /audio (REQ-058, SC-014)', () => {
   });
 });
 
-describe('when a recorded answer fails (section 8, rulings 2 and 3)', () => {
+describe('when a recorded answer fails (section 8)', () => {
   it('a 404 says the answer is gone, refetches the list and the entry leaves it (REQ-062, SC-017)', async () => {
     const user = userEvent.setup();
     renderPage(VideoConversationPage);
@@ -952,11 +952,11 @@ describe('when the live start fails (REQ-078, SC-036)', () => {
   });
 });
 
-describe('turn 2 rulings (Foreman rulings 4, 8, 10)', () => {
+describe('the lead card: focus after consulting, the orb caption, the follow-up count', () => {
   it.each([
     ['/video', VideoConversationPage, en.conversation.video.title],
     ['/audio', AudioConversationPage, en.conversation.audio.title],
-  ] as const)('%s: after «Request a consultation» the focus is on the page heading, not lost (ruling 10)', async (_route, Page, title) => {
+  ] as const)('%s: after «Request a consultation» the focus is on the page heading, not lost', async (_route, Page, title) => {
     let release: () => void = () => {};
     sdkState.startGate = new Promise<void>((resolve) => {
       release = resolve;
@@ -975,7 +975,7 @@ describe('turn 2 rulings (Foreman rulings 4, 8, 10)', () => {
     release();
   });
 
-  it('/audio: the orb says no "Press start" while the lead card hides Start, and says it again after "Other questions" (ruling 4)', async () => {
+  it('/audio: the orb says no "Press start" while the lead card hides Start, and says it again after "Other questions"', async () => {
     const user = userEvent.setup();
     renderPage(AudioConversationPage);
     await screen.findByRole('list', LIST);
@@ -998,7 +998,7 @@ describe('turn 2 rulings (Foreman rulings 4, 8, 10)', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows at most three follow-ups, whatever the server sends (ruling 8)', async () => {
+  it('shows at most three follow-ups, whatever the server sends (REQ-075)', async () => {
     followUpsOverride = (config) =>
       okResponse(config, {
         items: [1, 2, 3, 4, 5].map((index) => ({

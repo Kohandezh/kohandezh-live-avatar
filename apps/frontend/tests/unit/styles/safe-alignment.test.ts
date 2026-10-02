@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Tailwind's `*-safe` alignment classes compile to `safe center` and the like, with no fallback.
- * iOS WebKit before 17.6 drops such a declaration, so a block loses its centring there (Foreman
- * ruling 12). No component may use one.
+ * iOS WebKit before 17.6 drops such a declaration, so a block loses its centring there. No
+ * component may use one.
  */
 
 const SRC = path.join(process.cwd(), 'src');
@@ -19,7 +19,7 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
-describe('no safe alignment classes (ruling 12)', () => {
+describe('no safe alignment classes', () => {
   it('no source file uses a *-safe alignment class', () => {
     const found = sourceFiles(SRC).flatMap((file) =>
       (readFileSync(file, 'utf8').match(SAFE_ALIGNMENT) ?? []).map(

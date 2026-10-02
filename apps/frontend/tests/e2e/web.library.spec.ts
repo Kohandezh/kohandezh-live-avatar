@@ -176,7 +176,7 @@ test.describe('after login', () => {
   });
 });
 
-/** The `justify-content` of the `/video` middle column that holds `element` (ruling 12). */
+/** The `justify-content` of the `/video` middle column that holds `element`. */
 function middleColumnJustify(element: Locator): Promise<string> {
   return element.evaluate((node) => {
     let current: HTMLElement | null = node.parentElement;
@@ -191,8 +191,8 @@ function middleColumnJustify(element: Locator): Promise<string> {
   });
 }
 
-/** Ruling 6, at the phone size the Foreman named, in both forms of the card and on both pages. */
-test.describe('on a 390 x 844 phone the whole lead card can be reached (ruling 6)', () => {
+/** On a 390 x 844 phone (an iPhone 12 to 14), in both forms of the card and on both pages. */
+test.describe('on a 390 x 844 phone the whole lead card can be reached', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   for (const route of ['/video', '/audio'] as const) {
@@ -229,7 +229,7 @@ test.describe('on a 390 x 844 phone the whole lead card can be reached (ruling 6
     });
   }
 
-  test('/video centres the connecting line with plain `center`, not `safe center` (ruling 12)', async ({ page }) => {
+  test('/video centres the connecting line with plain `center`, not `safe center`', async ({ page }) => {
     // The provider never answers, so the session stays in "connecting".
     await page.route('https://api.liveavatar.com/**', () => {});
     await loginToVideo(page);
@@ -241,7 +241,7 @@ test.describe('on a 390 x 844 phone the whole lead card can be reached (ruling 6
     expect(await middleColumnJustify(line)).toBe('center');
   });
 
-  test('/video starts at the top only under the lead card fallback (ruling 12)', async ({ page }) => {
+  test('/video starts at the top only under the lead card fallback', async ({ page }) => {
     await page.route('https://api.liveavatar.com/**', (r) => r.abort());
     await loginToVideo(page);
     await suggestionList(page).getByRole('button', { name: FIRST_QUESTION }).click();
@@ -256,7 +256,7 @@ test.describe('on a 390 x 844 phone the whole lead card can be reached (ruling 6
     expect(await middleColumnJustify(title)).toBe('flex-start');
   });
 
-  test('the contact values use the app\'s link style: underlined, accent on hover (rulings 7, 11)', async ({ page }) => {
+  test('the contact values use the app\'s link style: underlined, accent on hover', async ({ page }) => {
     await loginToVideo(page);
     await suggestionList(page).getByRole('button', { name: FIRST_QUESTION }).click();
     await page.getByRole('button', { name: fa.library.stop }).click();

@@ -72,8 +72,9 @@ _STR_OR_INT: tuple[type, ...] = (str, int)
 _INT: tuple[type, ...] = (int,)
 
 # The fields a rendered results row must hold (REQ-021), and their JSON types. batch, bridge_type
-# and answer_original may be absent or null (foreman ruling, contract revision 2); audio_asset_id is
-# always written and may be null (render_answers.py reads it with .get).
+# and answer_original may be absent or null: the export writes null when an entry has none, and
+# its rows must import again. audio_asset_id is always written and may be null (render_answers.py
+# reads it with .get).
 _RENDERED_FIELDS: dict[str, tuple[type, ...]] = {
     "key": _STR,
     "question": _STR,
@@ -321,7 +322,8 @@ async def _check_results(database: Database, paths: list[Path], media_dir: Path,
 
 def _meet_entry(row: _Row, entry: asyncpg.Record | None) -> None:
     """REQ-028: a row whose key has an entry attaches to a ready or pending one in the same
-    language (contract revision 3) saying the same text, and is skipped otherwise."""
+    language saying the same text. Another status is `already_imported`; another language or text
+    fails (`language_mismatch`, `answer_text_mismatch`, section 8)."""
     if entry is None:
         return
     if entry["status"] not in ("ready", "pending"):
@@ -500,7 +502,7 @@ async def _check_source(database: Database, path: Path, language: str, verdict_p
                 verdicts[key] = technical
         except _BadFormat as bad:
             report.bad_files.append(f"{verdict_path}\t{bad.key}")
-    # The same key in two verdict rows is fine when they agree (contract revision 3).
+    # The same key in two verdict rows is fine when they agree, since both settle it the same way.
     verdict_values: dict[str, set[str]] = {}
     for row in verdict_rows:
         verdict_values.setdefault(row.key, set()).add(row.values["technical"])
