@@ -19,6 +19,7 @@ Update the row in the same commit as the document it describes.
 
 | Slug | Spec status | Research | Domain | Targets | Created | Updated |
 | ---- | ----------- | -------- | ------ | ------- | ------- | ------- |
+| `answer-matcher` |  | Open | assistant | mobile, web | 2026-10-18 | 2026-10-18 |
 | `response-caching` | Approved | Resolved | assistant | mobile, web, admin | 2026-09-19 | 2026-09-26 |
 
 ## What goes where
