@@ -1,7 +1,9 @@
 # 0016. Chat and message storage
 
-Status: Proposed (2026-10-02). Questions 1 and 2 answered, question 3 replaced (2026-10-02); the
-other items wait for the owner. If accepted, it changes ADR 0014 items 1, 4 and 5 (item 9).
+Status: Accepted (2026-11-05). The owner answered questions 1 to 3 on 2026-10-02 and questions 4
+to 8 on 2026-11-05. The CTO, delegated by the owner, decided two points on 2026-11-05: the reading
+of question 6 (a user may ask for deletion, an admin decides, chats only) and the context source
+(browser memory, item 10). It changes ADR 0014 items 1, 4 and 5 (item 9).
 Date: 2026-10-02
 
 ## Context
@@ -28,26 +30,40 @@ the backend stores none." A library answer needs a signed-in user (`.../src/libr
 and plays only at `idle` (`apps/frontend/src/features/answer-library/useAnswerLibrary.ts:41-44`).
 Which question goes to the library and which goes live is the matcher spike's subject.
 
-**The provider already keeps a copy.** The ElevenLabs API has "Get the audio recording of a
-particular conversation" at `GET v1/convai/conversations/{conversation_id}/audio`, and each agent
-has privacy settings: `record_voice`, `retention_days` ("-1 indicates there is no retention
-limit"), `delete_audio`, `zero_retention_mode` (official `elevenlabs-python` SDK, generated from
-the API, commit `963b4a5`, files `src/elevenlabs/conversational_ai/conversations/audio/client.py`
-and `src/elevenlabs/types/privacy_config_output.py:12-40`, fetched 2026-10-02; the docs site
-answered `403` to our fetch). The SDK does not say whether that audio holds both sides. LiveAvatar
-passes the ElevenLabs `conversation_id` to the browser, and our hook ignores it
-(`docs/features/response-caching/RESEARCH.md:977-981`). Whether this backend's key can read that
-conversation is open (U9, `RESEARCH.md:1349`).
+**The provider can keep a copy; our agent is set to zero retention.** The ElevenLabs API has "Get
+the audio recording of a particular conversation" at
+`GET v1/convai/conversations/{conversation_id}/audio`. Each agent has privacy settings:
+`record_voice` ("Whether to record the conversation"), `retention_days` ("-1 indicates there is no
+retention limit"), `delete_audio`, `delete_transcript_and_pii`, `zero_retention_mode` ("no PII data
+is stored") and `conversation_history_redaction` (official `elevenlabs-python` SDK, commit
+`963b4a5`, `src/elevenlabs/conversational_ai/conversations/audio/client.py` and
+`src/elevenlabs/types/privacy_config_output.py:12-42`, fetched 2026-10-02; the privacy file
+unchanged at `152f737`, fetched 2026-11-05). A read-only GET of the agent's configuration on
+2026-11-05 found one agent in the workspace this backend's ElevenLabs key reaches,
+`agent_7901m15dnc03em9a99nn1w2a853q`, with `zero_retention_mode: true`, `record_voice: false` and
+`retention_days: -1`. Inference: it is the ElevenLabs agent our LiveAvatar voice agent wraps. That
+link is set in LiveAvatar, outside this repository (`LIVEAVATAR_VOICE_AGENT_ID`,
+`.env.example:51-55`); ADR 0014 left open whether this key sits in that workspace (`0014:169-170`).
+Inference: a transcript and its audio hold personal data, so ElevenLabs keeps neither. The SDK does
+not say whether "no PII data is stored" instead means a transcript kept with the personal data
+removed (the same class has `delete_transcript_and_pii` and `conversation_history_redaction`,
+`privacy_config_output.py:22-25,42`), whether a record with no personal data (ids, times) is kept,
+or whether contextual updates (item 10) fall under it. LiveAvatar's own retention is not checked.
+So U9 (`docs/features/response-caching/RESEARCH.md:1349`), whether this backend can read a
+conversation back by id, likely has nothing to read for this agent. The read-back results below
+(T0 and T2 of item 3, V1 and V2 by read-back of item 2, a `partial` chat staying partial) rest on
+these inferences. The pick, T1, does not.
 
 **The lead card.** After a recorded answer, «درخواست مشاوره» starts the live assistant
 (`SPEC.md:673-689`). What the avatar says then, the request to introduce oneself included, lives in
 the ElevenLabs agent prompt, outside this repository (`SPEC.md:688-689`). The lead card stores
-nothing (`SPEC.md:1136-1138`).
+nothing today (`SPEC.md:1136-1138`).
 
 **The rules this meets.** ADR 0014 item 1 allows one draft per missed visit and a recorded answer
 holding "the avatar's audio and video only, never the user's microphone or camera"
 (`0014-conversation-data-retention.md:63-76`). Phase 3 audio "is not kept after transcription"
-(`0014:66-67`). It rejected "a draft per turn" (`0014:91-93`). Consent comes before Start, and
+(`0014:66-67`). It rejected "a draft per turn" (`0014:91-93`). A user's deletion request removes
+that user's drafts and unpublished recordings (`0014:78-79`). Consent comes before Start, and
 nothing is written before the spec that builds it (`0014:79-82`). The embed door stores nothing
 (`0014:139-144`). `docs/SECURITY.md:16-18` (item 13) bans logging conversation text. No consent
 text exists: "consent" appears nowhere in `apps/frontend/src`, and the microphone step says only
@@ -64,20 +80,20 @@ chats for an exhibition kiosk. What this ADR copies, changes or leaves:
 | Admin routes all behind one admin dependency (`app/routers/conversations_admin.py:25-35`) | Copy, as `require_admin` | Same rule as our library admin router (`.../src/library/router.py:39`) |
 | Message text is never edited (`conversations_admin.py:20-23`) | Copy | A transcript is a record, not content |
 | The viewer never puts row text in `innerHTML` (`static/admin/js/conversations.js:3-9`) | Copy | Text typed by the public is shown inside an admin session |
-| Export and delete are audited; opening a chat is not (`conversations_admin.py:250-276,279-295,298-317`) | Change: opening is audited too (item 5) | Our chats are health conversations |
+| Export and delete are audited; opening a chat is not (`conversations_admin.py:250-276,279-295,298-317`) | Copy for delete; no export in the first build (item 5) | Owner decision, 2026-11-05: only deletes are audited |
 | Anonymous chats are the majority, claimed later by a visitor (`0010:59-66`, `app/services/conversations.py:725-766`) | Do not copy | Our only stored chats belong to a signed-in user from the first turn (item 7) |
 | An unsigned cookie names the conversation, with an ownership check added later (`app/routers/chat.py:333-355`) | Do not copy | Our chat is a server row, owned by the principal from its creation (item 1) |
 | Raw IP and user agent on each conversation (`0010:127-128`) | Do not copy | Not needed to read a chat, and more personal data to delete |
-| One retention dial, 0 = keep forever, deleting on a timer (`conversations.py:1161-1196`) | Change: no timer, the admin decides (item 6) | ADR 0014 item 1, as the owner decided it |
+| One retention dial, 0 = keep forever, deleting on a timer (`conversations.py:1161-1196`) | Change: no timer, the admin decides (item 6) | Owner decision, 2026-11-05 |
 | A JSON "answers" bag on the visitor for what the bot learns (`0010:47-57`, `conversations.py:679-696`) | Do not copy now | Our user profile already holds name and phone (item 4) |
 | A model-written rolling summary (`0011_conversation_summary.sql:13-33`) | Do not copy | Earlier turns go to the agent as they are (item 10); our backend calls no model |
 | A `feedback` column on messages (`0025_message_feedback.sql:31`) | Do not copy | Padyar dropped it again with its only reader and writer (`migrations/0028_drop_pwa_leftovers.sql:1-4,15`) |
 | Spoken input is transcribed and the audio is not kept (`app/routers/voice.py:72-91`) | Matches ADR 0014 | Padyar stores no user voice either |
 | Storage faults never cost the visitor an answer; admin reads raise (`conversations.py:21-27`, `chat.py:148-174`) | Copy | A failed write must not end a conversation |
-| The lead screen (`static/admin/js/leads.js:1-24`) | Do not copy | It manages exhibitor companies, not people who asked for a consultation |
+| The lead screen (`static/admin/js/leads.js:1-24`) | Do not copy | It manages exhibitor companies. Our lead is a person's consultation request (item 4) |
 
-Code is cited at `0927cb3`. `.../` is `apps/api/services/orchestrator/`. Padyar paths are at
-`3a4a415`.
+Code is cited at `0927cb3`, whose code is identical to `37d50d5`. `.../` is
+`apps/api/services/orchestrator/`. Padyar paths are at `3a4a415`.
 
 ## Decision
 
@@ -86,30 +102,30 @@ another user, and nothing here touches the library's review rules (ADR 0014 item
 
 ### 1. The data: a chat and its messages
 
-**Decision.** Three new tables in one append-only migration (chats, messages, `chat_audit` of
-item 5) and a nullable `chat_id` on `sessions`.
+**Decision.** Four new tables in one append-only migration (chats, messages, leads of item 4,
+`chat_audit` of item 5) and a nullable `chat_id` on `sessions`.
 
 **The boundary.** A chat starts with a signed-in user's first question on `/video` or `/audio`,
 from the library or live; a visit with no question writes no chat. It holds every later turn of
 that visit: library turns and 0, 1 or more live sessions (End, then Start, stays in it). It ends
 when the user leaves the screen (route change, `pagehide`, closed tab) or after an idle gap with
-no turn and no open session; a reload starts a new chat. A mode switch is a route change today:
-"switching modes ends the conversation"
-(`apps/frontend/src/features/assistant/useConversationScreen.ts:60-66`). So it ends the chat, and
-item 10's context with it. Inference: our reading of the owner's example
-(question 8). The spec sets the gap, long enough that a lead card tap after a recorded answer
-stays in the chat, and whether a language change starts a new one.
+no turn and no open session; a reload starts a new chat. A switch between `/video` and `/audio`
+ends the chat, and item 10's context with it (owner decision, 2026-11-05, question 8). The code
+already treats it as a route change: "switching modes ends the conversation"
+(`apps/frontend/src/features/assistant/useConversationScreen.ts:60-66`). The spec sets the gap,
+long enough that a lead card tap after a recorded answer stays in the chat, and whether a language
+change starts a new one.
 
 A **chat** holds: the user id (not null), the target (`mobile` or `web`), the language of its first
-turn, a `lead` flag (item 4), started and ended times, a message count, and a `partial` flag (item
-3). Each live session in it sets `sessions.chat_id` (`.../migrations/002_assistant.sql:23-30`): 0
-to n sessions per chat, at most one chat per session. The provider's conversation id stays with
-the session. The session start body, which takes only `language` today
-(`.../src/schemas.py:227-228`), gains an optional chat id and the origin (`start` or `lead_card`):
-a contract change (item 9). A session after a library turn carries the chat id. A plain Start
-before any question has none; the first turn posted for it opens the chat and links the session
-(inference: our design). The server checks that the chat is the caller's and open, and the origin
-against a fixed list, but cannot prove the target or the origin.
+turn, started and ended times, a message count, and a `partial` flag (item 3). A lead is its own
+row (item 4). Each live session in it sets `sessions.chat_id`
+(`.../migrations/002_assistant.sql:23-30`): 0 to n sessions per chat, at most one chat per session.
+The provider's conversation id stays with the session. The session start body, which takes only
+`language` today (`.../src/schemas.py:227-228`), gains an optional chat id and the origin (`start`
+or `lead_card`): a contract change (item 9). A session after a library turn carries the chat id. A
+plain Start before any question has none; the first turn posted for it opens the chat and links the
+session (inference: our design). The server checks that the chat is the caller's and open, and the
+origin against a fixed list, but cannot prove the target or the origin.
 
 A **message** holds: the chat, an identity id for order, the role (`user` or `avatar`), the text,
 the input kind (`spoken`, `typed` or `tapped`), the **answer source**, a client turn id (unique per
@@ -149,30 +165,31 @@ chose V0 (below). The options:
 | Option | What is kept | How it gets here | Fits ADR 0014 |
 | ------ | ------------ | ---------------- | ------------- |
 | V0 | Text only, spoken turns marked `spoken` | Item 3 | Yes, after item 1's change |
-| V1 | V0 plus the avatar's audio | Read back from ElevenLabs by conversation id (U9), or BYO capture (ADR 0014 item 7, U1) | Close: item 1 already keeps avatar audio inside recorded answers |
-| V2 | V0 plus the user's own voice | Read-back (if that audio holds both sides, unverified), or the browser uploads its microphone | No. It reverses `0014:66-67,71-72`, and it is health speech: needs counsel |
+| V1 | V0 plus the avatar's audio | BYO capture (ADR 0014 item 7, U1). Not by read-back: with zero retention ElevenLabs keeps no audio (Context) | Close: item 1 already keeps avatar audio inside recorded answers |
+| V2 | V0 plus the user's own voice | The browser uploads its microphone. Not by read-back, for the same reason | No. It reverses `0014:66-67,71-72`, and it is health speech: needs counsel |
 
 No audio is stored. If a later decision keeps audio, it follows ADR 0014 item 6: local disk by
 default, S3 as a setting, served only through the backend as a blob to an admin (`0014:205-209`).
 
 **Owner decision, 2026-10-02:** V0. Spoken turns are stored as text, marked `spoken`. No audio is
-stored. V1 and V2 need a new decision (V1 after U9, V2 after counsel).
+stored. V1 and V2 need a new decision (V1 after U1, V2 after counsel).
 
 ### 3. Transport
 
-The options. Costs are per install; "U9" is the read-back question (`RESEARCH.md:1349`).
+The options. Costs are per install. With this agent's settings (Context), T0 and T2 have nothing
+to read; what T3 carries under zero retention is not checked.
 
 | Option | Real cost | One failure mode |
 | ------ | --------- | ---------------- |
-| T0. Store only the provider conversation id; read or link on demand | Almost no storage. Every view is a provider call (per-call cost unknown), and needs U9 | The provider's `retention_days` passes, or the key sits in another workspace: the chat is gone. No library turns, no search; a no-internet install has nothing |
-| T1. The browser posts turns (the pick) | Three routes, one table pair, limits | A dead tab or a dropped network loses the last turns: the chat is `partial` |
-| T2. Read-back by id after the session, as the primary source | One provider call per session, needs U9 and the browser's id | Fails on a no-internet install, and when the provider deletes first. No library turns |
-| T3. ElevenLabs post-call webhook | A public inbound URL; a signature check; mapping the provider id to our session and user | Fails on a no-internet install. It receives every conversation of the workspace, other agents' included (`RESEARCH.md:990-991`), and a delivery missed while we are down is lost (inference; webhook retry behaviour not checked) |
+| T0. Store only the provider conversation id; read or link on demand | Almost no storage. Every view is a provider call | Does not work with this agent: zero retention leaves nothing to read or link. No library turns either |
+| T1. The browser posts turns (the pick) | Three routes, one table pair, limits | A dead tab or a dropped network loses the last turns: the chat is `partial`, for good |
+| T2. Read-back by id after the session | One provider call per session | Does not work with this agent, for the same reason as T0. No library turns either |
+| T3. ElevenLabs post-call webhook | A public inbound URL; a signature check; mapping the provider id to our session and user | Fails on a no-internet install. It receives every conversation of the workspace, other agents' included (`RESEARCH.md:990-991`), and a delivery missed while we are down is lost (inference; webhook retry behaviour not checked). What it carries under zero retention is not checked |
 
-T1 is the only option that works today on every install, with no provider capability left to
-prove and no public endpoint, and the only one that sees library turns. Its weakness is trust in
-the browser, which matters little for a record only admins read (below). T2 can later check the
-live turns.
+T1 is the only source of turns: it works on every install, needs no provider capability and no
+public endpoint, and is the only option that sees library turns. Its weakness is trust in the
+browser, which matters little for a record only admins read (below). A `partial` chat cannot be
+filled later: ElevenLabs keeps no copy to read back.
 
 **Decision.** The browser opens a chat with `POST /api/chats` on the first question and posts each
 finished turn to `POST /api/chats/{id}/messages`, in batches, the way `answerReporter.ts` posts
@@ -222,72 +239,93 @@ reasons in the table.
 **Owner decision, 2026-10-02:** T1: "In general I have no problem with it being on the browser
 side." A failed post is retried inside the session, then a message is shown by status code.
 
-### 4. The introduction
+### 4. The introduction and the lead
 
 **Decision.** Only signed-in users on `mobile` and `web` reach the lead card (`SPEC.md:673`). Their
 phone is their login and their name is set at onboarding (`docs/DATA_MODEL.md:32-34,51-58`). So
 the avatar asks the user's need, never the phone. The introduction is stored as ordinary messages.
 Nothing is copied into the `users` row: a name or phone spoken in a chat stays message text.
 
-A **lead** is a chat with a live session started from the lead card (its `lead` flag), found as a
-filter of the chat list (item 5). No lead table now. It links to the person by the chat's user
-id. The answer that led to it is the `library` turn just before that session in the same chat
-(item 1), so no separate entry field is needed. The origin comes from the browser in the session
-start body (item 1), so a lead is what the client reported, not a server fact.
+**The lead table.** Inference, our design for this whole paragraph (the spec may add to it): a lead
+is a consultation request, a chat with a live session started from the lead card. The server writes
+one lead row when the first such session links to a chat (item 1). Minimum shape: the chat id
+(unique, deleted with its chat), the user id (staff reach the person through the `users` row, never
+through chat text), the status, its created and last-changed times, and the admin who last changed
+it. `new` means no one from staff has contacted the user about this request yet; `contacted` means
+staff have reached the user, outside the app. Only an admin changes the status, in the viewer (item
+5), back to `new` too, to undo a wrong mark. The user never sees it. The answer that led to the lead
+is the `library` turn just before that session (item 1), so no entry field is needed. The origin
+comes from the browser (item 1), so a lead is what the client reported, not a server fact.
 
 The agent prompt is outside this repository (`SPEC.md:688-689`). Greeting by name needs the agent
 to receive the name; only item 10's contextual update could carry it. Not decided here.
 
 **Rejected:** parsing the introduction into profile fields. Nothing here can parse speech reliably,
-and a profile changed by a chat surprises the user. And Padyar's answers bag (`0010:47-57`): it
-duplicates the profile.
+and a profile changed by a chat surprises the user. Padyar's answers bag (`0010:47-57`): it
+duplicates the profile. A `lead` flag on the chat, as first proposed: it cannot hold a status.
 
-**Owner decision:** Open, see question 4.
+**Owner decision, 2026-11-05:** a lead table with a status (`new`, `contacted`), built now; the
+avatar asks the user's need, never the phone. This replaces the earlier flagged-chat lead.
 
 ### 5. The admin chat viewer
 
 **Decision.** A "Chats" screen in the `admin` target only. Its API sits on a router with
 `dependencies=[Depends(require_admin)]` (`.../src/auth/dependencies.py:57-61`). The screen guards
-are UX on top of that rule. The list: newest first, filters by date, user, language, `lead` and
-`partial`, and a text search over message bodies. The detail: the user's name and phone (an admin
-already sees them in `GET /api/admin/users`) and every message in order with its role, input kind
-and source (a library message names its entry). Text is rendered as text, never as HTML. No edit
-of any message. No export in the first build.
+are UX on top of that rule. The list: newest first, filters by date, user, language, lead status
+(`new`, `contacted`, no lead) and `partial`, and a text search over message bodies. The detail: the
+user's name and phone (an admin already sees them in `GET /api/admin/users`), the lead status with
+a control to change it, and every message in order with its role, input kind and source (a library
+message names its entry). Text is rendered as text, never as HTML. No edit of any message. No
+export in the first build.
 
-**Audit.** Opening a chat, deleting a chat, and carrying out a user's deletion request each write
-a row in `chat_audit` (item 1): admin id, chat or user id, action, time, no text. Bare ids with
-no foreign key, so a row outlives its chat, as a review row keeps a deleted video's id
-(`docs/DATA_MODEL.md:312`). Padyar audits only export and delete. The strong audit log of ADR
-0015 item 3 (`0015-background-jobs.md:140-142`) can take these rows over later.
+**Audit.** Deleting a chat writes a row in `chat_audit` (item 1): admin id, chat id, user id,
+action, time, no text. A deletion an admin makes on a user's request (item 6) writes the same row.
+Opening a chat writes none. Bare ids with no foreign key, so a row outlives its chat, as a review
+row keeps a deleted video's id (`docs/DATA_MODEL.md:312`). The strong audit log of ADR 0015 item 3
+(`0015-background-jobs.md:140-142`) can take these rows over later.
+
+A lead status change writes no audit row. Inference: the owner limited the audit to deletes, a
+status change removes nothing, and the lead row keeps its last change and admin (item 4).
 
 **Search terms are user text too.** An admin may type a patient's name. The term goes in a request
 body, or the access log is configured to drop query strings: the API runs uvicorn with its default
 access log (`.../Dockerfile:28`), which prints the request line with its query (inference from
 uvicorn's defaults; the spec verifies it).
 
-**Owner decision:** Open, see question 5.
+**Owner decision, 2026-11-05:** only deletes are audited, not opening a chat.
 
 ### 6. Retention, deletion and consent
 
-**Decision.** Chats follow ADR 0014 item 1: no timer. A chat stays until an admin deletes it or
-its user asks for deletion. A deletion request removes that user's chats and messages by user
-id; an admin carries it out; the audit row stays without text. Deletion does not reach backups or
-the provider's copy, which ElevenLabs keeps under the agent's own `retention_days`, set by the
-owner; the context of item 10 joins that copy (inference).
+**Decision.** No timer. A chat stays until an admin deletes it. "The owner" in the answer means
+any person with the `admin` role; roles stay `user` and `admin` (`docs/DATA_MODEL.md:23,58`). A user
+can ask for deletion of their chats; an admin decides, and nothing is deleted automatically
+because of a request. A deletion removes the chat, its messages and its lead; the audit row
+stays without text (item 5). Deletion does not reach backups.
 
-**Consent.** ADR 0014's consent text covers questions and answers "stored and may be shown to
-others after review" (`0014:79-80`). It does not say the whole conversation is kept and read by
-staff, and none of it exists in the app yet. So one consent step, for this ADR and ADR 0014, names
-chats, admin access, spoken turns kept as text with no audio, each played recorded answer kept in
-the chat, and earlier turns of the chat, recorded answers included, sent to the live assistant's
-provider (item 10). A library tap writes a turn, so consent comes before the first question. No
-chat is written before the spec that builds it, or without agreement. Whether a user who declines
-may still play library answers, unstored, is open; any legal limit needs counsel.
+This departs from ADR 0014 item 1 for chats: there, a user's deletion request removes their drafts
+and unpublished recordings (`0014:78-79`). Here the request goes to an admin, who may refuse it.
+Drafts and recorded answers keep ADR 0014 item 1's rule. Counsel may need to check the chat rule.
+With zero retention on, ElevenLabs keeps no copy of the turns (inference, Context). Inference:
+with it off, they stay there under `retention_days` (-1, no limit), outside our deletion; so
+turning it off needs this item amended first.
+
+**Consent.** ADR 0014's consent text covers questions and answers "stored and may be shown to others
+after review" (`0014:79-80`). It does not say the whole conversation is kept and read by staff, and
+none of it exists in the app yet. So one consent step, for this ADR and ADR 0014, names chats, admin
+access, spoken turns kept as text with no audio, each played recorded answer kept in the chat,
+earlier turns of the chat, recorded answers included, sent to the live assistant's provider (item
+10), that a lead card request is recorded for staff to contact the user (inference: the lead of item
+4; the spec words it), and that a request to delete chats goes to an admin, who decides. A library
+tap writes a turn, so consent comes before the first question. No chat is written before the spec
+that builds it, or without agreement. Whether a user who declines may still play library answers,
+unstored, is open; any legal limit needs counsel.
 
 **Rejected:** a fixed retention period. The owner removed the 30-day timer from ADR 0014 item 1.
-Counsel may still require one (`0014:99-102`); then this item is amended with item 1.
+Counsel may still require one (`0014:99-102`); then this item is amended with item 1. Deleting on
+a user's request without an admin.
 
-**Owner decision:** Open, see question 6.
+**Owner decision, 2026-11-05:** no timer; only an admin deletes a chat. **CTO decision,
+2026-11-05** (delegated by the owner): a user may ask, an admin decides, chats only.
 
 ### 7. The widget
 
@@ -299,7 +337,7 @@ widget ADR is built, widget chats are stored like `web` chats.
 ask for deletion, and anyone on an allowed origin could post text with the public key
 (`0014:139-142`).
 
-**Owner decision:** Open, see question 7.
+**Owner decision, 2026-11-05:** accepted (question 7): nothing stored until the signed-in widget.
 
 ### 8. Logging
 
@@ -309,38 +347,42 @@ user's turn, no search term, name or phone. A test asserts that writing messages
 and searching leave no text in any log record, as ADR 0014 requires for drafts. The stored text
 is data under this ADR, not a log.
 
-**Owner decision:** Open, see question 7.
+**Owner decision, 2026-11-05:** accepted (question 7). Chat text is never logged.
 
 ### 9. What changes in ADR 0014, and which docs change
 
 | ADR 0014 item | Change |
 | ------------- | ------ |
-| 1 | Adds a record: every turn of a signed-in chat as text, spoken and library turns included, no audio (item 2). A library turn joins the user to an entry. "Rejected: a draft per turn" stays true for drafts: a chat is not a draft and never reaches the library. The consent text widens (item 6 here) |
+| 1 | Adds a record: every turn of a signed-in chat as text, spoken and library turns included, no audio (item 2). A library turn joins the user to an entry. "Rejected: a draft per turn" stays true for drafts: a chat is not a draft and never reaches the library. Chats follow their own deletion rule: a user's request goes to an admin, who decides (item 6). Drafts and recorded answers keep item 1's rule. The consent text widens (item 6 here) |
 | 2 | None. A chat is never shown to another user |
 | 3 | None. The embed door stores nothing |
-| 4 | Adds: earlier turns, library topics included, reach the ElevenLabs agent as context (item 10). The same workspace already hears the user; no new vendor. V1 or V2 by read-back would use it too |
-| 5 | Adds: browser-posted chat text is allowed because it is never a draft; a library answer's text is copied by the server from the entry; chat views and deletions write audit rows |
+| 4 | Adds: earlier turns, library topics included, reach the ElevenLabs agent as context (item 10). The same workspace already hears the user; no new vendor. The agent runs with zero retention, so ElevenLabs keeps no copy of the turns (Context) |
+| 5 | Adds: browser-posted chat text is allowed because it is never a draft; a library answer's text is copied by the server from the entry; chat deletions write audit rows, chat views do not |
 | 6 | None. No chat audio is stored (item 2) |
 | 7 | None. Chats need no BYO |
 
-ADR 0014 gets one status line: "Proposed change: ADR 0016". On acceptance it is marked amended in
-part, with the date.
+ADR 0014's status line says it is amended in part by this ADR, dated 2026-11-05.
 
 **Documents that change when this is built**, not in this change: `docs/SECURITY.md` item 17
-("Today the backend stores none"); `docs/DATA_MODEL.md` (the three tables, `sessions.chat_id`, the
-retention rule, and a note at `:159-165` that a chat joins a person to an entry while the usage
-row still does not); `docs/API.md` and `apps/frontend/src/data/mock/handlers.ts` (the chat
-endpoints, the admin chat routes, the new fields of `POST /api/assistant/session`); the
-`assistant-session` entity schema and a new chat entity; `docs/features/response-caching/SPEC.md:83-85,1136-1138,1441-1443`
-(the next step becomes a link; a library play and the lead card now write chat turns); the `en`
-and `fa` locale files; `CHANGELOG.md`. None is wrong today.
+("Today the backend stores none"); `docs/DATA_MODEL.md` (the four tables, `sessions.chat_id`, the
+lead statuses, the chat deletion rule, and a note at `:159-165` that a chat joins a person to an
+entry while the usage row still does not); `docs/API.md` and
+`apps/frontend/src/data/mock/handlers.ts` (the chat endpoints, the admin chat, lead and delete
+routes, the new fields of `POST /api/assistant/session`); the `assistant-session` entity schema and
+a new chat entity; `docs/features/response-caching/SPEC.md:83-85,1136-1138,1441-1443` (the next
+step becomes a link; a library play and the lead card now write chat turns, and a lead card session
+writes a lead); the `en` and `fa` locale files; `CHANGELOG.md`. None is wrong today.
+
+**May need a later change**, not here: U9 in `RESEARCH.md:1349` ("Partly verified") now has a
+likely answer for this agent (Context). Inference: ADR 0014 lines that wait on U9 or assume a
+provider copy (`0014:184-186,289,294,304`) may change; with this agent, drafts stay questions only.
 
 **Open, for the spec:** a `disabled` user's chats stay as they are; the user cannot log in to add
-more (`docs/DATA_MODEL.md:59`), and deletion follows item 6. The per-call cost of a later
-read-back is unknown. V0 needs no ADR 0015 background job; a later read-back would. The agent's
-greeting may come before the context (item 10); the agent prompt decides whether it waits.
+more (`docs/DATA_MODEL.md:59`), and deletion follows item 6. How a user sends a deletion request,
+and how an admin records a refusal, is for the spec. The agent's greeting may come before the
+context (item 10); the agent prompt decides whether it waits.
 
-**Owner decision:** Questions 1 and 2 answered, question 3 replaced; see questions 4 to 8.
+**Owner decision:** see the Status line.
 
 ### 10. Context to the agent
 
@@ -367,10 +409,10 @@ and the agent's greeting (set in its prompt, outside this repository, `SPEC.md:6
 before the context and not reflect it. The provider cost per call is unknown. The path rests on
 `ElevenLabsAgentSession` of SDK 0.0.18, whose agent commands carry TODOs (`lib/index.esm.js:1417-1429`).
 
-**Source: browser memory (recommended).** The page keeps one chat log in React state, read by the
-poster (item 3) and by this step. The agent hears what the user saw, failed writes included; no
-endpoint returns a person's chat text; no request sits before the question. A reload loses the
-log, but also starts a new chat (item 1). No such log exists today: the library holds one answer
+**Source: browser memory.** The page keeps one chat log in React state, read by the poster (item 3)
+and by this step. The agent hears what the user saw, failed writes included; no endpoint returns a
+person's chat text; no request sits before the question. A reload loses the log, but also starts a
+new chat (item 1). No such log exists today: the library holds one answer
 (`apps/frontend/src/features/answer-library/useRecordedAnswer.ts:28-29`), and a start clears the
 transcript (`state.ts:75-81`). **Rejected:** reading the stored chat back: a new read path for
 health text, one more request before the answer, and a gap whenever the chat is `partial`. No
@@ -382,50 +424,45 @@ context at all: the agent would answer question 3 without questions 1 and 2, the
 earlier turns, and the chat is still stored. Earlier turns are not put into `message()`: the
 avatar would answer them as user words. The Persian path is the voice agent.
 
-**Owner decision, 2026-10-02:** the chat context goes to the agent. Browser memory as its source
-is our recommendation (question 8).
+**Owner decision, 2026-10-02:** the chat context goes to the agent. **CTO decision, 2026-11-05**
+(delegated by the owner): browser memory is the source, for the reasons above.
 
 ## Questions for the owner
 
-1. **What does "voice" mean?** **Answered 2026-10-02: V0** (item 2). V1 waits on U9, V2 on counsel.
-2. **Transport: T1, the browser posts chat text?** **Answered 2026-10-02: yes** (item 3). One U9
-   test (one sandbox conversation, one read by id) would still let T2 check live turns later.
-3. **Does a chat record the library answer that led to it?** **Replaced 2026-10-02:** every
-   library answer is a chat message with its entry (item 1), named in the consent text (item 6).
-4. **The introduction.** **Recommended:** the agent asks the user's need, never the phone, and
-   nothing is copied into the profile. Lead = a chat with a session started at the lead card, no
-   lead table yet. Say if staff need a lead status (new, contacted) now; that adds one table.
-5. **Is opening a chat audited, or only deleting?** **Recommended: opening too.** These are health
-   conversations, and an audit row costs one insert.
-6. **Retention.** **Recommended:** no timer, admin decides, as ADR 0014 item 1. Set the ElevenLabs
-   agent's own `retention_days` too, since our deletion does not reach the provider.
-7. **Items 7 and 8** keep ADR 0014 item 3 and the logging ban unchanged. **Recommended: accept as
-   written.**
-8. **Chat boundary and context source.** **Recommended:** one visit to the conversation screen,
-   from the first question until the user leaves or an idle gap passes (item 1), with the context
-   from browser memory (item 10). A switch between `/video` and `/audio` leaves the screen today,
-   so it ends the chat and the agent loses the earlier turns. Say if a switch must keep the chat.
+1. **What does "voice" mean?** **Answered 2026-10-02:** V0 (item 2).
+2. **Transport: T1, the browser posts chat text?** **Answered 2026-10-02:** yes (item 3).
+3. **Library answers in the chat?** **Replaced 2026-10-02:** every one is a message (item 1).
+4. **The introduction.** **Answered 2026-11-05:** a lead table with a status (item 4).
+5. **Is opening a chat audited, or only deleting?** **Answered 2026-11-05:** only deleting (item 5).
+6. **Retention.** **Answered 2026-11-05:** no timer, an admin decides; the CTO reading (item 6).
+7. **Items 7 and 8.** **Answered 2026-11-05:** accepted (items 7 and 8).
+8. **Boundary and context source.** **Answered 2026-11-05:** a switch ends the chat (item 1).
+   **CTO decision, 2026-11-05:** browser memory (item 10).
 
 ## Consequences
 
 **What it buys.** The owner knows what each user talked about, library answers included, and which
-answer led to a consultation. The live agent knows the earlier turns. Staff learn which questions
-users ask, without a draft loop.
+answer led to a consultation. Staff see each consultation request with a status. The live agent
+knows the earlier turns. Staff learn which questions users ask, without a draft loop.
 
 **What it costs.**
 
 - Every turn of every signed-in chat is stored with no end date, and each library turn joins a
   person to a health topic, which also reaches ElevenLabs as context. A one-way door.
+- A user's deletion request no longer removes their chats by itself: an admin decides. This
+  differs from ADR 0014 item 1, and counsel may need to check it.
 - A consent step on `mobile` and `web` in `en` and `fa`, before the first question.
-- Text, target, origin, and that a library turn happened, are what the browser reports, in its
-  own chat only. The server copies library text only for a servable entry.
-- Three chat routes with limits, a changed session start body, three tables and one column, a
-  chat log in the browser, a save notice, an admin screen, and deletion by user id.
-- A dead tab or a dropped network leaves a chat `partial` until a read-back exists.
+- Text, target, origin (so a lead), and that a library turn happened, are what the browser
+  reports, in its own chat only. The server copies library text only for a servable entry.
+- Three chat routes with limits, admin routes for chats and leads, a changed session start body,
+  four tables and one column, a chat log in the browser, a save notice, an admin screen with a
+  lead status, and deletion by an admin.
+- A dead tab or a dropped network leaves a chat `partial` for good: ElevenLabs keeps no copy.
+  The design leans on zero retention; turning it off needs item 6 amended.
 
 **What it does not do.** No audio. No matcher (the matcher spike). No context in persona mode. No
-lead table or status. No export. No chat history for the user. No widget chats until the
-signed-in widget ADR. No model summary.
+lead status other than `new` and `contacted`. No audit of opening a chat. No export. No chat
+history for the user. No widget chats until the signed-in widget ADR. No model summary.
 
 **The wrong fix this prevents.** A reviewer sees browser-posted text and "fixes" it by sending
 chats into the draft queue or the library. Chat text is for the admin to read only. It never
