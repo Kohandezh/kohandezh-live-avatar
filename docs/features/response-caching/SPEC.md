@@ -406,18 +406,24 @@ place; REQ-065 and later were added on 2026-09-26.
       (`render_answers.py:95-96`). Such a row needs only `key` (equal to its object key) and
       `error`. It is reported `not_rendered`, skipped, and not checked further. It never fails the
       file.
-    - **A rendered row** has `error` null and all of `key` (equal to its object key), `batch`,
-      `question`, `answer`, `category`, `category_title`, `section_type`, `technical`,
-      `bridge_type`, `language`, `answer_original`, `video_asset_id`, `external_id`,
-      `audio_asset_id`, `status`, `duration_ms` and `file` (`render_answers.py:64-74`, the extra
-      fields copied from the export at `:65`). The field checks of REQ-022 apply only to these
-      rows. A rendered row whose `status` is not `VIDEO_GENERATED` is also reported
-      `not_rendered` and skipped.
+    - **A rendered row** has `error` null and all of `key` (equal to its object key), `question`,
+      `answer`, `category`, `category_title`, `section_type`, `technical`, `language`,
+      `video_asset_id`, `external_id`, `status`, `duration_ms` and `file`, and also
+      `audio_asset_id`, which must be present but may be null (`render_answers.py:64-74`, the extra
+      fields copied from the export at `:65`; `.../src/library_import.py:74-98`). `batch`,
+      `bridge_type` and `answer_original` may be absent or null: the export writes null when an
+      entry has none, and its rows must import again (`.../src/library_export.py`, top docstring).
+      When one of them has a value, it must have the right type (`batch` a string or an integer,
+      the other two a string). The field checks of REQ-022 apply only to these rows. A rendered
+      row whose `status` is not `VIDEO_GENERATED` is also reported `not_rendered` and skipped.
   - **Verdicts**: the rewrite pass wrote one file per batch, `batch-1.json` to `batch-5.json`, 146
     rows in all (the 120 rendered answers and 26 judged technical), outside this repository. Each
     is a JSON list of objects; the import reads only `key` and `technical` (`technical` or
     `non-technical`, else `bad_technical`) and ignores the other fields. A source row whose
-    `technical` is `classify` takes the verdict of its key. A verdict for a row that is not
+    `technical` is `classify` takes the verdict of its key. The same key may appear in more than
+    one verdict row, in one file or in several. That is accepted when all its verdicts agree. When
+    they disagree, each of those verdict rows fails (with `duplicate_key`, or `bad_technical` for
+    an invalid value, `.../src/library_import.py:499,505-511`). A verdict for a row that is not
     `classify` is ignored, and a `classify` row with no verdict keeps `classify`, so an admin can
     still filter for it. With the sprint's files, all 26 not-rendered `classify` rows become
     `technical`, and the source's own value is kept in `import_metadata.source_technical`.
@@ -426,12 +432,15 @@ place; REQ-065 and later were added on 2026-09-26.
     render sprint's source sheet. `section` is kept in `import_metadata` only.
 
   A wrong top-level shape fails the file before a row is used (`bad_format`). So does a rendered
-  row with a missing field or a wrong type, since `error` null promises the full field list.
+  row with a required field missing, or a listed field of a wrong type on a row whose `status` is
+  `VIDEO_GENERATED`, since `error` null promises the required fields. A missing or null `batch`,
+  `bridge_type` or `answer_original` does not.
 - **REQ-022.** Each row is checked. `key` matches `^[A-Za-z0-9_-]{1,80}$`. `question` is 1 to 300
   characters after trimming. `answer` (results) is 1 to 480 characters. `answer_original` is 1 to
-  5000 characters. `category` is a non-empty string or integer, stored as text. `category_title`
-  is not empty. `section_type` is one of `knowledge`, `identity`, `sizing`, `meeting`,
-  `commercial`, `casual`. `technical` is one of `technical`, `non-technical`, `classify`.
+  5000 characters when the row has one (REQ-021). `category` is a non-empty string or integer,
+  stored as text. `category_title` is not empty. `section_type` is one of `knowledge`, `identity`,
+  `sizing`, `meeting`, `commercial`, `casual`. `technical` is one of `technical`, `non-technical`,
+  `classify`.
   `language` (results) is `fa` or `en`. `video_asset_id` (results) is a UUID. `duration_ms`
   (results) is a positive integer. These are the values the sprint's files hold (section 7).
 - **REQ-023.** The import always creates new rows. The render server's `video_asset_id` values are
@@ -451,9 +460,13 @@ place; REQ-065 and later were added on 2026-09-26.
     row fails with `duration_mismatch`. The target name is `LIB_<external_id>.mp4`: a file of that
     name already in `VIDEO_CACHE_DIR` fails with `file_exists`, and a `video_assets` row with
     `external_id` = `LIB_<external_id>` fails with `external_id_taken` (the column is unique,
-    `.../migrations/001_initial.sql:41`). Across all files of one run, a `key` that appears more
-    than once fails each of those rows with `duplicate_key`, and an `external_id` that appears more
-    than once fails each of them with `duplicate_external_id`. The target name carries the render's
+    `.../migrations/001_initial.sql:41`). Across all files of one results run, a `key` that
+    appears more than once among the rows not reported `not_rendered` (rendered rows with status
+    `VIDEO_GENERATED`) fails each of those rows with `duplicate_key`, and an `external_id` that
+    appears more than once among the same rows fails each of them with `duplicate_external_id`.
+    In a source file, a `key` that appears more than once fails each of those rows with
+    `duplicate_key`. Verdict rows follow their own rule: the same key is accepted when its
+    verdicts agree (REQ-021, "Verdicts"). The target name carries the render's
     own `external_id` (for example `ANS_C18Q05_<time>`, `render_answers.py:53`), not only the key, so
     a new render of a key whose earlier video was rejected (REQ-069) and not yet swept gets a free
     name.
@@ -473,12 +486,12 @@ place; REQ-065 and later were added on 2026-09-26.
 - **REQ-025.** The source files are only read. The import never moves or deletes them.
 - **REQ-026.** A new results row creates a `draft` entry: the owner approved these texts, and the
   video still needs admin review (owner, 2026-09-26). The entry gets `key`, `question`,
-  `answer_text` = `answer`, `answer_original`, `language`, `category`, `category_title`,
-  `section_type`, `technical`, the new video, `created_by` null, and `import_metadata`
-  `{batch, bridge_type}`. A new source row creates a `pending` entry with `answer_text` null,
-  `answer_original`, the category fields (with `technical` settled by a verdict, REQ-021),
-  `--language`, and `import_metadata` `{section, source_technical}`. The
-  import never publishes and never marks an entry `ready`.
+  `answer_text` = `answer`, `answer_original` (null when the row has none), `language`,
+  `category`, `category_title`, `section_type`, `technical`, the new video, `created_by` null, and
+  `import_metadata` `{batch, bridge_type}` (only the ones the row has). A new source row creates a
+  `pending` entry with `answer_text` null, `answer_original`, the category fields (with
+  `technical` settled by a verdict, REQ-021), `--language`, and `import_metadata`
+  `{section, source_technical}`. The import never publishes and never marks an entry `ready`.
 - **REQ-027.** The import is all or nothing. If any row fails phase 1, it never starts phase 2: it
   copies no file and writes no row, prints one line per failed row (file, key, reason code) and
   exits with status 1. `--dry-run` runs phase 1 only and prints the same report.
@@ -540,9 +553,15 @@ place; REQ-065 and later were added on 2026-09-26.
   LiveAvatar production caps a session at 300 seconds (render sprint 2026-09-25,
   `apps/api/setup/server/README.md:228-230`), and one answer must fit in one session. The request
   schema allows up to 3600 (`.../src/schemas.py:70`), so the cap is set here, not by the schema.
-- **REQ-036.** Record is disabled when the generated audio of the answer (`duration_ms` of the TTS
-  result) is longer than 270 000 ms, with the message "too long for one recording". The 30 seconds
-  of margin are for connecting and stopping Egress. That margin is a choice, not a measurement.
+- **REQ-036.** Record is disabled until the generated audio of the answer exists, because its
+  length must be known. The audio counts only when it was made from the text on screen: a changed
+  text needs new audio (`src/pages/admin/library/AdminRecordAnswerPage.tsx:125-133`,
+  `lastAudio` with its `text` in `src/features/text-to-speech/composerSlice.ts:7-11,15`). Until
+  then the screen shows `library.record.needsAudio`, "Generate the audio first, so its length can be
+  checked" (`src/features/recording/RecordingControls.tsx:21,30`). Record is also disabled when
+  the generated audio (`duration_ms` of the TTS result) is longer than 270 000 ms, with the
+  message "too long for one recording" (`library.errors.tooLong`). The 30 seconds of margin are
+  for connecting and stopping Egress. That margin is a choice, not a measurement.
 - **REQ-037.** The `web` route `/avatar` is removed (`src/app/web/router.tsx:29`), with its import
   (`:3`), the comment that describes it (`:16-21`), the Settings link to it
   (`src/pages/settings/SettingsIndexPage.tsx:82,113-119`) and its i18n keys
@@ -573,11 +592,16 @@ place; REQ-065 and later were added on 2026-09-26.
     through `apiClient`, with `refetchInterval` 2000 ms while the status is `queued` or `running`.
   - Polling stops when the status is `done` or `failed`, and after 180 s from the `202` (a chosen
     value: the job's own file wait is 30 s by default and at most 60, ADR 0015 item 4, plus queue
-    time and retries). A network error does not stop it; the next interval tries again.
+    time and retries). It also stops when `GET /api/jobs/{jobId}` answers `403` or `404`: the job
+    is unreadable (unknown, or not this caller's), so asking again cannot help
+    (`src/entities/job/hooks.ts:30-36,55-59`). Every other failed poll (a network error, a `5xx`)
+    does not stop it; the next interval tries again.
   - What the admin sees, as a status line under the recording controls (`aria-live="polite"`):
     `queued`: `library.record.job.queued`; `running`: `library.record.job.running`; `done`:
     `library.record.job.done`, and Save to library or Attach to this answer becomes enabled;
-    `failed`: the message for the job's `error.code` (section 8); stopped at 180 s:
+    `failed`: the message for the job's `error.code` (section 8); unreadable (`403` or `404`):
+    `library.record.errors.finalizeFailed`, the same message as a refused `finalize`
+    (`src/features/recording/useRecording.ts:165-177`); stopped at 180 s:
     `library.record.job.slow` with a "Check again" button that restarts polling for another 180 s.
   - Leaving the screen stops polling (the query unmounts). The job runs on the server anyway.
     Returning within the same tab resumes it, because the `jobId` is still in the recording slice.
@@ -1091,6 +1115,7 @@ the message as a small left-to-right line, as the assistant screens do
 | Step and code | Key | `en` | `fa` |
 | ------------- | --- | ---- | ---- |
 | screen notice | `library.record.needsAccounts` | Recording needs an active LiveAvatar account and a paid ElevenLabs plan. | ضبط به حساب فعال LiveAvatar و اشتراک پرداخت‌شده ElevenLabs نیاز دارد. |
+| screen notice, no audio yet for the text on screen (REQ-036) | `library.record.needsAudio` | Generate the audio first, so its length can be checked. | اول صدا را بسازید تا طول آن بررسی شود. |
 | session start, any error of `POST /api/avatar/session` | `library.record.errors.sessionFailed` | The avatar session could not start. Check that the LiveAvatar account is active, then try again. | جلسه آواتار شروع نشد. بررسی کنید که حساب LiveAvatar فعال باشد و دوباره امتحان کنید. |
 | speech, `elevenlabs_payment` (REQ-040) | `library.record.errors.speechPayment` | ElevenLabs refused the speech because the plan is not paid. Pay the ElevenLabs plan, then try again. | ElevenLabs صدا را نساخت چون هزینه اشتراک پرداخت نشده است. اشتراک ElevenLabs را پرداخت کنید و دوباره امتحان کنید. |
 | speech, `elevenlabs_quota` | `library.record.errors.speechBusy` | ElevenLabs is busy or its quota is used up. Wait a minute, then try again. | ElevenLabs مشغول است یا سهمیه آن تمام شده است. یک دقیقه صبر کنید و دوباره امتحان کنید. |
@@ -1101,7 +1126,7 @@ the message as a small left-to-right line, as the assistant screens do
 | finalize job `failed`, `egress_failure` (the file did not appear in the wait, ADR 0015 item 4) | `library.record.errors.finalizeFileMissing` | The video file did not appear in time. Record the answer again. | فایل ویدیو به‌موقع آماده نشد. پاسخ را دوباره ضبط کنید. |
 | finalize job `failed`, `egress_invalid_mp4` (`.../src/media_probe.py:23-26,35-38`) | `library.record.errors.finalizeInvalid` | The video file is damaged or has no sound. Record the answer again. | فایل ویدیو خراب است یا صدا ندارد. پاسخ را دوباره ضبط کنید. |
 | finalize job `failed`, `worker_lost` (ADR 0015 item 3) | `library.record.errors.finalizeLost` | The server restarted while it processed the recording. Record the answer again. | سرور هنگام پردازش ضبط دوباره راه‌اندازی شد. پاسخ را دوباره ضبط کنید. |
-| finalize request refused, or job `failed` with any other code | `library.record.errors.finalizeFailed` | Processing the recording failed. Record the answer again. | پردازش ضبط ناموفق بود. پاسخ را دوباره ضبط کنید. |
+| finalize request refused, job unreadable (`403` or `404` on `GET /api/jobs/{jobId}`, REQ-041), or job `failed` with any other code | `library.record.errors.finalizeFailed` | Processing the recording failed. Record the answer again. | پردازش ضبط ناموفق بود. پاسخ را دوباره ضبط کنید. |
 | job `queued` | `library.record.job.queued` | Waiting to process the recording | در انتظار پردازش ضبط |
 | job `running` | `library.record.job.running` | Processing the recording | در حال پردازش ضبط |
 | job `done` | `library.record.job.done` | The recording is ready. Save it to the library. | ضبط آماده است. آن را در کتابخانه ذخیره کنید. |
@@ -1186,7 +1211,7 @@ Record answer screens.
 | success | User: the answer plays with the "Recorded answer" label and its caption (REQ-057, REQ-058); at the end the lead card shows with focus on its heading. Admin: the list shows; an action updates the row and shows a HeroUI toast. |
 | empty | User: nothing is rendered under Start, on purpose. An empty library is normal for an `en` user (only `fa` answers exist) or before the first publish, and an "empty" message about a feature the user never saw would be noise. No follow-up: the lead card shows without that part. Admin: `EmptyState` with `library.empty`. |
 | error (with retry) | User, list: a compact `ErrorState` with `library.suggestionsError` and `onRetry`; Start still works. User, answer: the error line of section 8 in place of the player, with Retry, and the list returns. User, live start from the lead card: the existing `ErrorState` with Retry, and the contact card with `library.lead.liveUnavailable` under it (REQ-078). Admin: `ErrorState` with `onRetry` for the list; action errors as section 8. Record answer: one message per failure, from the recording table in section 8, with the error code under it. |
-| disabled | User: suggestion and follow-up buttons are disabled while offline; the contact links stay usable. Admin: actions not allowed by the status are not rendered; Mark ready is disabled above 480 characters; Save to library and Attach are disabled until the finalize job is `done`; Record is disabled for audio over 270 000 ms with `library.errors.tooLong`. |
+| disabled | User: suggestion and follow-up buttons are disabled while offline; the contact links stay usable. Admin: actions not allowed by the status are not rendered; Mark ready is disabled above 480 characters; Save to library and Attach are disabled until the finalize job is `done`; Record is disabled until the audio of the text on screen exists (`library.record.needsAudio`), and for audio over 270 000 ms (`library.errors.tooLong`). |
 | unauthorized (401) | User: the routes sit behind `RequireAuth` (`src/app/mobile/router.tsx:35`, `src/app/web/router.tsx:32`); a `401` from the library follows the existing session handling to `/login`. Admin: `RequireAuth` (`src/app/admin/router.tsx:21`). |
 | forbidden (403) | User: cannot happen, the user routes need no role. Admin: a non-admin is sent to `/forbidden` by `RequireRole` (`src/app/admin/router.tsx:22`); a `403` from the API shows the same page. |
 | offline | `OfflineBanner` in each layout (`src/app/mobile/MobileLayout.tsx:61`, `src/app/web/WebLayout.tsx:51`, `src/app/admin/AdminLayout.tsx:133`). User: suggestion and follow-up buttons disabled; a download that fails offline shows `library.errors.offline`; the contact card still shows, since calling needs no data connection. |
@@ -1317,14 +1342,17 @@ subscription is not needed for any of this, or for playback: playback reads our 
   actions per status; Withdraw and Reject video need the dialog's confirmation; Save to library
   creates a `draft` entry from a finished recording.
 - [ ] **SC-021** (REQ-035, REQ-036). The Record answer screen sends `max_session_duration: 300`, and
-  Record is disabled for a TTS result with `duration_ms` 270 001.
+  Record is disabled for a TTS result with `duration_ms` 270 001, and while the text on screen has
+  no generated audio (`library.record.needsAudio`), including after the text is changed.
 - [ ] **SC-022** (section 8). Every new `library.*` and `nav.library` key exists in both `en` and
   `fa` (a new unit test, since the repo has no parity check today), and the admin and user screens
   pass the RTL layout check in `fa`.
 - [ ] **SC-023** (REQ-041). After a `202` from `finalize`, the screen requests `GET /api/jobs/{jobId}`
   every 2000 ms while the job is `queued` or `running`, stops at `done` (Save to library enabled)
-  and at `failed` (the mapped message of section 8), and stops at 180 s with
-  `library.record.job.slow`; leaving the screen stops the requests and returning resumes them.
+  and at `failed` (the mapped message of section 8), stops at `403` or `404` with
+  `library.record.errors.finalizeFailed` but tries again after any other failed poll, and stops at
+  180 s with `library.record.job.slow`; leaving the screen stops the requests and returning
+  resumes them.
 - [ ] **SC-024** (REQ-042). A `VIDEO_GENERATED` video with a file and no entry is listed by
   `GET /api/admin/library/recordings`; once an entry uses it, it is not.
 - [ ] **SC-025** (REQ-040). A speech WebSocket that closes with code 1008 raises
