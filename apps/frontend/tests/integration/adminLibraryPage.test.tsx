@@ -13,7 +13,7 @@ import {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { toast } from '@heroui/react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { installMockApi, mockSession, resetMockLibrary } from '@/data/mock';
 import { loadInitialSettings, setLanguage } from '@/features/settings';
@@ -94,13 +94,56 @@ afterEach(() => {
   toast.clear();
 });
 
+/** The forbidden route of this file. Its button is a Back probe: it goes one step back in history. */
+function ForbiddenProbe() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <p>forbidden page</p>
+      <button type="button" onClick={() => navigate(-1)}>
+        probe back
+      </button>
+    </>
+  );
+}
+
+const LOAD_ERROR = 'This answer could not be loaded.';
+
+/** Records whether the load error text is in the document at any moment, even for one render. */
+function watchLoadError() {
+  let seen = false;
+  const check = () => {
+    if (document.body.textContent?.includes(LOAD_ERROR)) seen = true;
+  };
+  const observer = new MutationObserver(check);
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+  check();
+  return {
+    hasSeen: () => {
+      check();
+      return seen;
+    },
+    stop: () => observer.disconnect(),
+  };
+}
+
+/** Pressing Back must leave the forbidden page on screen: the redirect replaced the panel's entry. */
+async function expectBackStaysOnForbidden(user: UserEvent) {
+  await user.click(screen.getByRole('button', { name: 'probe back' }));
+  expect(screen.getByText('forbidden page')).toBeInTheDocument();
+}
+
 async function renderPage(locale: 'en' | 'fa' = 'en') {
   // LanguageSync resets i18n to the store's language, so a Persian render needs both.
   if (locale === 'fa') await i18n.changeLanguage('fa');
   return renderWithProviders(
     <Routes>
       <Route path="/library" element={<AdminLibraryPage />} />
-      <Route path="/forbidden" element={<p>forbidden page</p>} />
+      <Route path="/forbidden" element={<ForbiddenProbe />} />
     </Routes>,
     {
       route: '/library',
@@ -1151,6 +1194,82 @@ describe(
       expect(
         within(panel).queryByText('This answer could not be loaded.'),
       ).not.toBeInTheDocument();
+    });
+
+    it('sends the admin to the forbidden page when the read after a write answers 403', async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      const panel = await openEntry(user, 'C4Q02');
+      // Only the detail read (the list search on the key) answers 403. The list read has no q.
+      override = (config) =>
+        config.url === '/api/admin/library/entries' &&
+        (config.params as Record<string, unknown> | undefined)?.q === 'C4Q02'
+          ? reply(config, { error: { code: 'forbidden' } }, 403)
+          : undefined;
+
+      const watcher = watchLoadError();
+      await user.click(
+        within(panel).getByRole('button', { name: 'Reopen text' }),
+      );
+
+      expect(await screen.findByText('forbidden page')).toBeInTheDocument();
+      watcher.stop();
+      expect(watcher.hasSeen()).toBe(false);
+      await expectBackStaysOnForbidden(user);
+    });
+
+    it('sends the admin to the forbidden page when Retry answers 403 after a 500', async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      const panel = await openEntry(user, 'C4Q02');
+      let status = 500;
+      override = (config) =>
+        config.url === '/api/admin/library/entries' &&
+        (config.params as Record<string, unknown> | undefined)?.q === 'C4Q02'
+          ? reply(config, { error: { code: 'internal_error' } }, status)
+          : undefined;
+
+      await user.click(
+        within(panel).getByRole('button', { name: 'Reopen text' }),
+      );
+      expect(
+        await within(panel).findByText('This answer could not be loaded.'),
+      ).toBeInTheDocument();
+
+      status = 403;
+      // The 500 load error is on screen before Retry, so a "never shown" watch does not fit here.
+      await user.click(within(panel).getByRole('button', { name: 'Retry' }));
+
+      expect(await screen.findByText('forbidden page')).toBeInTheDocument();
+      expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
+      await expectBackStaysOnForbidden(user);
+    });
+
+    it('the Back probe returns to the previous page after a normal push (control)', async () => {
+      const user = userEvent.setup();
+      function Start() {
+        const navigate = useNavigate();
+        return (
+          <button type="button" onClick={() => navigate('/forbidden')}>
+            go forbidden
+          </button>
+        );
+      }
+      renderWithProviders(
+        <Routes>
+          <Route path="/start" element={<Start />} />
+          <Route path="/forbidden" element={<ForbiddenProbe />} />
+        </Routes>,
+        { route: '/start' },
+      );
+
+      await user.click(screen.getByRole('button', { name: 'go forbidden' }));
+      await user.click(screen.getByRole('button', { name: 'probe back' }));
+
+      expect(
+        screen.getByRole('button', { name: 'go forbidden' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('forbidden page')).not.toBeInTheDocument();
     });
 
     it('shows the same message when the server refuses a transition the screen allowed', async () => {

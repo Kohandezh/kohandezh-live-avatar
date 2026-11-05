@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { AlertDialog, Chip, Drawer, toast } from '@heroui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -234,6 +234,12 @@ export function EntryPanelContent({ row }: { row: AdminLibraryEntry }) {
     entry.status === 'draft' || entry.status === 'published';
   const isEditable = editable.length > 0;
   const actions = STATUS_ACTIONS[entry.status];
+
+  // A 403 on the detail read means the admin role is gone. Decided during render, so the load
+  // error never shows for a render before the redirect.
+  if (detail.isError && isApiError(detail.error) && detail.error.status === 403) {
+    return <Navigate to="/forbidden" replace />;
+  }
 
   return (
     <>
