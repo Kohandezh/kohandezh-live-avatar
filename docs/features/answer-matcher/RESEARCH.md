@@ -3,16 +3,19 @@
 | Field   | Value                                      |
 | ------- | ------------------------------------------ |
 | Created | 2026-10-18                                 |
-| Updated | 2026-10-18                                 |
+| Updated | 2026-11-06                                 |
 | Status  | Open                                       |
 | Domain  | assistant                                  |
-| Author  | `rag-t1-res` (Claude Opus 5.5), mission `20260925-optionb`, team `rag-t1` |
+| Author  | `rag-t1-res` (Claude Opus 5.5), mission `20260925-optionb`, team `rag-t1`; owner answers recorded by `koh6-t1-res`, mission `20261106-KOH-6` |
 | Outcome | → ADR                                      |
 
 Codebase claims cite `file:line` at `main@0927cb3`; `.../` is `apps/api/services/orchestrator/`.
+Claims added on 2026-11-06 (the owner answers of 2026-11-05) cite `main@3d2be14`, and say so.
 "Option E" and "§" point at `docs/features/response-caching/RESEARCH.md` (the earlier spike).
 External pages were read on 2026-10-18; inference is labelled. Nothing was installed, downloaded
-or run, and no paid API was called. `Resolved` is the owner's call after the §6.3 experiment.
+or run, and no paid API was called. The owner answered §8's questions on 2026-11-05. The spike
+stays `Open`: the Scribe retention question (S5, Linear KOH-7) and the model pick (the U14 screen,
+Linear KOH-8) are not settled.
 
 ## 1. The question
 
@@ -36,7 +39,8 @@ and how a match is shown, so that a hit plays the recorded answer and a miss goe
   enters the installs (§5.2).
 
 Guessing wrong costs trust (a wrong answer) or size (a heavy model a small one would match). The
-experiment in §6.3 is cheap next to both.
+experiment in §6.3 is cheap next to both. The owner deferred it on 2026-11-05 (§8, S1); it is
+Linear KOH-8.
 
 ## 3. Constraints
 
@@ -51,7 +55,7 @@ experiment in §6.3 is cheap next to both.
 | K7 | A call slower than "a few seconds" must be a `202` job. The match must answer while the user waits, so it must stay under that. | `docs/API.md:502` |
 | K8 | Migrations are append-only. | `.../migrations/006_library_entries.sql:1-2` |
 | K9 | A no-internet install must still work (`0006-backend-stack.md:21`). | ADR 0006 |
-| K10 | A hit's question becomes a chat turn only if ADR 0016 (`Proposed`) decides so under ADR 0014. The matcher only returns enough to make it possible. | `docs/DECISIONS/0016-chat-and-message-storage.md:1-3,294-297` |
+| K10 | ADR 0016 is `Accepted` (2026-11-05). A library turn is two stored messages, the question and the answer, and the question may be "a typed or spoken question the matcher sends to the library". The matcher returns enough for the browser to post that turn. | `docs/DECISIONS/0016-chat-and-message-storage.md:3,136-143,356` at `main@3d2be14` |
 | K11 | Persian and RTL. All new text in `en` and `fa`. | `CLAUDE.md`, i18n rules |
 
 ## 4. What the codebase already does
@@ -156,8 +160,8 @@ entry and model. The API reads the servable vectors in the user's language and t
   ([search](https://elevenlabs.io/docs/eleven-agents/api-reference/knowledge-base/search.md)).
 - Verdict: it answers only inside a billed live session (`RESEARCH.md:884-905`), with generated
   speech, not a recorded video. So it stays the "online dataset" and cannot replace the local
-  matcher. Putting the approved answer texts into it would make live and recorded answers agree
-  (an owner question, outside this repo).
+  matcher. Putting the approved answer texts into it would make live and recorded answers agree.
+  The owner said no to that on 2026-11-05 (§8, S7).
 
 **Option 5: hybrid, trigram plus embeddings, fused by rank.** Reciprocal Rank Fusion sums
 `1.0 / (k + rank)` per list, `rank_constant` "Defaults to `60`"
@@ -195,7 +199,8 @@ seven different tasks"; I re-read its Table 2 rows below
 
 Weights are fp32 unless marked. The int8 files are `onnx/model_qint8_avx512_vnni.onnx`, built
 for CPUs with AVX-512 VNNI (MiniLM also ships `model_quint8_avx2.onnx`). Whether the production
-CPU has VNNI is U24, so the 118 MB option may be slow or unusable there.
+CPU has VNNI is U24, so the 118 MB option may be slow or unusable there. The owner's 4 vCPU and
+8 GB (S8) is a planning assumption and names no CPU model, so VNNI stays unknown.
 
 What the cards say that matters here:
 
@@ -261,10 +266,19 @@ The CPU `torch` wheel is from download.pytorch.org (`2.14.1+cpu`, 196,253,677 by
 wheel is 555 MB and pulls CUDA packages. Path (b) needs ONNX files, so gte and Tooka need a
 one-time export. Weights come on top.
 
+**The owner picked path (b), ONNX runtime only, on 2026-11-05 (S6).** So a model can ship only as
+an ONNX file. The table above shows an int8 ONNX file for the three e5 sizes and MiniLM, an fp32
+ONNX file only for `bge-m3`, and none for `-large-instruct`, gte and both Tooka models. Those four
+need a one-time export. This spike has not tried one, and no source read here says it works, so
+whether each can be exported is **unverified** (U31). gte is the hardest case: it loads through
+remote code (above), and an export of that custom code is not shown anywhere I read. Path (a) stays
+in the table as the record of what was compared; it is not the plan.
+
 ### 5.3 Speech-to-text before a session
 
-**Typed first needs no speech-to-text**: no recorder, no microphone on three runtimes (U15), no
-third party. That is the first build in §6.
+**Typed input needs no speech-to-text**: no recorder, no microphone on three runtimes (U15), no
+third party. The owner chose typed and voice together in one build, not typed first (2026-11-05,
+S3). So the voice gates below are part of that one build, not a later one.
 
 **ElevenLabs Scribe v2, batch** (K2, internet installs only).
 - `POST /v1/speech-to-text`, multipart, `model_id` (`scribe_v2`), optional `language_code`, and
@@ -280,7 +294,11 @@ third party. That is the first build in §6.
 - Retention: `enable_logging` defaults to `true`, and "Zero retention mode may only be used by
   enterprise customers" (API reference). ADR 0014's "What deletion does not reach"
   (`0014:293-295`) was written about the live conversation; whether it covers the pre-session clip
-  is an owner question (U22).
+  is an owner question (U22). It is still open after 2026-11-05: it has its own issue, Linear
+  KOH-7. KOH-7 recommends zero retention for Scribe too, and says to check that the account allows
+  it for the Scribe API. That is a recommendation in a ticket, not an owner decision. The live
+  agent's `zero_retention_mode: true` (S4) is a Conversational AI agent setting. It says nothing
+  about Scribe's `enable_logging` for a clip sent before a session.
 - Code-switching: one benchmark ranks Scribe v2 first on code-switched Persian, Arabic and German
   speech, "13.2%" mean WER over all pairs, with no Persian-only number in the text, and notes that
   WER penalises "semantically correct transliteration choices"
@@ -312,29 +330,48 @@ Option E's confirm step (`RESEARCH.md:780-838`), now with parts that exist:
 - New: a spoken question shows the recognised text above the candidates, so an error is visible.
 - A miss, or "none", offers the live answer; on `connected` the question is sent with `sendText`
   (`RESEARCH.md:662-665`), and ADR 0014 item 1 stores it as the visit's one draft (K3).
-- A hit stores nothing. Recording a hit's question as a chat turn would store a user's words on
-  a hit, which ADR 0014 item 1 does not allow (`0014:63-68`); it needs ADR 0016's decision under
-  ADR 0014. The matcher only returns enough to make it possible: the ids shown and the one tapped.
+- A hit is a library turn under ADR 0016, `Accepted` 2026-11-05 (citations at `main@3d2be14`). A
+  library turn is two stored messages, the question as asked and the entry's answer, and the
+  question may be "a typed or spoken question the matcher sends to the library"
+  (`docs/DECISIONS/0016-chat-and-message-storage.md:136-138`). For a typed or spoken question "the
+  browser also sends the user's words" (`0016:143`). ADR 0016 item 9 changes ADR 0014 item 1 to
+  allow this record (`0016:356`). The matcher itself stores nothing. It returns enough for the
+  browser to post the turn: the ids shown and the one tapped.
 
 ## 6. Recommendation
 
-**Build Option 1 (a vector table compared in Python) with a local model picked by the experiment
-in §6.3, run in a separate optional matcher service, behind a typed question box before Start.
-Add voice through ElevenLabs Scribe only after U11, U15 and U21 hold. Do not adopt `pgvector`
-now.** The deciding reason: at 392 entries every storage option ranks the same, so the only real
-risk is ranking quality on our Persian questions, and only a measurement removes it. Not
-recommended: a silent threshold that plays a video (Option E), a hosted embedding API (ADR 0014
-item 4), a local speech model in the first builds (no CPU figure for Persian with English terms).
+**Build Option 1 (a vector table compared in Python) with a local model picked by the U14 screen
+in §6.3, on the ONNX runtime (path (b), the owner's pick, S6), in a separate optional matcher
+service. Put one question input before Start that takes typed and spoken questions in the same
+build (the owner's answer, S3). Voice goes through ElevenLabs Scribe, on internet installs only.
+Do not adopt `pgvector` now.** The deciding reason: at 392 entries every storage option ranks the
+same, so the only real risk is ranking quality on our Persian questions, and only a measurement
+removes it. Not recommended: a silent threshold that plays a video (Option E), a hosted embedding
+API (ADR 0014 item 4), a local speech model in this build (no CPU figure for Persian with English
+terms).
+
+**No model is picked; the screen (KOH-8) picks it.** The owner deferred the screen on 2026-11-05
+(S1). So nothing is measured on our questions, and the matcher cannot be turned on for users.
+What can still move now: the placement ADR (KOH-9), and the spec (KOH-10). Inference: neither
+depends on the model, because the model sits behind the embedder interface below. What waits for
+the screen: the model choice, each model's cosine floor, the measured latency and memory, and
+turning the match on. Until then users keep the suggestion buttons, which already work.
+
+**When a voice gate fails** (the spike's recommendation; the owner gave no rule for this): typed
+input ships alone on that runtime or install, and voice waits for its gate. Typed input needs none
+of the voice gates.
 
 - **Storage.** A new table, for example `library_entry_vectors (entry_id, model_id, model_revision,
   vector real[])`, unique on `(entry_id, model_id)`, written after publish (below). A match joins
   it to the servable view (`database.py:135-145`), so an unpublished or withdrawn entry stops
   matching at once. Two model ids can live side by side during a switch.
-- **Model.** None is picked here. Rule: the smallest eligible model (§6.3).
-- **Dependency, needs owner approval.** Path (a), about 0.7 to 1.0 GB installed, or path (b),
-  about 0.1 to 0.2 GB (estimates, §5.2), plus weights of 0.12 to 2.27 GB. It needs no network at
-  runtime if the weights ship with the image and the Hugging Face hub is set offline; otherwise
-  the first load downloads from huggingface.co (U28). Pin the model revision.
+- **Model.** None is picked. The screen (KOH-8) picks it by the rule in §6.3: the smallest
+  eligible model. It must run as an ONNX file (S6); for four models that needs an export not yet
+  tried (U31).
+- **Dependency.** Path (b), `onnxruntime` and `tokenizers`, the owner's pick on 2026-11-05 (S6):
+  about 0.1 to 0.2 GB installed (estimate, §5.2), plus weights of 0.12 to 2.27 GB. It needs no
+  network at runtime if the weights ship with the image and the Hugging Face hub is set offline;
+  otherwise the first load downloads from huggingface.co (U28). Pin the model revision.
 - **Endpoint shape (for the spec).** One `POST` with the question in the body (K4), signed-in users
   only (K6), its own rate limit (K5), synchronous under K7, returning at most three
   `LibrarySuggestion` items. No logging of the text. The encode never runs on the event loop: the
@@ -354,8 +391,9 @@ item 4), a local speech model in the first builds (no CPU figure for Persian wit
 | Cost | none new | a compose service, an internal HTTP call with a timeout, a health check |
 
 **Recommended: a separate optional service**, internal, reached by the API only. Image size,
-secrets and undo favour it, at a small cost next to 0.7 to 1.0 GB on every install. It is a new
-deployment boundary, so an ADR (§8). If the run picks e5-small on path (b), in-process is cheap.
+secrets and undo favour it. Path (b) makes the runtime small (0.1 to 0.2 GB, estimate), but the
+weights (0.12 to 2.27 GB) would still land on every install in-process. It is a new deployment
+boundary, so an ADR (§8, KOH-9). If the screen picks e5-small, in-process is cheap.
 
 **Publish and the model (for the spec).** Publish never fails because of the matcher: the status
 transaction stays as it is, with no model call under the row lock (`service.py:214-215`). After
@@ -369,27 +407,28 @@ buttons, which use no vectors (`database.py:961-973`). The admin list can count 
 
 | Failure | Match endpoint | User sees |
 | ------- | -------------- | --------- |
-| Model or service fails to load | the API starts anyway; match answers "unavailable" | no typed box; buttons stay. The spec picks how the client knows before it renders the box: a capability flag, or hiding the box after the first "unavailable" |
+| Model or service fails to load | the API starts anyway; match answers "unavailable" | no question input (typed or spoken); buttons stay. The spec picks how the client knows before it renders the input: a capability flag, or hiding the input after the first "unavailable" |
 | Encode error, or slower than the call's time limit (under K7) | an error; nothing stored or logged | "could not search", buttons and "ask live" |
-| Scribe down or slow (build 2) | no transcript | the typed box |
+| Scribe down or slow | no transcript | the typed input |
 
 The key-collision attack (§5.0, `RESEARCH.md:354`) needs a silent match. With the confirm step, a
 crafted question shows its candidates only to the person who typed it (`RESEARCH.md:1535-1537`).
 
 ```mermaid
 flowchart TB
-    Q(["free Persian question before Start"])
-    Q --> X{{"U14 screen: is there an eligible model<br/>whose point estimates meet the floors? · §6.3"}}
+    Q(["free Persian question before Start<br/>typed or spoken"])
+    Q --> X{{"U14 screen · §6.3 · KOH-8, deferred (S1)<br/>an eligible ONNX model whose point estimates<br/>meet the accepted floors (S2)?"}}
+    X -->|"screen not run yet"| STAY(["keep the suggestion buttons only<br/>SuggestedQuestions.tsx:25-30"]):::forced
     X -->|"no eligible model"| HY{{"is hybrid with pg_trgm eligible?"}}
-    HY -->|"no"| STAY(["keep the suggestion buttons only<br/>SuggestedQuestions.tsx:25-30"]):::forced
+    HY -->|"no"| STAY
     HY -->|"yes"| PICK
-    X -->|"yes"| PICK(["smallest eligible model, in a matcher service<br/>vector table, cosine in Python<br/>embed job after publish · jobs/runner.py"]):::chosen
-    PICK --> OK{{"owner approves the runtime, its size<br/>and the matcher-service ADR?"}}
+    X -->|"yes"| PICK(["smallest eligible model, ONNX runtime (S6)<br/>in a matcher service · vector table, cosine in Python<br/>embed job after publish · jobs/runner.py"]):::chosen
+    PICK --> OK{{"placement ADR accepted? · KOH-9<br/>separate service or in-process"}}
     OK -->|"no"| STAY
-    OK -->|"yes"| TYPED(["build 1 · typed question box before Start<br/>up to 3 candidates + none · hit plays, miss goes live"]):::chosen
-    TYPED --> V{{"Scribe on our clips · U11, U21<br/>recorder on all runtimes · U15<br/>backend key in the agent workspace · U9, U17"}}
-    V -->|"all hold"| VOICE(["build 2 · voice through Scribe<br/>internet installs only · ADR 0014 item 4"]):::gated
-    V -->|"any fails"| TONLY(["typed only"]):::forced
+    OK -->|"yes"| ONE(["one build · question input before Start (S3)<br/>up to 3 candidates + none · hit plays, miss goes live"]):::chosen
+    ONE --> V{{"voice gates: Scribe on our clips · U11, U21<br/>recorder on all runtimes · U15<br/>users read candidates · U12<br/>Scribe retention · U22, KOH-7, open<br/>internet install · K2"}}
+    V -->|"all hold"| BOTH(["typed and voice together<br/>voice through Scribe · ADR 0014 item 4"]):::chosen
+    V -->|"any fails"| TONLY(["typed alone where a gate fails<br/>spike's recommendation, not an owner rule"]):::forced
     PICK -.->|"library grows past about 10k rows"| PGV(["pgvector image · its own decision"]):::gated
 
     classDef chosen fill:#e6f4ea,stroke:#5a9e6f,color:#000
@@ -398,35 +437,48 @@ flowchart TB
 ```
 
 Green is the recommended path, orange is where a failed gate lands, dashed blue is later work.
-Nothing is built until the screen finds an eligible model; the first build is typed; voice and
-`pgvector` wait for their own evidence; every failure lands on the library that already works.
+The chart shows what reaches users. No model is picked, and until the screen (KOH-8) runs every
+question lands on the suggestion buttons. The ADR (KOH-9) and the spec (KOH-10) do not wait for
+the screen. Typed and spoken input are one build (S3); where a voice gate fails, typed ships alone
+(the spike's recommendation). U9 and U17 are no longer gates: verified on 2026-11-05 (§7).
+`pgvector` waits for its own evidence. Every failure lands on the library that already works.
 
 ### 6.1 What this trades off
 
 | Trade-off | Mitigation |
 | --------- | ---------- |
-| Typed first is not the owner's spoken design. | It ships the matcher, the confirm screen and the data first. Voice adds one input, behind named gates. |
+| With the screen deferred (S1), nothing is measured on our questions, so the matcher cannot reach users yet. | The ADR (KOH-9) and the spec (KOH-10) move now. Users keep the suggestion buttons, which already work. |
+| One build with both inputs (S3) carries the voice gates (U11, U12, U15, U21, U22) inside it. | Typed input needs none of them. Where a voice gate fails, typed ships alone (the spike's recommendation, not an owner rule). |
 | A second service to run, on installs that match. | Optional and internal. The API works without it (failure table). |
 | A floor tuned on our probes may not hold for real users. | Count declines ("none of these"), which is metadata, not user text (`0014:58-59`). |
-| A user can still tap a wrong candidate without reading (U12). | The experiment keeps the dangerous sibling below the right one; the usability test (U12) stays a gate for voice. |
+| A user can still tap a wrong candidate without reading (U12). | The screen (§6.3, KOH-8) keeps the dangerous sibling below the right one; the usability test (U12) stays a gate for voice. |
 
 **How hard to undo:** easy for storage (one table), the model (a re-embed of 392 rows) and the
 service (stop it). In-process would be harder: removing the runtime is a release on every install.
 
 ### 6.2 What to build first
 
-1. Run the U14 experiment (§6.3). No repository code. Its results table goes into this file.
-2. The placement ADR (§8), then the spec for build 1, via `writing-specs`.
-3. Build 1: the matcher service, the vector table, the embed job, the match endpoint, the typed
-   box and the confirm list on `mobile` and `web`, the consent step if K3's draft is in scope.
-   The spec owns the UI states (loading, empty, error, offline).
-4. Build 2, voice, after U11, U15, U21 and U9 or U17, with one `provider_usage` row per Scribe
-   call (audio duration, no text), as Option E required (`RESEARCH.md:745`).
+1. The placement ADR (§8, KOH-9). It can be written now: the runtime path is decided (S6).
+2. The spec, via `writing-specs` (KOH-10): one build with typed and spoken input (S3). The spec
+   owns the UI states (loading, empty, error, offline).
+3. The U14 screen (§6.3, KOH-8), once the owner approves running it. The owner deferred it on
+   2026-11-05 (S1). No repository code. It picks the model; its results table goes into this file.
+4. The build: the matcher service, the vector table, the embed job, the match endpoint, the
+   question input (typed and spoken) and the confirm list on `mobile` and `web`, the consent step
+   if K3's draft is in scope, and one `provider_usage` row per Scribe call (audio duration, no
+   text), as Option E required (`RESEARCH.md:745`). Voice ships where its gates hold (§6). The
+   spike's recommendation: the parts that use no model may be built and tested with the fake
+   embedder before step 3, but the match is turned on for users only after step 3 picks a model.
 
 ### 6.3 The U14 experiment
 
+**Status (owner, 2026-11-05).** Not run now (S1). The run is Linear KOH-8, in Backlog. The design
+below stays the plan for KOH-8. The floors below are accepted as they are (S2).
+
 **Goal.** Pick a model, or show that none is good enough, on our questions and CPU class. All 392
-entries are embedded; the 120 rendered ones are the playable gallery.
+entries are embedded; the 120 rendered ones are the playable gallery. Under S6 a model ships only
+as an ONNX file. The spike's recommendation: score each model as the ONNX file it would ship as,
+and treat a model with no working ONNX export as not eligible (U31).
 
 **Models (11 runs):** `multilingual-e5-small`, `-base`, `-large`, `-large-instruct`,
 `gte-multilingual-base`, `bge-m3` (dense), `Tooka-SBERT` V1, `Tooka-SBERT-V2-Small` (scored,
@@ -450,8 +502,10 @@ may draft; a person checks every probe. Frozen before any model runs.
 (top 3 above the floor). **Inversion rate** (U14 itself): on P4, the negation scores at or above
 the paraphrase; on P3, a wrong sibling ranks above the gold. **False-show rate**: share of P5
 probes that show any candidate. **Cost**: p50 and p95 embed time, memory after load and load
-time, on a 4-vCPU machine like the render droplet (`apps/api/setup/server/README.md:33`) until
-U24 names the production CPU. For P6 also the character error rate, which suits Persian spacing.
+time, on a machine with 4 vCPU and 8 GB RAM. That size is the owner's planning assumption for
+production (S8), not a measured fact; the render droplet is also 4-vCPU
+(`apps/api/setup/server/README.md:33`). The CPU model stays unknown (U24). For P6 also the
+character error rate, which suits Persian spacing.
 
 **This run is a screen, not proof.** The counts are small, so every metric is reported with a
 95% Wilson interval, per model, in one table. The inversion rate needs no floor (it compares two
@@ -459,8 +513,9 @@ scores), so it uses all P3 and P4 comparisons, reported for P3 (60), P4 (30) and
 R@3 and false-show depend on the cosine floor, chosen per model on half of P1 and P5 and reported
 on the other half.
 
-**Proposed floors (the owner sets the real ones, U13):** R@3 ≥ 0.90 on P1, ≥ 0.80 on P2 and P6;
-inversion rate ≤ 0.05; false-show ≤ 0.20; p95 embedding ≤ 150 ms; memory ≤ 1.5 GB.
+**Floors (proposed here; the owner accepted them as they are on 2026-11-05, S2, U13):** R@3 ≥
+0.90 on P1, ≥ 0.80 on P2 and P6; inversion rate ≤ 0.05; false-show ≤ 0.20; p95 embedding ≤
+150 ms; memory ≤ 1.5 GB.
 
 **One rule, used here and in the §6 flowchart.** A bound **rejects** a model when its interval
 lies wholly on the wrong side of a floor: R@3's upper bound below it, or a rate's lower bound
@@ -476,24 +531,28 @@ until a larger labelled set exists (about 140 comparisons to show ≤ 0.05 with 
 
 **Cost of the run.** No LiveAvatar call. 90 Scribe clips of about 10 s cost about $0.06 at list
 price (arithmetic). Owner approval is needed for a local install and about 10 GB of weights on a dev
-machine, the Scribe calls, and staff time for about 340 probes and 90 recordings. The script is
-throwaway, not product code.
+machine, the Scribe calls, and staff time for about 340 probes and 90 recordings. The answer of
+2026-11-05 (S1) did not give it, so it is still needed before KOH-8 runs. The script is throwaway, not product
+code.
 
 ## 7. Assumptions not verified
 
 | # | Assumption | Status | Why it matters |
 | - | ---------- | ------ | -------------- |
-| U14 | A local model ranks our Persian paraphrases above siblings and negations, fast enough on CPU. | **Unverified.** No Persian negation study exists (§5.2). FaMTEB has no such task. | The pick. §6.3 settles it. |
-| U11 | Scribe is accurate on our spoken questions and answers within a few seconds. | **Unverified.** Vendor tier only, no dataset named, no batch latency. | Build 2. P6 settles accuracy; latency needs a timed call. |
-| U12, U13 | Users read candidates; the owner names an acceptable rate. | **Unverified**, as in the earlier spike (`RESEARCH.md:1352-1353`). | Gates voice. U13 also sets §6.3's floors. |
-| U15 | A recorder works before the session on every runtime. | **Unverified** (`RESEARCH.md:1355`). | Build 2. |
-| U9, U17 | The backend's ElevenLabs key is in the live agent's workspace. | **Unverified.** | K2 allows Scribe only there. |
+| U14 | A local model ranks our Persian paraphrases above siblings and negations, fast enough on CPU. | **Unverified.** No Persian negation study exists (§5.2). FaMTEB has no such task. | The pick. §6.3 settles it when KOH-8 runs; the owner deferred it on 2026-11-05 (S1). |
+| U11 | Scribe is accurate on our spoken questions and answers within a few seconds. | **Unverified.** Vendor tier only, no dataset named, no batch latency. | A voice gate. P6 settles accuracy; latency needs a timed call. |
+| U12 | Users read candidates before they tap. | **Unverified**, as in the earlier spike (`RESEARCH.md:1352-1353`). | A voice gate. |
+| U13 | The owner names an acceptable rate. | **Decided** 2026-11-05: the owner accepted §6.3's proposed floors as they are (S2). | They are §6.3's floors. |
+| U15 | A recorder works before the session on every runtime. | **Unverified** (`RESEARCH.md:1355`). | A voice gate. |
+| U9, U17 | The backend's ElevenLabs key is in the live agent's workspace. | **Verified** 2026-11-05. The owner answered yes (S4). One free read-only GET with the backend key (owner OK) found 1 agent, `agent_7901m15dnc03em9a99nn1w2a853q`, "Mohammad Kohandezh Digital Representative" (language `fa`), with `zero_retention_mode: true`, `record_voice: false`, `retention_days: -1`. ADR 0016 records the same agent id and settings (`0016:41-46` at `main@3d2be14`); the display name and language come from the owner's answer. The link from LiveAvatar to this agent is set outside this repository (`0016:44-46`). | K2 allows Scribe only there. The agent's settings do not cover Scribe (U22). |
 | U21 | Speech-to-text writes English terms in Latin script. | **Unverified.** One paper says it may not (§5.3). | Trigram and hybrid lose their signal if not. P2 and P6 test it. |
-| U22, U23 | ElevenLabs keeping a pre-session clip is acceptable; Scribe bills plan credits or API dollars. | **Undecided; unverified.** `enable_logging` is `true` by default, zero retention is enterprise only; the pricing pages disagree. | An owner decision under ADR 0014; budget. |
-| U24 | The production server's CPU class and free memory. | **Unknown.** The repo records only the render droplet (`apps/api/setup/server/README.md:33`). | Sets the latency and memory floors. |
+| U22 | ElevenLabs keeping a pre-session clip is acceptable. | **Open** (S5). Its own issue: Linear KOH-7. KOH-7 recommends zero retention for Scribe and a check that the account allows it for the Scribe API; that is a recommendation, not an owner decision. `enable_logging` is `true` by default, and zero retention is enterprise only (§5.3). The live agent's `zero_retention_mode` is an agent setting and says nothing about Scribe. | A voice gate; an owner decision under ADR 0014. |
+| U23 | Scribe bills plan credits or API dollars. | **Unverified.** The pricing pages disagree (§5.3). | Budget. |
+| U24 | The production server's CPU class and free memory. | **Owner assumption** (S8, 2026-11-05): 4 vCPU and 8 GB RAM. Not measured. The CPU model, and so AVX-512 VNNI, is unknown. The repo records only the render droplet (`apps/api/setup/server/README.md:33`). | Sets the machine for the latency and memory floors; decides whether the int8 VNNI files run well (§5.2). |
 | U25 | `Tooka-SBERT-V2-Small` can be licensed. | **Unverified.** No license in its metadata. | It can be scored, not shipped. |
 | U30 | gte's remote code is safe to vendor at a pinned revision. | **Unverified.** Not read. | gte only. |
 | U28 | The model loads with no network at runtime. | **Unverified.** Hub offline mode was not tested. | K9 and the dependency's reach. |
+| U31 | The §6.3 models with no ONNX file (`-large-instruct`, gte, Tooka V1, Tooka V2-Small) can be exported to ONNX. | **Unverified.** No export was tried and no source read here shows one. gte loads through remote code (§5.2). | S6 allows ONNX only, so a model with no working export cannot ship. |
 | V1 | `pg_trgm` extracts Persian trigrams in this database. | **Verified** by §5.0's non-zero Persian scores (`RESEARCH.md:333`). | Option 3 and 5 are testable as they are. |
 
 No prototype code was written. Nothing ran against a database or a provider: only read-only
@@ -503,24 +562,46 @@ No prototype code was written. Nothing ran against a database or a provider: onl
 
 **→ ADR, then a SPEC.** The trigger is placement: the recommended matcher is a new service, a
 new deployment boundary and a new load-bearing dependency
-(`.claude/skills/writing-spikes/references/adr-escalation.md`). The ADR settles: separate service
-or in-process; runtime path (a), the library of `0006-backend-stack.md:33`, or (b) ONNX; how
-weights reach a no-internet install; whether remote model code (gte) may run. Local embeddings
-and the Scribe rule are decided (`0014:166-176`). If the owner keeps the model in-process on path
-(a), the spec settles placement and no ADR is needed. The spec follows the §6.3 run.
+(`.claude/skills/writing-spikes/references/adr-escalation.md`). The ADR is Linear KOH-9. It
+settles: separate service or in-process; how weights reach a no-internet install; whether remote
+model code (gte) may run, and whether it may be exported to ONNX (U31). The runtime path is
+decided: (b), ONNX runtime only (owner, 2026-11-05, S6). Local embeddings and the Scribe rule are
+decided (`0014:166-176`). Path (b) adds `onnxruntime`, which ADR 0006 does not name (it names
+`sentence-transformers`, `0006-backend-stack.md:33`). Inference: so the ADR is needed even if the
+model runs in-process, because it is a new load-bearing dependency. The spec (KOH-10) does not
+wait for the §6.3 run; the model pick does (KOH-8).
 
-**Questions for the owner**, in order:
+**Questions for the owner**, in order, with the owner's answers of 2026-11-05 (the ticket calls
+them S1 to S8):
 
 1. Approve the §6.3 experiment: a local install and about 10 GB of weights on a dev machine,
    about $0.06 of Scribe, and staff time for the probes and recordings.
+   **Answer (owner, 2026-11-05):** no experiment for now. The screen is Linear KOH-8 (Backlog).
 2. Set the floors (U13). The proposal is in §6.3.
+   **Answer (owner, 2026-11-05):** the proposed floors in §6.3 are accepted as they are.
 3. Accept typed first, voice second?
+   **Answer (owner, 2026-11-05):** no. Typed and voice questions together, not typed first.
 4. Is the backend's ElevenLabs key in the live agent's workspace (U9, U17)?
+   **Answer (owner, 2026-11-05):** yes. Checked the same day with one free read-only GET (owner
+   OK): the key sees 1 agent, `agent_7901m15dnc03em9a99nn1w2a853q`, "Mohammad Kohandezh Digital
+   Representative" (language `fa`), with `zero_retention_mode: true`, `record_voice: false`,
+   `retention_days: -1` (§7, U9 and U17).
 5. May ElevenLabs keep the pre-session clip (U22), or is zero retention required?
+   **Open.** Not decided on 2026-11-05. It has its own issue, Linear KOH-7. KOH-7 recommends zero
+   retention for Scribe too, and a check that the account allows it for the Scribe API. That is a
+   recommendation in a ticket, not an owner decision. The agent's zero retention (question 4) does
+   not answer this: it is an agent setting, not Scribe's `enable_logging` (§5.3).
 6. The image budget: path (a) about 0.7 to 1.0 GB installed or path (b) about 0.1 to 0.2 GB
    (estimates), plus 0.12 to 2.27 GB of weights, in a separate service. Acceptable?
+   **Answer (owner, 2026-11-05):** ONNX runtime only: path (b), the smaller image.
 7. Should the approved answer texts also go into the agent's knowledge base (Option 4)?
+   **Answer (owner, 2026-11-05):** no.
 8. Which CPU and memory does the production server have (U24)?
+   **Answer (owner, 2026-11-05):** assume 4 vCPU and 8 GB RAM. This is a planning assumption, not
+   a measured fact.
 
-**What becomes production work:** nothing until question 1 is answered and the experiment runs.
-Then the ADR, the spec, build 1 and build 2, in the order of §6.2.
+**What becomes production work:** no model is picked, because the owner deferred the screen (S1).
+So the matcher does not reach users yet. The ADR (KOH-9) and the spec (KOH-10) can start now.
+Then the build, in the order of §6.2: its parts that use no model can be built against the fake
+embedder, and the match is turned on only after the screen (KOH-8) picks a model. The spike's
+recommendation: voice waits for the Scribe retention decision (S5, KOH-7).
