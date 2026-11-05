@@ -1153,6 +1153,54 @@ describe(
       ).not.toBeInTheDocument();
     });
 
+    it('sends the admin to the forbidden page when the read after a write answers 403', async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      const panel = await openEntry(user, 'C4Q02');
+      // Only the detail read (the list search on the key) answers 403. The list read has no q.
+      override = (config) =>
+        config.url === '/api/admin/library/entries' &&
+        (config.params as Record<string, unknown> | undefined)?.q === 'C4Q02'
+          ? reply(config, { error: { code: 'forbidden' } }, 403)
+          : undefined;
+
+      await user.click(
+        within(panel).getByRole('button', { name: 'Reopen text' }),
+      );
+
+      expect(await screen.findByText('forbidden page')).toBeInTheDocument();
+      expect(
+        screen.queryByText('This answer could not be loaded.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('sends the admin to the forbidden page when Retry answers 403 after a 500', async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      const panel = await openEntry(user, 'C4Q02');
+      let status = 500;
+      override = (config) =>
+        config.url === '/api/admin/library/entries' &&
+        (config.params as Record<string, unknown> | undefined)?.q === 'C4Q02'
+          ? reply(config, { error: { code: 'internal_error' } }, status)
+          : undefined;
+
+      await user.click(
+        within(panel).getByRole('button', { name: 'Reopen text' }),
+      );
+      expect(
+        await within(panel).findByText('This answer could not be loaded.'),
+      ).toBeInTheDocument();
+
+      status = 403;
+      await user.click(within(panel).getByRole('button', { name: 'Retry' }));
+
+      expect(await screen.findByText('forbidden page')).toBeInTheDocument();
+      expect(
+        screen.queryByText('This answer could not be loaded.'),
+      ).not.toBeInTheDocument();
+    });
+
     it('shows the same message when the server refuses a transition the screen allowed', async () => {
       const user = userEvent.setup();
       await renderPage();

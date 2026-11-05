@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- On the Answer library screen, a 403 when the open entry is read again now shows the forbidden page, not the load error.
 - After a recorded answer, `/video` and `/audio` in the mobile app and the web app show a lead
   card in place of Start and the suggested questions, with the keyboard focus on its heading. It
   offers «درخواست مشاوره» (Request a consultation), which starts the live assistant the same way
