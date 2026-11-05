@@ -70,10 +70,14 @@ class AudioAssetResponse(BaseModel):
     cache_hit: bool
 
 
+# Production LiveAvatar rejects a session longer than 300 seconds.
+MAX_AVATAR_SESSION_SECONDS = 300
+
+
 class AvatarSessionRequest(BaseModel):
     avatar_id: UUID | None = None
     sandbox: bool | None = None
-    max_session_duration: int | None = Field(default=None, ge=15, le=3600)
+    max_session_duration: int | None = Field(default=None, ge=15, le=MAX_AVATAR_SESSION_SECONDS)
 
 
 class AvatarSessionResponse(BaseModel):

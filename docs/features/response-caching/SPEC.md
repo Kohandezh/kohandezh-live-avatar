@@ -551,8 +551,9 @@ place; REQ-065 and later were added on 2026-09-26.
   video is `VIDEO_GENERATED`. Saving calls REQ-004 with the video and opens the new `draft` entry.
 - **REQ-035.** The Record answer screen asks for the avatar session with `max_session_duration: 300`.
   LiveAvatar production caps a session at 300 seconds (render sprint 2026-09-25,
-  `apps/api/setup/server/README.md:228-230`), and one answer must fit in one session. The request
-  schema allows up to 3600 (`.../src/schemas.py:70`), so the cap is set here, not by the schema.
+  `apps/api/setup/server/README.md:228-232`), and one answer must fit in one session. The request
+  schema refuses more than 300 too (`MAX_AVATAR_SESSION_SECONDS` in `.../src/schemas.py`),
+  and the screen still sends 300.
 - **REQ-036.** Record is disabled until the generated audio of the answer exists, because its
   length must be known. The audio counts only when it was made from the text on screen: a changed
   text needs new audio (`src/pages/admin/library/AdminRecordAnswerPage.tsx:125-133`,
@@ -570,13 +571,13 @@ place; REQ-065 and later were added on 2026-09-26.
   (`src/app/providers.tsx:20`).
 - **REQ-038.** The render chain needs the avatar's LiveKit token to allow subscribing: LiveAvatar
   rejects a BYO avatar token without `canSubscribe` (render sprint 2026-09-25,
-  `apps/api/setup/server/README.md:231-234`). That fix is merged (#38): the avatar token now sets
+  `apps/api/setup/server/README.md:233-237`). That fix is merged (#38): the avatar token now sets
   `can_subscribe=True` (`.../src/livekit_gateway.py:66-74`). This spec needs nothing more for it.
 - **REQ-039.** Recording needs two paid provider accounts, and the Record answer screen says so in
   one line above the steps (`library.record.needsAccounts`): an active LiveAvatar account for the
   avatar session, and a paid ElevenLabs plan for the speech. The render sprint (2026-09-25) found
   that an unpaid ElevenLabs plan answers `payment_issue` (code 1008) on every speech call
-  (`apps/api/setup/server/README.md:236-239`). Playback needs neither (REQ-010).
+  (`apps/api/setup/server/README.md:238-241`). Playback needs neither (REQ-010).
 - **REQ-040.** The ElevenLabs client maps that answer to its own error code. When the speech
   WebSocket reports `payment_issue` or closes with code 1008, the client raises
   `ProviderError("elevenlabs_payment", ..., 502, False)` (not retryable) instead of the generic
@@ -621,7 +622,7 @@ place; REQ-065 and later were added on 2026-09-26.
   3. At most 350 characters, or 480 when the answer has a phone number.
   4. No new facts: only what the original answer says.
   5. Phone numbers as grouped Persian words (digits were read out wrong in the render sprint,
-     `apps/api/setup/server/README.md:240-241`).
+     `apps/api/setup/server/README.md:242-243`).
   6. When a line has two numbers, give both.
 
   Under the answer field a live counter shows the length against 350 (and 480). Above 350 it turns
@@ -781,7 +782,7 @@ place; REQ-065 and later were added on 2026-09-26.
 | entry status, reviews, usage rows | PostgreSQL |
 
 The MP4 blob is not put in the Query cache, and one object URL at a time bounds the memory. The
-render sprint measured about 0.4 MB per second of video (`apps/api/setup/server/README.md:242-243`),
+render sprint measured about 0.4 MB per second of video (`apps/api/setup/server/README.md:244-245`),
 and its 120 answers average about 35 s (69.6 minutes, `README.md:5`), so a typical answer is near
 14 MB. That is an average from the sprint, not a measurement of each file.
 
@@ -1275,7 +1276,7 @@ subscription is not needed for any of this, or for playback: playback reads our 
 - **(a) Library home: import anywhere.** The import reads the files and creates new rows on
   whichever install runs the app (REQ-020, REQ-023, REQ-024). The render server's
   `video_asset_id` values are not trusted on the target install. The render droplet is temporary,
-  so every MP4 needs a backup off it before it is destroyed (`apps/api/setup/server/README.md:245-261`).
+  so every MP4 needs a backup off it before it is destroyed (`apps/api/setup/server/README.md:247-263`).
 - **(b) Language.** Each entry stores its language. A user sees only entries in their app language
   (REQ-011). The rendered answers are `fa`, so an `en` user sees no suggestions until `en` answers
   exist. The live voice agent has the same shape: one language per install, `fa` by default

@@ -1076,7 +1076,7 @@ with the approved questions, and returns up to three nearest above a floor, or "
   events](https://docs.liveavatar.com/docs/lite-mode/events)). So a worker could own the whole lifecycle itself. It
   would still be a new process, a new container, and a second copy of the session code, for a job
   that is short and rare. A render is bounded by the session length (default 60 seconds, up to
-  3600: `.../src/config.py:38`, `schemas.py:70`) and by Egress's own ten-minute file limit
+  300: `.../src/config.py:38`, `MAX_AVATAR_SESSION_SECONDS` in `schemas.py`) and by Egress's own ten-minute file limit
   (`infra/livekit-egress/egress.yaml:17-18`).
 - **So E uses an in-process runner over `generation_jobs`.** This is a choice for simplicity, not
   a constraint. One table owns the job state, which

@@ -847,8 +847,8 @@ export const mockRecordingTriggers = {
   finalizeSlow: '#slow',
 } as const;
 
-/** Mirrors the request schema's limit (`.../src/schemas.py:70`). */
-const MOCK_MAX_SESSION_SECONDS = 3600;
+/** Mirrors `MAX_AVATAR_SESSION_SECONDS` in the orchestrator's `schemas.py`. */
+const MOCK_MAX_SESSION_SECONDS = 300;
 
 interface MockChainVideo {
   id: string;
