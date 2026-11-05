@@ -35,8 +35,8 @@ and how a match is shown, so that a hit plays the recorded answer and a miss goe
   to a question they did not ask (Option E, "The confirm step").
 - **The library is not what the earlier spike assumed**: IT services with English terms, not
   medical pairs (§4.3). No source covers that mix.
-- **Speech before a session is new**, and **a new runtime** of up to 1 GB plus 2.3 GB of weights
-  enters the installs (§5.2).
+- **Speech before a session is new**, and **a new runtime** (about 0.1 to 0.2 GB on path (b), S6,
+  estimate) plus up to 2.3 GB of weights enters the installs (§5.2).
 
 Guessing wrong costs trust (a wrong answer) or size (a heavy model a small one would match). The
 experiment in §6.3 is cheap next to both. The owner deferred it on 2026-11-05 (§8, S1); it is
@@ -48,7 +48,7 @@ Linear KOH-8.
 | - | ---------- | ------ |
 | K1 | Embeddings run locally. No hosted embedding API. | ADR 0014 item 4, `docs/DECISIONS/0014-conversation-data-retention.md:171-176` |
 | K2 | Speech before a session may go only to the ElevenLabs workspace that runs the live agent, and only on installs with internet. Otherwise a local model, or no voice input. | `0014:166-173` |
-| K3 | On a miss, one draft per visit may be stored. Its audio is not kept after transcription. Nothing is written before the consent step exists. | `0014:63-68,78-82` |
+| K3 | On a miss, one draft per visit may be stored. Its audio is not kept after transcription. Nothing is written before the consent step exists. ADR 0016 widens the consent text, and consent comes before the first question, because a library tap writes a chat turn. | `0014:63-68,78-82`; `0016:312-321` at `main@3d2be14` |
 | K4 | Conversation text is never logged. It travels in a request body, never a URL. | `docs/SECURITY.md:16-18,26-27`, `0014:54-58` |
 | K5 | The draft, speech-to-text and match endpoints each get their own rate limit. | `0014:187-189` |
 | K6 | Targets: `mobile` and `web`. The widget plays no library entry until it signs users in. `admin` sees vectors only indirectly. | `.../src/library/router.py:1-5`, `docs/features/response-caching/SPEC.md:76-77` |
@@ -263,16 +263,18 @@ not install, so I assume files expand 2.5 to 3.5 times out of the wheel zip. Not
 | (b) `onnxruntime` 1.31.0 and `tokenizers`, with our own pooling | `numpy`, `protobuf`, `flatbuffers`, `packaging` | about 45 MB | **0.1 to 0.2 GB** |
 
 The CPU `torch` wheel is from download.pytorch.org (`2.14.1+cpu`, 196,253,677 bytes); the PyPI
-wheel is 555 MB and pulls CUDA packages. Path (b) needs ONNX files, so gte and Tooka need a
-one-time export. Weights come on top.
+wheel is 555 MB and pulls CUDA packages. Path (b) needs ONNX files, so the four models with no
+ONNX file need an export (below, U31). Weights come on top.
 
 **The owner picked path (b), ONNX runtime only, on 2026-11-05 (S6).** So a model can ship only as
 an ONNX file. The table above shows an int8 ONNX file for the three e5 sizes and MiniLM, an fp32
 ONNX file only for `bge-m3`, and none for `-large-instruct`, gte and both Tooka models. Those four
-need a one-time export. This spike has not tried one, and no source read here says it works, so
-whether each can be exported is **unverified** (U31). gte is the hardest case: it loads through
-remote code (above), and an export of that custom code is not shown anywhere I read. Path (a) stays
-in the table as the record of what was compared; it is not the plan.
+need an export. An export is per model revision, and it needs a check against the reference
+model's output, or the scores drift from what the screen measured; its cost is unmeasured. This
+spike has not tried one, and no source read here says it works, so whether each can be exported is
+**unverified** (U31). gte is the hardest case: it loads through remote code (above), and an export
+of that custom code is not shown anywhere I read. Path (a) stays in the table as the record of what
+was compared; it is not the plan.
 
 ### 5.3 Speech-to-text before a session
 
@@ -329,7 +331,8 @@ Option E's confirm step (`RESEARCH.md:780-838`), now with parts that exist:
   through the existing route, which counts plays and has a rate limit (`router.py:97-131`).
 - New: a spoken question shows the recognised text above the candidates, so an error is visible.
 - A miss, or "none", offers the live answer; on `connected` the question is sent with `sendText`
-  (`RESEARCH.md:662-665`), and ADR 0014 item 1 stores it as the visit's one draft (K3).
+  (`RESEARCH.md:662-665`), and ADR 0014 item 1 stores it as the visit's one draft (K3). Under
+  ADR 0016 the question is also a turn of a signed-in chat (`0016:356`).
 - A hit is a library turn under ADR 0016, `Accepted` 2026-11-05 (citations at `main@3d2be14`). A
   library turn is two stored messages, the question as asked and the entry's answer, and the
   question may be "a typed or spoken question the matcher sends to the library"
@@ -422,10 +425,10 @@ flowchart TB
     X -->|"no eligible model"| HY{{"is hybrid with pg_trgm eligible?"}}
     HY -->|"no"| STAY
     HY -->|"yes"| PICK
-    X -->|"yes"| PICK(["smallest eligible model, ONNX runtime (S6)<br/>in a matcher service · vector table, cosine in Python<br/>embed job after publish · jobs/runner.py"]):::chosen
-    PICK --> OK{{"placement ADR accepted? · KOH-9<br/>separate service or in-process"}}
-    OK -->|"no"| STAY
-    OK -->|"yes"| ONE(["one build · question input before Start (S3)<br/>up to 3 candidates + none · hit plays, miss goes live"]):::chosen
+    X -->|"yes"| PICK(["smallest eligible model, alone or hybrid with pg_trgm<br/>ONNX runtime (S6) · placement per KOH-9<br/>vector table, cosine in Python · embed job after publish"]):::chosen
+    PICK --> OK{{"placement ADR · KOH-9<br/>separate service or in-process"}}
+    OK -->|"ADR rejects the matcher"| STAY
+    OK -->|"accepted, either placement"| ONE(["one build · question input before Start (S3)<br/>up to 3 candidates + none · hit plays, miss goes live"]):::chosen
     ONE --> V{{"voice gates: Scribe on our clips · U11, U21<br/>recorder on all runtimes · U15<br/>users read candidates · U12<br/>Scribe retention · U22, KOH-7, open<br/>internet install · K2"}}
     V -->|"all hold"| BOTH(["typed and voice together<br/>voice through Scribe · ADR 0014 item 4"]):::chosen
     V -->|"any fails"| TONLY(["typed alone where a gate fails<br/>spike's recommendation, not an owner rule"]):::forced
@@ -455,17 +458,20 @@ the screen. Typed and spoken input are one build (S3); where a voice gate fails,
 
 **How hard to undo:** easy for storage (one table), the model (a re-embed of 392 rows) and the
 service (stop it). In-process would be harder: removing the runtime is a release on every install.
+Voice can be switched off alone while typed input stays (§6), but the model stays tied to an ONNX
+export the team keeps (S6, U31).
 
 ### 6.2 What to build first
 
 1. The placement ADR (§8, KOH-9). It can be written now: the runtime path is decided (S6).
 2. The spec, via `writing-specs` (KOH-10): one build with typed and spoken input (S3). The spec
-   owns the UI states (loading, empty, error, offline).
+   owns the UI states (loading, empty, error, offline). An input for it: ADR 0016 leaves open
+   whether a user who declines consent may still play library answers, unstored (`0016:320-321`).
 3. The U14 screen (§6.3, KOH-8), once the owner approves running it. The owner deferred it on
    2026-11-05 (S1). No repository code. It picks the model; its results table goes into this file.
 4. The build: the matcher service, the vector table, the embed job, the match endpoint, the
    question input (typed and spoken) and the confirm list on `mobile` and `web`, the consent step
-   if K3's draft is in scope, and one `provider_usage` row per Scribe call (audio duration, no
+   of ADR 0016 item 6, before the first question (`0016:312-321`), and one `provider_usage` row per Scribe call (audio duration, no
    text), as Option E required (`RESEARCH.md:745`). Voice ships where its gates hold (§6). The
    spike's recommendation: the parts that use no model may be built and tested with the fake
    embedder before step 3, but the match is turned on for users only after step 3 picks a model.
@@ -515,7 +521,8 @@ on the other half.
 
 **Floors (proposed here; the owner accepted them as they are on 2026-11-05, S2, U13):** R@3 ≥
 0.90 on P1, ≥ 0.80 on P2 and P6; inversion rate ≤ 0.05; false-show ≤ 0.20; p95 embedding ≤
-150 ms; memory ≤ 1.5 GB.
+150 ms; memory ≤ 1.5 GB. How much of the assumed 8 GB (S8) is free for the matcher is
+unmeasured (U24).
 
 **One rule, used here and in the §6 flowchart.** A bound **rejects** a model when its interval
 lies wholly on the wrong side of a floor: R@3's upper bound below it, or a rate's lower bound
@@ -567,7 +574,8 @@ settles: separate service or in-process; how weights reach a no-internet install
 model code (gte) may run, and whether it may be exported to ONNX (U31). The runtime path is
 decided: (b), ONNX runtime only (owner, 2026-11-05, S6). Local embeddings and the Scribe rule are
 decided (`0014:166-176`). Path (b) adds `onnxruntime`, which ADR 0006 does not name (it names
-`sentence-transformers`, `0006-backend-stack.md:33`). Inference: so the ADR is needed even if the
+`sentence-transformers`, `0006-backend-stack.md:33`), and ADR 0014 item 4 repeats it
+(`0014:171-172`). Inference: so the ADR is needed even if the
 model runs in-process, because it is a new load-bearing dependency. The spec (KOH-10) does not
 wait for the §6.3 run; the model pick does (KOH-8).
 
