@@ -3,7 +3,7 @@
 | Field   | Value                                          |
 | ------- | ---------------------------------------------- |
 | Created | 2026-11-05                                     |
-| Updated | 2026-11-05                                     |
+| Updated | 2026-11-06                                     |
 | Status  | Draft                                          |
 | Domain  | assistant                                      |
 | Targets | mobile, web, admin (the widget is not affected, see section 2) |
@@ -46,8 +46,8 @@ consent step. Each live session receives the chat's earlier turns as silent cont
 - The lead table with the statuses `new` and `contacted` (`0016:249-258`). REQ-033, REQ-043.
 - The admin viewer: list, filters, search, detail, lead status, delete, delete-only audit
   (`0016:272-295`). Groups D and H.
-- Deletion on a user's request, decided by an admin, and a recorded refusal (`0016:299-303`,
-  `:380-383`). REQ-045, REQ-095.
+- Deletion on a user's request, decided by an admin (`0016:299-303`, `:380-383`). REQ-045,
+  REQ-095.
 - The consent step before the first question (`0016:312-321`). Group F.
 - Context to the agent with `sendContextualUpdate` after the SDK state is `CONNECTED`
   (`0016:389-410`). Group G.
@@ -72,6 +72,10 @@ consent step. Each live session receives the chat's earlier turns as silent cont
   (`0016:260-261`, `:382-383`, `docs/features/response-caching/SPEC.md:688-689`).
 - This phase adds no in-app form for a deletion request (spec decision, REQ-045). A user asks
   through the contact channels the app already shows.
+- This phase keeps no in-app record of a refused deletion request. A refusal is answered where
+  the request came in (REQ-045). Section 13 lists an in-app record as open for the owner.
+- This phase has no in-app way to withdraw consent. A user who wants to stop asks by email, and an
+  admin can delete their chats (REQ-045). Section 13 lists it as open for the owner.
 - This phase adds no lead status beyond `new` and `contacted` (`0016:464`).
 - This phase writes no draft and no library content from a chat (`0016:207-209`, `:467-469`).
 
@@ -80,7 +84,7 @@ consent step. Each live session receives the chat's earlier turns as silent cont
 | Actor | Door | What they can do |
 | ----- | ---- | ---------------- |
 | Signed-in user on `mobile` or `web` | `get_current_user` (`.../src/auth/dependencies.py:50-54`): the `kd_session` cookie on web, `Authorization: Bearer` on native | open, post to and close **their own** chats; start a session linked to their own open chat. No route returns chat text to them |
-| Admin in the `admin` target | `require_admin` (`.../src/auth/dependencies.py:57-61`) as a router dependency, the pattern of `.../src/library/router.py:39` | list, search and read every chat, change a lead's status, delete chats, record a user's deletion request |
+| Admin in the `admin` target | `require_admin` (`.../src/auth/dependencies.py:57-61`) as a router dependency, the pattern of `.../src/library/router.py:39` | list, search and read every chat, change a lead's status, delete chats, delete all chats of a user on their request |
 | Anonymous widget visitor | embed key plus an allowed `Origin` (`.../src/assistant/router.py:39-54`) | nothing new. The chat routes use `get_current_user`, so the embed key alone gets `401`. A session it starts is never linked to a chat (REQ-032) |
 
 A disabled account gets `403 account_disabled` on every route that resolves the user
@@ -94,11 +98,12 @@ A disabled account gets `403 account_disabled` on every route that resolves the 
 
 ### 4.1 A visit on `mobile` or `web`
 
-1. The user opens `/video` or `/audio`. If this device has not agreed to the current consent
-   version, the consent step shows in place of Start and the suggestions (REQ-070).
+1. The user opens `/video` or `/audio`. If this signed-in user has no stored agreement to the
+   current consent version on this device, the consent step shows in place of Start and the
+   suggestions (REQ-070, REQ-072).
 2. The user agrees. Start and the suggestions show. Nothing is written yet: a visit with no
    question writes no chat (`0016:109-110`).
-3. The user taps a suggestion. When the MP4 download succeeds (`src/features/answer-library/useRecordedAnswer.ts:172-180`),
+3. The user taps a suggestion (the first user turn of the visit). When the MP4 download succeeds (`src/features/answer-library/useRecordedAnswer.ts:172-180`),
    the browser opens a chat with `POST /api/chats`, then posts the library turn. The server copies
    the entry's question and answer as two messages (REQ-014).
 4. The answer ends and the lead card shows. The user taps «درخواست مشاوره». The browser starts a
@@ -113,8 +118,10 @@ A disabled account gets `403 account_disabled` on every route that resolves the 
    (REQ-058). If that never arrives, the server closes the chat after the idle gap and sets
    `partial` (REQ-019).
 
-A plain Start before any question has no chat id. The first live turn opens the chat with the
-session id, and the server links the session then (`0016:126-127`, REQ-010).
+A plain Start before any question has no chat id. The agent's greeting is held in the browser and
+not posted. The first user turn (spoken or typed) opens the chat with the session id, the server
+links the session then, and the held greeting goes first (`0016:109`, `:126-127`, REQ-051). A
+visit that ends with only the greeting writes no chat.
 
 ### 4.2 An admin
 
@@ -186,8 +193,9 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   number. The columns are in section 7.
 - **REQ-002.** `messages` are ordered by an identity id, never by time (`0016:78`). Two turns in
   the same instant keep the order of their insert.
-- **REQ-003.** A message's client turn id is unique per chat and role (section 7). A resent turn is
-  a duplicate and writes no second row (`0016:132`).
+- **REQ-003.** A message's client turn id is unique per chat (`0016:131-132`, section 7). A resent
+  turn is a duplicate and writes no second row. A library turn's two rows get two derived ids, the
+  item's id plus `:q` for the user row and `:a` for the avatar row (REQ-014).
 - **REQ-004.** A message with source `live` must carry a session id and no entry id. A message with
   source `library` must carry an entry id and no session id. The database checks both
   (`0016:132-134`).
@@ -200,9 +208,11 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
 - **REQ-010.** `POST /api/chats` opens a chat for the caller. The body names the target (`mobile`
   or `web`), the language of the first turn (`fa` or `en`), the consent version, and optionally a
   session id. With a session id, the server links that session to the new chat in the same
-  transaction, but only when the session is the caller's (`sessions.metadata.principal` is
-  `user:{id}`, the rule of `.../src/assistant/service.py:225-229`), is open (REQ-013's open rule),
-  and has no chat yet. Otherwise it answers `422 chat_session_invalid` and opens nothing. The
+  transaction with one conditional statement: `UPDATE sessions SET chat_id = $chat WHERE id = $1
+  AND chat_id IS NULL AND metadata->>'principal' = $principal` plus REQ-013's open rule
+  (`status = 'TOKEN_ISSUED'` and within its length plus 300 s), the caller rule of
+  `.../src/assistant/service.py:225-229`. Zero rows updated means `422 chat_session_invalid`: the
+  transaction rolls back, so no chat is created. Two opens racing for one session cannot both win. The
   server cannot prove the target (`0016:127-128`); it stores what the browser sends.
 - **REQ-011.** Every route on `/api/chats/{id}` loads the chat and applies the idle rule (REQ-019)
   first. A chat that does not exist, or belongs to another user, answers `404 not_found` with the
@@ -211,8 +221,8 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   closed chat (REQ-018).
 - **REQ-012.** `POST /api/chats/{id}/messages` takes 1 to 20 items. The batch is written as a
   whole or not at all, in one transaction under a per-chat row lock (`SELECT ... FOR UPDATE` on the
-  chat). An item whose client turn id the chat already holds for that role, or that repeats an
-  earlier item of the same batch, is dropped and counted in `duplicates`. A duplicate is never an
+  chat). An item whose client turn id the chat already holds (for a library item, its `:q` id), or
+  that repeats an earlier item of the same batch, is dropped and counted in `duplicates`. A duplicate is never an
   error, so a resent batch is safe. This is the pattern of the answers route (`docs/API.md:225-228`).
 - **REQ-013.** A `live` item names a session. The server accepts it only when that session's
   `chat_id` is this chat and the session is open. "Open" is the rule the answers route uses today:
@@ -223,7 +233,8 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
 - **REQ-014.** A `library` item names a library entry and an input kind. The server writes it only
   for a servable entry, the same check as playback (`.../src/library/router.py:114-116`,
   `.../src/library/service.py:374-376`), else `422 chat_entry_not_servable`. It writes two
-  messages, both source `library`, same entry id, same client turn id:
+  messages, both source `library`, same entry id, with the derived client turn ids of REQ-003
+  (`{clientTurnId}:q` and `{clientTurnId}:a`). The item is a duplicate when `:q` exists:
   1. role `user`: for input kind `tapped`, the entry's `question`, copied by the server; the item
      must not carry `text` (a closed body, `422`). For `typed` or `spoken`, the item must carry
      `text`, the user's own words, and that is what is stored (`0016:136-143`).
@@ -260,17 +271,29 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   (REQ-011), of `POST /api/assistant/session` with a chat id (REQ-032), and of the admin search and
   detail (REQ-041, REQ-042). So every reader sees the same state. **Spec decision, the gap value:**
   10 minutes. Why: the library turn is posted when the download succeeds, before playback
-  (step 3 of section 4.1). The longest wait before the lead card tap is then the video (the
-  render sprint averages about 35 seconds, `docs/features/response-caching/SPEC.md:784-785`) plus
-  the time to read the card. Ten minutes covers that many times over, and it is short enough
+  (step 3 of section 4.1). The longest wait before the lead card tap is then the longest video
+  plus the time to read the card. An answer is at most 480 characters
+  (`.../migrations/006_library_entries.sql:14`). Inference: at a slow 8 characters a second of
+  Persian speech that is 60 seconds. (The render sprint's average, about 35 seconds, is an average
+  only, `docs/features/response-caching/SPEC.md:784-785`.) Ten minutes covers that many times over, and it is short enough
   that a user who comes back much later starts a new chat.
-- **REQ-020.** The three user chat routes share one rate limit key, `chat:user:{id}`, counted
-  before the chat lookup, the pattern of `.../src/assistant/router.py:105-115`. The new setting
-  `CHAT_RATE_LIMIT_PER_HOUR` defaults to 600, next to the others in `.../src/config.py:79-85`.
-  Over the limit: `429 chat_rate_limited`, `retryable: true`, `details.retryAfterSeconds`, and the
-  `Retry-After` header (`retry_after_header=True`, `.../src/errors.py:58-69`). Spec decision: 600
-  matches the answers route (`.../src/config.py:82`), and the poster batches, so a long visit sends
-  far fewer requests.
+- **REQ-020.** Two rate limits, each counted before the chat lookup, the pattern of
+  `.../src/assistant/router.py:105-115`, with new settings next to the others in
+  `.../src/config.py:79-85`:
+  - the messages route: key `chat_messages:user:{id}`, `CHAT_MESSAGES_RATE_LIMIT_PER_HOUR`, default
+    1800;
+  - open and close together: key `chat:user:{id}`, `CHAT_RATE_LIMIT_PER_HOUR`, default 120.
+
+  Over a limit: `429 chat_rate_limited`, `retryable: true`, `details.retryAfterSeconds`, and the
+  `Retry-After` header (`retry_after_header=True`, `.../src/errors.py:58-69`). **Spec decision, the
+  numbers** (inference: the turn rate is not measured). The batch rule (REQ-055) flushes 500 ms
+  after the last turn, so turns more than 500 ms apart each go alone. Take a fast live exchange as
+  one turn every 3 seconds, both speakers together: 3600 / 3 = 1200 requests an hour, one per turn.
+  Corrections and library turns add a few. 1800 is that plus half again. Live time is also bounded:
+  at most 20 session mints an hour (`.../src/config.py:79`). Open and close: a visit opens one chat,
+  sometimes two (REQ-056 reopen), and closes each, so 120 an hour covers 30 or more visits. The
+  limiter is a fixed one-hour window (`.../src/coordination.py:48-59`), so `Retry-After` can be up
+  to 3600 seconds (REQ-056 caps the wait).
 - **REQ-021.** The chat routes resolve the caller with `get_current_user` only. A request with
   only `X-Embed-Key` gets `401 unauthorized` (`0016:333`).
 - **REQ-022.** No user route returns message text. `POST /api/chats` returns the id and the start
@@ -314,7 +337,15 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   the next UTC day), `userId`, `language`, `lead` (`new`, `contacted`, or
   `none` for a chat with no lead), `partial`, and `q`. `q` is 2 to 100 characters, matched as a
   case-insensitive substring of any message text of the chat (`ILIKE` with `%`, `_` and `\`
-  escaped). Paging is `page` (from 1) and `pageSize` (1 to 100, default 20), with `total`, the
+  escaped). **Spec decision, Persian folding:** the term and the compared text are both folded in
+  the query, never in storage, so the stored text stays what the user saw: Arabic `ي` (U+064A)
+  becomes `ی` (U+06CC), Arabic `ك` (U+0643) becomes `ک` (U+06A9), and ZWNJ (U+200C) is removed. In
+  SQL: `translate(text, 'يك', 'یک')` with `replace(..., U&'\200C', '')`, the same function on `q`.
+  Cost: this is a scan of every message of the chats that pass the other filters, with no index,
+  and with no retention the table only grows. Inference: at a few hundred thousand messages the
+  search still answers in well under a second on one Postgres; past a few million rows it needs a
+  trigram index (`pg_trgm`) on the folded text. `pg_trgm` is a new Postgres extension, so it is an
+  owner decision, listed in section 13, and not part of this build. Paging is `page` (from 1) and `pageSize` (1 to 100, default 20), with `total`, the
   repo's convention (`docs/API.md:15`). A list item carries no message text (SEC-006).
 - **REQ-042.** `GET /api/admin/chats/{id}` returns the chat, the user (`id`, `firstName`,
   `lastName`, `phone`, `status`, the fields `GET /api/admin/users` already shows, `0016:275-276`),
@@ -325,30 +356,30 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
 - **REQ-043.** `PATCH /api/admin/chats/{id}/lead` with `{ "status": "new" | "contacted" }` sets the
   status, `status_changed_at` and `changed_by` (the admin). Back to `new` is allowed, to undo a
   wrong mark (`0016:255-256`). The same status again answers `200` and changes nothing. A chat with
-  no lead, or no chat, answers `404 not_found`. It writes no audit row (`0016:287-288`).
+  no lead, or no chat, answers `404 not_found`. It writes no audit row (`0016:287-288`). Two admins
+  changing one lead at once: the last write wins, and `changed_by` names that admin. Spec decision:
+  there are two statuses and an undo is one click, so a version guard would cost more than the
+  mistake it prevents.
 - **REQ-044.** `DELETE /api/admin/chats/{id}?reason=admin|user_request` (default `admin`) deletes
   the chat. Its messages and its lead go with it (`ON DELETE CASCADE`), and the linked sessions'
   `chat_id` becomes `NULL`. In the same transaction it writes one `chat_audit` row: action `delete`
   for `admin`, `delete_on_request` for `user_request`, with the admin id, chat id, user id and
   time, no text (`0016:281-283`). Answer `204`. Missing chat: `404 not_found`. An open chat can be
   deleted; the browser's next post then gets `404` and opens a new chat (REQ-056).
-- **REQ-045.** `POST /api/admin/users/{userId}/chat-deletion-request` with
-  `{ "decision": "delete" | "refuse" }` records an admin's decision on a user's request
-  (`0016:301-302`, `:380-383`).
-  - `delete` deletes every chat of that user as REQ-044 does, one `delete_on_request` audit row per
-    chat, in one transaction. Answer `200 { "deleted": n }`, `n` may be 0.
-  - `refuse` deletes nothing and writes one audit row with action `refuse_request`, `chat_id`
-    `NULL`. Answer `200 { "deleted": 0 }`.
-  - Unknown user: `404 not_found`.
+- **REQ-045.** `POST /api/admin/users/{userId}/chats/delete` (no body) carries out an admin's
+  decision to grant a user's deletion request (`0016:301-302`, `:380-383`). It deletes every chat
+  of that user as REQ-044 does, with one `delete_on_request` audit row per chat, in one
+  transaction. Answer `200 { "deleted": n }`, `n` may be 0. Unknown user: `404 not_found`.
 
   **Spec decision, how a request arrives:** the user asks through the contact channels the app
   already shows (`src/features/answer-library/contactChannels.ts:31-33`, the email
   `info@kohansystemfarda.com`), and the consent text says so (REQ-071). An in-app form would need a
-  request table and a user screen, which the ADR does not list. **Spec decision, the refusal
-  record:** a `chat_audit` row with action `refuse_request`. Why: a refusal is a decision about
-  deletion, the audit table is the only record of deletion decisions, and it keeps the request's
-  outcome traceable with no text. It is not an audit of reading, which the owner excluded
-  (`0016:295`). Section 13 lists this for the reviewer to confirm.
+  request table and a user screen, which the ADR does not list.
+
+  **How a refusal is recorded (contract item 6):** not in the app in this build. The admin answers
+  the request where it came in, for example in the reply to the user's email. Why: the owner limited
+  the audit to deletes (`0016:281-283`, `:295`, `:436`), so `chat_audit` holds deletes only, and a
+  refusal is not a delete. Section 13 lists an in-app record of refusals as open for the owner.
 - **REQ-046.** No admin route edits a message (`0016:278-279`). No route exports chats.
 - **REQ-047.** A `disabled` user's chats stay as they are and stay readable, searchable and
   deletable by an admin. The user cannot add to them: every chat route answers
@@ -361,19 +392,26 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   (`hooks.ts`). A new feature `src/features/chat/` holds `useChatRecorder` (the chat log, the
   poster, the notice), `chatPoster.ts` (the queue, the pattern of
   `src/features/assistant/answerReporter.ts`) and `contextText.ts` (the pure formatter of REQ-082).
-  `useConversationScreen` (`src/features/assistant/useConversationScreen.ts:70-95`) is not the
-  owner: the two pages call `useChatRecorder` and pass it to `useAssistantSession` and
-  `useAnswerLibrary` through options. The widget's `AssistantPanel` passes nothing, so it records
+  The two pages call `useChatRecorder`, the owner. `useConversationScreen`
+  (`src/features/assistant/useConversationScreen.ts:70-95`) is the pass-through: it takes the
+  recorder as an option and hands it to `useAssistantSession`. The pages hand it to
+  `useAnswerLibrary` directly. The widget's `AssistantPanel` passes nothing, so it records
   nothing (REQ-086).
-- **REQ-051.** The chat opens on the first question: the first library turn (REQ-052) or the first
-  live turn (REQ-053). The open request carries `target` from `env.appTarget` (`mobile` or `web`),
+- **REQ-051.** The chat opens on the first user turn of the visit: a library tap (REQ-052), or a
+  typed or spoken live user turn (REQ-053). **Spec decision** (`0016:109`: "a visit with no question
+  writes no chat"; `:126-127`: "the first turn posted for it opens the chat"): live avatar turns
+  that come before any user turn, such as the agent's greeting, are held in the poster queue, not
+  posted. When the first user turn arrives, the chat opens and the held turns are posted first, in
+  their order. If the session that produced held turns ends before any user turn, its held turns
+  are discarded: they are not posted and do not set `partial`, because a visit with only a
+  greeting is not a chat. The open request carries `target` from `env.appTarget` (`mobile` or `web`),
   `language` from the screen (`src/features/assistant/useConversationScreen.ts:73-76`), the stored
-  consent version, and, for a live first turn, the backend session id. Turns queued while the open
-  request runs wait for it.
+  consent version, and, when the first user turn is live, the backend session id. Turns queued while the
+  open request runs wait for it.
 - **REQ-052.** A library turn is posted when the MP4 download succeeds
   (`src/features/answer-library/useRecordedAnswer.ts:172-180`), when the server counts the play
   (`0016:138-139`). Item: source `library`, input kind `tapped`, the entry id, and a client turn id
-  from `crypto.randomUUID()`. The chat log gets the suggestion's `question` and `answerText`, the
+  from `crypto.randomUUID()` (the server derives `:q` and `:a` from it, REQ-003). The chat log gets the suggestion's `question` and `answerText`, the
   texts the user saw.
 - **REQ-053.** Live turns come from the deduplicated transcript, not from raw events
   (`src/features/assistant/state.ts:174-192`, `0016:201-202`). Each new turn becomes one item:
@@ -392,17 +430,20 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
 
   | Outcome | Poster | Notice |
   | ------- | ------ | ------ |
-  | No response, timeout, `5xx` | Retries the same batch after 1 s, 3 s and 10 s (four attempts in all). While `navigator.onLine` is false it pauses and resumes on the `online` event, without counting an attempt | after the fourth attempt fails: `chat.save.incomplete`; the batch is dropped and `partial` is set |
-  | `429` | Waits `details.retryAfterSeconds` (or `Retry-After`, or 2 s when neither is given), then retries; the wait counts as one of the four attempts | the same as the row above, only if the attempts run out |
+  | No response, timeout, `5xx` | Retries the same batch after 1 s, 3 s and 10 s (four attempts in all). While `navigator.onLine` is false it pauses and resumes on the `online` event, without counting an attempt. The pause has no time bound: the queue is bounded by the chat's 500-row cap (REQ-016, at most about 2 MB of text), and the chat ends at leave or the idle timer; a chat that ends while still offline drops its queue, and the server's idle rule sets `partial` | after the fourth attempt fails: `chat.save.incomplete`; the batch is dropped and `partial` is set |
+  | `429` | Waits `details.retryAfterSeconds` (or `Retry-After`, or 2 s when neither is given), then retries; the wait counts as one of the four attempts. A wait over 30 s is not honoured: the batch is dropped at once and `partial` is set | the same as the row above, when the attempts run out or the wait is over 30 s |
   | `401` | Stops all chat writes for this visit | `chat.save.signedOut` |
   | `403` | Stops all chat writes for this visit | `chat.save.notAllowed` |
   | `404 not_found` or `409 chat_closed` | Opens a new chat once for this batch (REQ-051, with the open session's id if one is open) and sends the batch to it | nothing; if the reopen or the resend fails, the row of that failure applies |
   | `413`, `422` | Splits the batch and sends each item alone, once; an item refused again is dropped and `partial` is set; the others are kept | `chat.save.messageDropped` |
-  | `422 chat_consent_required` on the open (this row wins over the one above) | Clears the stored consent; writes nothing more this visit; the consent step shows at the next visit | `chat.save.notAllowed` |
+  | `422 chat_consent_required` on the open (this row wins over the one above) | Clears this user's stored agreement; writes nothing more this visit; the consent step shows at the next visit | `chat.save.notAllowed` |
   | `422 chat_session_invalid` on the open (the session ended before its first turn was posted) | Opens again once without the session id; that session's live turns are then refused and dropped, and `partial` is set | `chat.save.messageDropped` |
 
   Spec decision on the numbers: three retries with growing waits cover a short network drop
-  inside a session, and the 10 s last wait stays below one live answer. A `2xx` whose body fails
+  inside a session, and the 10 s last wait stays below one live answer. The 30 s cap on a `429`
+  wait (inference): it keeps the retry inside the session, since a sandbox session lasts 60 s
+  (`.../src/assistant/service.py:29`), and it is far under the one-hour window, where a long wait
+  means the limit is really spent. A `2xx` whose body fails
   the schema counts as written, as the answer reporter does (`answerReporter.ts:38-40`).
   In every row the conversation goes on and the live session is not touched (`0016:226-227`).
 - **REQ-057.** Every dropped turn sets a local `partial` flag. The next batch that succeeds, or the
@@ -428,8 +469,10 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
 - **REQ-061.** The chat log is React state inside `useChatRecorder`, one per screen. Each entry has
   the client turn id, role, text, input kind, source and entry id. Failed writes stay in the log,
   so the agent hears what the user saw (`0016:412-414`). The log is cleared when the chat ends.
-- **REQ-062.** The notice. At most one per chat (`0016:212-213`): the first outcome that calls for
-  one shows it, and later ones show nothing. It is the shared `InlineAlert` with `status="warning"`,
+- **REQ-062.** The notice. At most one per chat is shown (`0016:212-213`). The first outcome that
+  calls for one shows it. A later `chat.save.signedOut` or `chat.save.notAllowed` replaces an
+  earlier notice in the same place, because saving has then stopped for good and the user should
+  know it; nothing replaces those two, and no other notice replaces anything. It is the shared `InlineAlert` with `status="warning"`,
   which already sets `role="status"` (`src/shared/ui/InlineAlert.tsx:38-41`), with a Dismiss button
   (`chat.save.dismiss`) passed as its `actions`. On both pages it sits
   under the controls, in normal flow, so it never covers the stage and never moves the Start
@@ -440,12 +483,32 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   (`src/pages/settings/SettingsIndexPage.tsx:98`, `src/pages/login/LoginPage.tsx:63`), so reaching
   it leaves the screen and ends the chat anyway. The rule keeps one language per chat if a control
   is ever added to the screen.
-- **REQ-064.** The recorder posts nothing while this device has no agreement for the current
-  consent version (`0016:319-320`).
+- **REQ-064.** The recorder posts nothing while the signed-in user has no stored agreement for the
+  current consent version (REQ-072, `0016:319-320`).
+- **REQ-065.** `mobile` only: the native app going to the background. A route change and
+  `pagehide` do not fire there, and JavaScript timers stop, so the REQ-058 timer cannot run. A new
+  adapter, `src/shared/platform/appLifecycle.ts` (`AppLifecycleService` with
+  `onBackground(listener): () => void`, exported from `src/shared/platform/index.ts`), tells the
+  recorder that the app went to the background. Feature code never imports Capacitor for this.
+  The adapter fires only when `isNative()` (`src/shared/platform/index.ts:14-16`) is true, on
+  `document.visibilityState` becoming `hidden`. Inference, not checked on a device: the Android and
+  iOS WebViews report `hidden` when the app pauses. The exact signal is the `pause` event of
+  `@capacitor/app`, which is not a dependency today (`apps/frontend/package.json:36`); adding it is
+  a new dependency, so section 13 lists it for the owner. On web the adapter does nothing: a tab
+  switch is not leaving the screen. On that signal the recorder flushes the queue and sends
+  `close`, as on `pagehide`. The one difference: when a live session is still open, it flushes but
+  does not close, because the session keeps running in the background and its turns would be
+  refused by a closed chat (REQ-013). That chat then closes by REQ-058's triggers after the
+  app comes back, or by the server's idle rule once the session is over. On resume, if the chat was closed, the next user turn opens a new chat
+  (REQ-051). What `partial` means on `mobile`: the app can be killed in the background before the
+  close leaves, and the idle rule then sets `partial` with nothing lost. So on `mobile` a
+  `partial` chat is "not confirmed complete", not "turns were lost". The admin hint says so
+  (`chats.partialHint`).
 
 ### Group F: the consent step (`mobile`, `web`)
 
-- **REQ-070.** On `/video` and `/audio`, when the device has no agreement for the current version,
+- **REQ-070.** On `/video` and `/audio`, when the signed-in user has no stored agreement for the
+  current version (REQ-072),
   the consent step shows in place of the Start button and the suggestion list. It is a HeroUI
   `Card` in the page body, before any question (`0016:318-319`). Nothing else of the page changes.
   Spec decision, placement: the conversation screens, not onboarding, because users who already
@@ -463,10 +526,16 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   Spec decision: no line about drafts shown to others after review. ADR 0014's sentence
   (`0014:79-80`) covers drafts, and no draft is built. The spec that builds drafts adds its line and
   raises the version (REQ-074).
-- **REQ-072.** "I agree" stores the version in the settings slice, which is already saved to
-  `localStorage` (`src/app/store.ts:30`, `src/features/settings/settingsSlice.ts:7`). Then Start
-  and the suggestions show and focus moves to Start. The version is not a credential, so
-  `localStorage` is allowed (SEC-012).
+- **REQ-072.** The agreement is stored per user, not per device, so that another user on the same
+  device is asked too. The
+  settings slice, which is already saved to `localStorage` (`src/app/store.ts:30`,
+  `src/features/settings/settingsSlice.ts:7`), gains `chatConsent`: a map from user id to the
+  agreed version. The page reads the user id from the `me` query (`useCurrentUser`,
+  `src/entities/user/hooks.ts:17`). "I agree" writes `chatConsent[userId] = CHAT_CONSENT_VERSION`.
+  So user B on user A's device sees the consent step. Then Start and the suggestions show and
+  focus moves to Start. A user id and a version string are not credentials, so `localStorage` is
+  allowed (SEC-012). Logout does not clear the map: the next sign-in of the same user on this
+  device needs no second agreement.
 - **REQ-073.** "Not now" shows the declined view: one line that questions are off because every
   question is saved, the contact card of the lead card (`response-caching` REQ-076), and a
   "Review again" button that shows the consent step again. No Start, no suggestions. The decline
@@ -555,9 +624,9 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   lead are removed for good, with a `Checkbox` "The user asked for this deletion" (it picks
   `reason=user_request`). Confirm sends REQ-044, then goes back to the list with a success
   `InlineAlert`.
-- **REQ-095.** A "Deletion request" section on the detail offers "Delete all chats of this user"
-  and "Record a refusal". Each opens an `AlertDialog`; confirm sends REQ-045. After a delete, the
-  page goes back to the list with the count in a success `InlineAlert`.
+- **REQ-095.** A "Deletion request" section on the detail offers "Delete all chats of this user".
+  It opens an `AlertDialog`; confirm sends REQ-045. Then the page goes back to the list with the
+  count in a success `InlineAlert`.
 - **REQ-096.** The lead control shows `isPending` while its `PATCH` runs and is disabled meanwhile.
   It updates from the response, never before (no optimistic update: a wrong status misleads staff).
 - **REQ-097.** Server data is TanStack Query only: `chatKeys.search(filters)`,
@@ -570,14 +639,13 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
 
 - **SEC-001.** The user chat routes use `get_current_user`. Another user's chat answers the same
   `404` body as a missing one. The embed key alone gets `401`.
-- **SEC-002.** Every `/api/admin/chats/*` route and the deletion-request route sit on a router with
+- **SEC-002.** Every `/api/admin/chats/*` route and `/api/admin/users/{userId}/chats/delete` sit on a router with
   `dependencies=[Depends(require_admin)]`. A non-admin gets `403 forbidden`, no session `401`.
 - **SEC-003.** Logs carry ids and counts only (`0016:344-347`). The events and their only
   fields: `chat_opened` (`chat_id`, `session_id`), `chat_messages_written` (`chat_id`, `recorded`,
   `duplicates`, `partial`), `chat_closed` and `chat_closed_idle` (`chat_id`, `partial`),
   `lead_created` and `lead_status_changed` (`chat_id`), `chat_deleted` and
-  `chat_deleted_on_request` (`chat_id`, `admin_id`), `chat_deletion_refused` (`user_id`,
-  `admin_id`). The event name carries the kind, so no field holds a status or an action. Never
+  `chat_deleted_on_request` (`chat_id`, `admin_id`). The event name carries the kind, so no field holds a status or an action. Never
   message text, the entry id of a user's turn, a search term, a name, a phone or a consent
   version. A backend test asserts that writing
   messages and searching leave no text, term or phone in any log record. A frontend test asserts
@@ -614,15 +682,17 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   `pageSize` and `q` are capped (REQ-041).
 - **SEC-008.** Deletion removes the rows from the live database at once. It does not reach backups
   (`0016:303`). `docs/DATA_MODEL.md` says so with the code. The audit row holds no text.
-- **SEC-009.** Consent is checked on the server: no chat row exists without the current consent
-  version (REQ-074).
+- **SEC-009.** The server checks the consent version the client reports: no chat row exists
+  without the current version (REQ-074). **Known limit:** the server cannot prove which person
+  agreed, or that anyone did; it trusts the signed-in client, as it trusts the turn text
+  (`0016:207-208`). Section 13 lists a server-side consent record as open for the owner.
 - **SEC-010.** All new request bodies are closed (`extra="forbid"`, the pattern of
   `.../src/schemas.py:252-266`). A tapped library item that carries `text` is refused, so a client
   cannot put its own words in the server-copied texts.
 - **SEC-011.** The text is what the browser reports, in its own chat only (`0016:207-208`). It is
   never a draft and never library content (`0016:467-469`).
 - **SEC-012.** No new token. The LiveAvatar session token stays in memory as today
-  (`docs/SECURITY.md:23-25`). The only new browser storage is the consent version string.
+  (`docs/SECURITY.md:23-25`). The only new browser storage is the consent map of REQ-072.
 - **SEC-013.** No user route returns a lead or its status (`0016:256`).
 - **SEC-014.** A `422` from FastAPI's validation handler returns the error details
   (`.../src/main.py:197-211`). Inference from pydantic v2's default error shape: those details hold
@@ -638,7 +708,7 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
 | the chat log, the open chat id, the queue, `partial`, the notice shown | React state in `useChatRecorder` |
 | the transcript, with the new `inputKind` | the reducer of `useAssistantSession`, as today |
 | whether this start came from the lead card | React state in `useAnswerLibrary` (`:39`), as today |
-| the agreed consent version | Redux settings slice, saved to `localStorage` (REQ-072) |
+| the agreed consent version, per user id | Redux settings slice (`chatConsent`), saved to `localStorage` (REQ-072) |
 | a decline in this visit | React state in the page |
 | filters, page, `q`, dialog open | React state in the admin page |
 
@@ -681,7 +751,8 @@ registered as `/chats/...` and `/admin/chats/...`. Errors use the orchestrator's
 }
 ```
 
-- `messages`: 1 to 20 items. `clientTurnId`: 1 to 128 characters. `text`: 1 to 4000 characters
+- `messages`: 1 to 20 items. `clientTurnId`: 1 to 120 characters, and it must not end in `:q` or
+  `:a` (those suffixes are the server's, REQ-003). `text`: 1 to 4000 characters
   after trimming. `inputKind` on a `live` item: required for `role: "user"` (`spoken` or `typed`),
   forbidden for `avatar`. On a `library` item: `tapped`, `typed` or `spoken`; `text` is forbidden
   for `tapped` and required otherwise. A `correction` targets an avatar message. `partial`:
@@ -737,10 +808,10 @@ registered as `/chats/...` and `/admin/chats/...`. Errors use the orchestrator's
 - The CORS list has no `DELETE` today (`.../src/main.py:155`), and the admin runs on its own origin
   (`docs/SECURITY.md:15`). The change adds `DELETE` to `allow_methods`.
 
-**`POST /api/admin/users/{userId}/chat-deletion-request`**
+**`POST /api/admin/users/{userId}/chats/delete`**
 
-- Body: `{ "decision": "delete" | "refuse" }`. `200`: `{ "deleted": number }`.
-- `401`, `403 forbidden`, `404 not_found`, `422 validation_error`.
+- No body. `200`: `{ "deleted": number }`.
+- `401`, `403 forbidden`, `404 not_found`, `422 validation_error` for a bad id.
 
 ### What changes with the code
 
@@ -759,7 +830,7 @@ and `src/data/mock/handlers.ts` with the same routes, rules and status codes. No
 | `library` item for an entry that is not servable | `422 chat_entry_not_servable` | a servable entry: `200`, two rows |
 | `text` of 4001 characters | `422 validation_error` | exactly 4000 characters: `200` |
 | a batch that takes the chat to 501 rows | `413 chat_full` | a batch that takes it to exactly 500: `200` |
-| a repeated `clientTurnId` for the same role | `200`, `duplicates: 1`, no row | a new `clientTurnId`: `recorded: 1` |
+| a repeated `clientTurnId` in the same chat | `200`, `duplicates: 1`, no row | a new `clientTurnId`: `recorded: 1` |
 | a non-admin on any admin chat route | `403 forbidden` | an admin: `200` or `204` |
 | `origin: "other"` on session start | `422 validation_error` | `start` and `lead_card`: `200` |
 | session start with another user's `chatId` | `200`, `chatId: null`, not linked | the caller's own open chat: `200`, `chatId` equal to it |
@@ -809,12 +880,11 @@ erDiagram
         uuid id PK
         uuid chat_id FK
     }
-    classDef proposed stroke-dasharray: 5 5,fill:#eef,color:#000
-    class chats,messages,leads,chat_audit proposed
 ```
 
-Caption: dashed tables are new (`chats`, `messages`, `leads`, `chat_audit`); `users`, `sessions`
-and `library_entries` exist, and `sessions.chat_id` is the one new column on them. `chat_audit`
+Caption: `chats`, `messages`, `leads` and `chat_audit` are new. `users`, `sessions` and
+`library_entries` exist; `sessions.chat_id` is the one new column on them. The tables are not
+styled, since GitHub's Mermaid may not apply `classDef` to an `erDiagram`. `chat_audit`
 has no relation on purpose (REQ-006). The full columns are in the tables below.
 
 ### `chats`
@@ -849,20 +919,21 @@ idle rule.
 | `source` | text | `live` or `library` |
 | `session_id` | uuid (null) | references `sessions(id)`; not null exactly when `source = 'live'` |
 | `library_entry_id` | uuid (null) | references `library_entries(id)`; not null exactly when `source = 'library'` |
-| `client_turn_id` | text | not null, 1 to 128 characters |
+| `client_turn_id` | text | not null, 1 to 122 characters (120 sent, plus a 2-character suffix on library rows) |
 | `corrected_at` | timestamptz (null) | REQ-015 |
 | `created_at` | timestamptz | not null, `clock_timestamp()` |
 
-Unique: `(chat_id, client_turn_id, role)`. A library turn writes a `user` and an `avatar` row with
-one client turn id, so the role is part of the key. Index: `(chat_id, id)`.
+Unique: `(chat_id, client_turn_id)`, the ADR's key (`0016:131-132`). A library turn's two rows
+carry the derived ids `{id}:q` and `{id}:a` (REQ-003), so they never collide. Index:
+`(chat_id, id)`.
 
 Spec decision, `input_kind` on user rows only. The ADR lists the input kind as a message field
 (`0016:130-131`) and its values (`spoken`, `typed`, `tapped`) all describe how a user asked. An
 avatar row has no input, so its value is null.
 
-A message has no voice reference (`0016:133-134`). Library entries are never deleted (a withdrawn
-entry keeps its row, `docs/DATA_MODEL.md:312` shows the review rows outliving the media), and
-sessions are never deleted, so both foreign keys hold.
+A message has no voice reference (`0016:133-134`). Library entries are never deleted (a
+withdrawn entry's row stays after its media is gone, `docs/features/response-caching/SPEC.md:809-810`),
+and no code in `.../src` deletes a `sessions` or a `library_entries` row, so both foreign keys hold.
 
 ### `leads`
 
@@ -885,9 +956,9 @@ session (`0016:256-257`).
 | ------ | ---- | ---- |
 | `id` | bigint | identity, primary key |
 | `admin_id` | uuid | not null, no foreign key |
-| `chat_id` | uuid (null) | no foreign key; null for `refuse_request` |
+| `chat_id` | uuid | not null, no foreign key |
 | `user_id` | uuid | not null, no foreign key |
-| `action` | text | `delete`, `delete_on_request` or `refuse_request` |
+| `action` | text | `delete` or `delete_on_request`; both are deletes (`0016:281-283`, `:295`) |
 | `created_at` | timestamptz | not null, `clock_timestamp()` |
 
 No text column (`0016:281-283`).
@@ -968,7 +1039,7 @@ lives in one place. The `en` lead line uses the English label of `library.lead.c
 | `chats.state.open` | Open | باز |
 | `chats.state.closed` | Closed | بسته |
 | `chats.state.partial` | Not saved in full | ناقص ذخیره شده |
-| `chats.partialHint` | Some turns of this chat were not saved. They cannot be recovered. | برخی نوبت‌های این گفتگو ذخیره نشد و بازیابی نمی‌شود. |
+| `chats.partialHint` | This chat may be incomplete: some turns may not have been saved, and they cannot be recovered. On the phone app this also shows when the app closed before the chat ended. | این گفتگو شاید کامل نباشد: ممکن است برخی نوبت‌ها ذخیره نشده باشد و بازیابی نمی‌شود. در برنامهٔ گوشی، این برچسب وقتی هم دیده می‌شود که برنامه پیش از پایان گفتگو بسته شده است. |
 | `chats.empty` | No chats yet. | هنوز گفتگویی نیست. |
 | `chats.emptyFiltered` | No chat matches these filters. | هیچ گفتگویی با این فیلترها پیدا نشد. |
 | `chats.loadError` | The chats could not be loaded. | گفتگوها بارگیری نشد. |
@@ -995,10 +1066,7 @@ lives in one place. The `en` lead line uses the English label of `library.lead.c
 | `chats.request.title` | Deletion request | درخواست حذف |
 | `chats.request.deleteAll` | Delete all chats of this user | حذف همهٔ گفتگوهای این کاربر |
 | `chats.request.deleteAllBody` | Every saved chat of this user is removed for good. | همهٔ گفتگوهای ذخیره‌شدهٔ این کاربر برای همیشه پاک می‌شود. |
-| `chats.request.refuse` | Record a refusal | ثبت رد درخواست |
-| `chats.request.refuseBody` | Nothing is deleted. The refusal is recorded. | چیزی پاک نمی‌شود. رد درخواست ثبت می‌شود. |
 | `chats.request.deleted` | {{count}} chats were deleted. | {{count}} گفتگو حذف شد. |
-| `chats.request.refused` | The refusal was recorded. | رد درخواست ثبت شد. |
 | `chats.errors.gone` | This chat no longer exists. It may have been deleted. | این گفتگو دیگر وجود ندارد. شاید حذف شده باشد. |
 | `chats.errors.actionFailed` | The change was not saved. Try again. | تغییر ذخیره نشد. دوباره امتحان کنید. |
 
@@ -1017,6 +1085,8 @@ lives in one place. The `en` lead line uses the English label of `library.lead.c
 | The user is disabled mid-chat | `403 account_disabled`; posting stops; `chat.save.notAllowed` (REQ-047) |
 | The provider sends one sentence twice | the reducer drops the repeat, so it is posted once (REQ-053) |
 | `pagehide` with turns queued | best effort; the idle rule sets `partial` (REQ-058) |
+| The native app goes to the background (`mobile`) | flush, then close when no live session is open (REQ-065); on resume the next user turn opens a new chat; a kill before the close leaves gives `partial` with nothing lost |
+| A library turn while a live session is open | cannot happen today: the suggestions and the lead card show only at status `idle` (`src/features/answer-library/useAnswerLibrary.ts:31-33`, `:41-44`), and a live session is open from `requesting` to `ending`. The matcher spec decides it if it ever routes a question to the library during a session |
 
 ## 9. Security and privacy
 
@@ -1031,7 +1101,8 @@ lives in one place. The `en` lead line uses the English label of `library.lead.c
 - **Ownership checks.** REQ-011, REQ-013 (a live turn's session must be this chat's and open),
   REQ-010 (a session linked at open must be the caller's).
 - **Rate limits.** REQ-020, SEC-007.
-- **Tokens.** No new token. The consent version is the only new value in `localStorage` (SEC-012).
+- **Tokens.** No new token. The consent map (user id to version) is the only new value in
+  `localStorage` (SEC-012).
 - **What a response exposes.** User routes return no text and no lead (REQ-022, SEC-013). Admin
   responses follow the SEC-006 allowlist. The admin sees name and phone, as on the users screen
   today.
@@ -1041,10 +1112,17 @@ lives in one place. The `en` lead line uses the English label of `library.lead.c
 - **Deletion.** Hard delete, audited without text, not from backups (SEC-008). A user's request goes
   to an admin, who may refuse it; this differs from ADR 0014 item 1 for chats, and counsel may need
   to check it (`0016:305-307`).
-- **Consent.** Enforced by the server (SEC-009).
+- **Consent.** The server refuses a chat without the current version, but the version is what the
+  client reports: a known limit (SEC-009).
 - **Provider.** Earlier turns reach the ElevenLabs agent as context (REQ-080). With zero retention
   on, ElevenLabs keeps no copy (inference, `0016:47-51`). Turning zero retention off needs ADR item
   6 amended first (`0016:308-310`).
+- **Context is untrusted text.** The context sent to the agent (REQ-082) holds the user's own
+  words, which can try to steer the agent ("ignore your instructions"). The labels do not stop
+  that. Inference: the effect stays inside that user's own session, since the context is built
+  from their own chat log and never from another user's. The library texts in it are staff text.
+  The agent prompt (outside this repository) must treat a contextual update as information, not
+  as instructions.
 - **The widget.** Stores nothing and sends no context (REQ-021, REQ-086).
 
 ## 10. UX states
@@ -1102,6 +1180,9 @@ unused table is harmless.
 | `docs/API.md`, `src/data/mock/handlers.ts` | every route of section 6 |
 | `src/entities/assistant-session/types.ts`, new `src/entities/chat/` | Zod schemas and calls |
 | `src/features/chat/` (new), `src/features/assistant/` (`useAssistantSession`, `types.ts`, `state.ts`), `src/features/answer-library/useAnswerLibrary.ts`, `useRecordedAnswer.ts` | Groups E, F, G |
+| `src/features/assistant/useConversationScreen.ts` | passes the recorder to `useAssistantSession` (REQ-050) |
+| `src/shared/platform/appLifecycle.ts` (new), `src/shared/platform/index.ts` | the background signal (REQ-065) |
+| `src/features/settings/settingsSlice.ts` | the `chatConsent` map (REQ-072) |
 | `src/pages/conversation/VideoConversationPage.tsx`, `AudioConversationPage.tsx` | consent step, notice, wiring |
 | `src/pages/admin/chats/` (new), `src/app/admin/router.tsx`, `AdminLayout.tsx` | Group H |
 | `src/i18n/locales/{en,fa}/common.json`, `admin.json` | every key of section 8 |
@@ -1136,8 +1217,9 @@ any live test.
 - [ ] **SC-010.** A non-admin gets `403` and no session gets `401` on every admin chat route.
 - [ ] **SC-011.** Delete removes the chat, its messages and its lead, nulls `sessions.chat_id`, and
   writes one audit row with no text; the audit row stays after the chat is gone.
-- [ ] **SC-012.** The deletion-request route deletes every chat of the user with one
-  `delete_on_request` row each, or writes one `refuse_request` row and deletes nothing.
+- [ ] **SC-012.** `POST /api/admin/users/{userId}/chats/delete` deletes every chat of the user
+  with one `delete_on_request` row each; `chat_audit` accepts no action other than `delete` and
+  `delete_on_request`.
 - [ ] **SC-013.** `POST /api/admin/chats/search` with `q` returns only chats with a matching
   message, paged, and the term is not in the URL.
 - [ ] **SC-014.** On `/video` and `/audio`, with no stored consent, Start and suggestions are not
@@ -1156,6 +1238,20 @@ any live test.
   audit row.
 - [ ] **SC-020.** The widget sends no chat request and no contextual update in a full conversation.
 - [ ] **SC-021.** Every key of section 8 exists in `en` and `fa` (the locale parity test).
+- [ ] **SC-022.** User A agrees on a device; user B signs in on the same device and sees the
+  consent step; user A signs in again and does not.
+- [ ] **SC-023.** A plain Start whose session ends with only the agent's greeting sends no chat
+  request. The same greeting followed by a spoken user turn opens a chat and posts the greeting
+  first.
+- [ ] **SC-024.** A library item writes rows with client turn ids `{id}:q` and `{id}:a`; the same
+  item again is a duplicate; a `clientTurnId` ending in `:q` is refused with `422`.
+- [ ] **SC-025.** On `mobile`, the background signal with no open live session flushes and sends
+  `close`; with an open live session it flushes and sends no `close`. On `web` the signal does
+  nothing.
+- [ ] **SC-026.** A search for a term typed with Arabic `ي` and `ك` finds a message stored with
+  Persian `ی` and `ک`, and one with a ZWNJ inside the word.
+- [ ] **SC-027.** A `429` with `retryAfterSeconds` over 30 drops the batch at once and sets
+  `partial`; one of 30 or less is waited out.
 
 ### Tests
 
@@ -1165,12 +1261,15 @@ any live test.
   lock under parallel batches (warm the pool first, so the test does not pass by accident), the
   500-row cap, cascade delete, audit rows.
 - `apps/api/services/orchestrator/tests/test_chats_admin_api.py`: Group D, SC-009 caplog, SC-013.
-- `apps/frontend/tests/unit/features/chat/chatPoster.test.ts`: every REQ-056 row with fake timers.
+- `apps/frontend/tests/unit/features/chat/chatPoster.test.ts`: every REQ-056 row with fake timers,
+  the held greeting (SC-023), the `429` cap (SC-027), the background signal (SC-025).
+- `apps/frontend/tests/unit/shared/platform/appLifecycle.test.ts`: the adapter fires on native
+  only.
 - `apps/frontend/tests/unit/features/chat/contextText.test.ts`: REQ-082 and REQ-083.
 - `apps/frontend/tests/unit/entities/chat.test.ts`: the Zod schemas.
 - `apps/frontend/tests/unit/data/mockChats.test.ts`: the mock routes.
 - `apps/frontend/tests/integration/chatRecording.test.tsx`: consent, library turn, live turns,
-  close, notice, context call order (SC-014 to SC-017), in `fa` too.
+  close, notice, context call order (SC-014 to SC-017, SC-022, SC-023), in `fa` too.
 - `apps/frontend/tests/integration/adminChatsPage.test.tsx`: list, filters, detail, delete dialog,
   lead toggle, `404` gone, SC-018.
 - `apps/frontend/tests/e2e/mobile.chat.spec.ts`, `web.chat.spec.ts`: consent then a library tap,
@@ -1201,6 +1300,10 @@ This spec reopens none of them.
 | Measure the size limit of `sendContextualUpdate` and confirm the 2000-character cap (REQ-083, `0016:405`) | needs a live provider session, a paid call; LiveAvatar is inactive | Group G must not ship before it |
 | May a user who declines play library answers, or talk live, unstored? (REQ-075, `0016:320-321`) | owner decision, counsel for a legal limit; the safe default is "no" | nothing; the default ships |
 | Counsel on the chat deletion rule (`0016:305-307`) | legal | nothing in the code |
-| The refusal record as a `chat_audit` row (REQ-045) | spec decision beyond the ADR's delete-only audit; the reviewer confirms | Group D |
+| An in-app record of refused deletion requests (REQ-045) | the owner limited the audit to deletes, so this build keeps refusals outside the app; a record needs a table or a wider audit | nothing; the support channel holds the answer |
+| An in-app way to withdraw consent (section 2) | not in the ADR; a withdrawal could clear the stored agreement and leave the chats to REQ-045 | nothing; the user asks by email |
+| A server-side consent record (REQ-072, SEC-009) | it would prove which person agreed to which version and when, on every device, and survive cleared storage; it adds a column or a table the ADR does not list | nothing; the client-reported version ships as a known limit |
 | The agent's greeting may play before the context, and greeting by name (`0016:260-261`, `:382-383`) | the ElevenLabs agent prompt is outside this repository | nothing here |
 | The provider cost of one contextual update (`0016:409`) | not published; measured with the item above | Group G |
+| `@capacitor/app` for the exact `pause` signal (REQ-065) | a new dependency; the build uses `visibilitychange` on native, which is not checked on a device | nothing; check on a device before Group E ships on `mobile` |
+| A `pg_trgm` index for message search (REQ-041) | a new Postgres extension; the scan is fine until a few million messages (inference) | nothing now |
