@@ -226,8 +226,10 @@ server.
 ## Known problems (render sprint 2026-09-25)
 
 - **300 s session cap.** Production LiveAvatar refuses a `max_session_duration` over 300. The API
-  still accepts up to 3600 (`apps/api/services/orchestrator/src/schemas.py:70`), so keep
-  `LIVEAVATAR_MAX_SESSION_SECONDS=300`. The script sends 300.
+  refuses more than 300 with 422 (constant `MAX_AVATAR_SESSION_SECONDS` in
+  `apps/api/services/orchestrator/src/schemas.py`). The setting `LIVEAVATAR_MAX_SESSION_SECONDS` is
+  the length used when a request sends none. It is not checked against the cap, so keep it at 300
+  or less. The script sends 300.
 - **`canSubscribe`.** LiveAvatar answers 422 "Input Livekit token needs to grant canSubscribe
   permission" when the avatar's LiveKit token lacks it. `main` gives the avatar token
   `can_subscribe=False` (`apps/api/services/orchestrator/src/livekit_gateway.py:66-72`), so every

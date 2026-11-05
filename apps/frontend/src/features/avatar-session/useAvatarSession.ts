@@ -25,7 +25,7 @@ import type { RoomCallbacks } from './types';
 
 /**
  * LiveAvatar production ends a session after 300 seconds, and one answer must fit one session
- * (REQ-035). The request schema allows up to 3600, so the cap is set here.
+ * (REQ-035). The request schema refuses more than 300 too, so the client sends the same cap.
  */
 const MAX_SESSION_SECONDS = 300;
 

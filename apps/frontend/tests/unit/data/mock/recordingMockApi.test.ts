@@ -109,11 +109,19 @@ describe('mock recording chain', () => {
   it('refuses a session longer than the request schema allows', async () => {
     await expectError(
       createClient().post('/api/avatar/session', {
-        max_session_duration: 3601,
+        max_session_duration: 301,
       }),
       422,
       'validation_error',
     );
+  });
+
+  it('accepts a session of exactly the longest length the request schema allows', async () => {
+    const response = await createClient().post('/api/avatar/session', {
+      max_session_duration: 300,
+    });
+
+    expect(response.status).toBe(200);
   });
 
   it('answers speak with elevenlabs_payment when the text carries the payment marker', async () => {
