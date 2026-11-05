@@ -470,9 +470,11 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   the client turn id, role, text, input kind, source and entry id. Failed writes stay in the log,
   so the agent hears what the user saw (`0016:412-414`). The log is cleared when the chat ends.
 - **REQ-062.** The notice. At most one per chat is shown (`0016:212-213`). The first outcome that
-  calls for one shows it. A later `chat.save.signedOut` or `chat.save.notAllowed` replaces an
-  earlier notice in the same place, because saving has then stopped for good and the user should
-  know it; nothing replaces those two, and no other notice replaces anything. It is the shared `InlineAlert` with `status="warning"`,
+  calls for one shows it. **Spec reading of `0016:212-213`** ("at most one quiet notice per
+  chat"): one notice is shown at a time, but it may change. A later `chat.save.signedOut` or
+  `chat.save.notAllowed` replaces an earlier notice in the same place, because saving has then
+  stopped for good and the user should know it; nothing replaces those two, and no other notice
+  replaces anything. It is the shared `InlineAlert` with `status="warning"`,
   which already sets `role="status"` (`src/shared/ui/InlineAlert.tsx:38-41`), with a Dismiss button
   (`chat.save.dismiss`) passed as its `actions`. On both pages it sits
   under the controls, in normal flow, so it never covers the stage and never moves the Start
@@ -485,23 +487,32 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   is ever added to the screen.
 - **REQ-064.** The recorder posts nothing while the signed-in user has no stored agreement for the
   current consent version (REQ-072, `0016:319-320`).
-- **REQ-065.** `mobile` only: the native app going to the background. A route change and
-  `pagehide` do not fire there, and JavaScript timers stop, so the REQ-058 timer cannot run. A new
+- **REQ-065.** `mobile` only: the native app going to the background and coming back.
+  Inference, not checked on a device: a route change and `pagehide` do not fire when the app goes
+  to the background, and JavaScript timers stop there, so the REQ-058 timer cannot run. A new
   adapter, `src/shared/platform/appLifecycle.ts` (`AppLifecycleService` with
-  `onBackground(listener): () => void`, exported from `src/shared/platform/index.ts`), tells the
-  recorder that the app went to the background. Feature code never imports Capacitor for this.
-  The adapter fires only when `isNative()` (`src/shared/platform/index.ts:14-16`) is true, on
-  `document.visibilityState` becoming `hidden`. Inference, not checked on a device: the Android and
-  iOS WebViews report `hidden` when the app pauses. The exact signal is the `pause` event of
+  `onBackground(listener): () => void` and `onForeground(listener): () => void`, exported from
+  `src/shared/platform/index.ts`), tells the recorder when the app leaves and comes back. Feature
+  code never imports Capacitor for this. The adapter fires only when `isNative()`
+  (`src/shared/platform/index.ts:14-16`) is true, on `document.visibilityState` becoming `hidden`
+  and then `visible`. Inference, not checked on a device: the Android and iOS WebViews report
+  `hidden` when the app pauses. The exact signals are the `pause` and `resume` events of
   `@capacitor/app`, which is not a dependency today (`apps/frontend/package.json:36`); adding it is
   a new dependency, so section 13 lists it for the owner. On web the adapter does nothing: a tab
-  switch is not leaving the screen. On that signal the recorder flushes the queue and sends
-  `close`, as on `pagehide`. The one difference: when a live session is still open, it flushes but
-  does not close, because the session keeps running in the background and its turns would be
-  refused by a closed chat (REQ-013). That chat then closes by REQ-058's triggers after the
-  app comes back, or by the server's idle rule once the session is over. On resume, if the chat was closed, the next user turn opens a new chat
-  (REQ-051). What `partial` means on `mobile`: the app can be killed in the background before the
-  close leaves, and the idle rule then sets `partial` with nothing lost. So on `mobile` a
+  switch is not leaving the screen.
+  - On background: the recorder **flushes the queue only** and sends no `close` (leader decision,
+    turn 3). Why: a short app switch between a recorded answer and the lead card tap must not split
+    the chat, or the lead would land in a new chat without the library turn before it
+    (`0016:115-116`, `:256-257`). It notes the time it went away.
+  - On resume: if the app was away for at least the idle gap (10 minutes, REQ-019) and no live
+    session is open, the recorder treats the chat as closed: it sends `close` (best effort) and the
+    next user turn opens a new chat (REQ-051). If it was away less, the chat goes on, and the
+    REQ-058 timer restarts from the last turn.
+  - A killed app sends nothing more. The server's idle rule closes the chat (REQ-019).
+
+  What `partial` means on `mobile`: when the app stays away 10 minutes or more, or is killed, the
+  server's idle rule closes the chat and sets `partial`, even when nothing was lost (the rule runs
+  first on any request, REQ-011, so a late `close` finds it already closed). So on `mobile` a
   `partial` chat is "not confirmed complete", not "turns were lost". The admin hint says so
   (`chats.partialHint`).
 
@@ -535,7 +546,8 @@ new chat (REQ-011, REQ-056). Delete removes the chat in any state (REQ-044).
   So user B on user A's device sees the consent step. Then Start and the suggestions show and
   focus moves to Start. A user id and a version string are not credentials, so `localStorage` is
   allowed (SEC-012). Logout does not clear the map: the next sign-in of the same user on this
-  device needs no second agreement.
+  device needs no second agreement. Accepted trade-off: the map is never pruned, so on a shared
+  device `localStorage` lists the ids of the accounts that agreed there.
 - **REQ-073.** "Not now" shows the declined view: one line that questions are off because every
   question is saved, the contact card of the lead card (`response-caching` REQ-076), and a
   "Review again" button that shows the consent step again. No Start, no suggestions. The decline
@@ -1085,7 +1097,7 @@ lives in one place. The `en` lead line uses the English label of `library.lead.c
 | The user is disabled mid-chat | `403 account_disabled`; posting stops; `chat.save.notAllowed` (REQ-047) |
 | The provider sends one sentence twice | the reducer drops the repeat, so it is posted once (REQ-053) |
 | `pagehide` with turns queued | best effort; the idle rule sets `partial` (REQ-058) |
-| The native app goes to the background (`mobile`) | flush, then close when no live session is open (REQ-065); on resume the next user turn opens a new chat; a kill before the close leaves gives `partial` with nothing lost |
+| The native app goes to the background (`mobile`) | flush only, no `close` (REQ-065). Back within 10 minutes: the chat goes on, so a lead card tap after a short app switch stays with its recorded answer. Away 10 minutes or more: the chat is treated as closed and the next user turn opens a new chat. Killed: the server's idle rule closes it. In both of the last two cases the chat gets `partial` even if nothing was lost |
 | A library turn while a live session is open | cannot happen today: the suggestions and the lead card show only at status `idle` (`src/features/answer-library/useAnswerLibrary.ts:31-33`, `:41-44`), and a live session is open from `requesting` to `ending`. The matcher spec decides it if it ever routes a question to the library during a session |
 
 ## 9. Security and privacy
@@ -1181,7 +1193,7 @@ unused table is harmless.
 | `src/entities/assistant-session/types.ts`, new `src/entities/chat/` | Zod schemas and calls |
 | `src/features/chat/` (new), `src/features/assistant/` (`useAssistantSession`, `types.ts`, `state.ts`), `src/features/answer-library/useAnswerLibrary.ts`, `useRecordedAnswer.ts` | Groups E, F, G |
 | `src/features/assistant/useConversationScreen.ts` | passes the recorder to `useAssistantSession` (REQ-050) |
-| `src/shared/platform/appLifecycle.ts` (new), `src/shared/platform/index.ts` | the background signal (REQ-065) |
+| `src/shared/platform/appLifecycle.ts` (new), `src/shared/platform/index.ts` | the background and resume signals (REQ-065) |
 | `src/features/settings/settingsSlice.ts` | the `chatConsent` map (REQ-072) |
 | `src/pages/conversation/VideoConversationPage.tsx`, `AudioConversationPage.tsx` | consent step, notice, wiring |
 | `src/pages/admin/chats/` (new), `src/app/admin/router.tsx`, `AdminLayout.tsx` | Group H |
@@ -1245,9 +1257,10 @@ any live test.
   first.
 - [ ] **SC-024.** A library item writes rows with client turn ids `{id}:q` and `{id}:a`; the same
   item again is a duplicate; a `clientTurnId` ending in `:q` is refused with `422`.
-- [ ] **SC-025.** On `mobile`, the background signal with no open live session flushes and sends
-  `close`; with an open live session it flushes and sends no `close`. On `web` the signal does
-  nothing.
+- [ ] **SC-025.** On `mobile`, the background signal flushes the queue and sends no `close`. A
+  resume after 9 minutes keeps the chat: the next turn posts to it. A resume after 10 minutes,
+  with no live session open, sends `close`, and the next user turn opens a new chat. On `web` the
+  signal does nothing.
 - [ ] **SC-026.** A search for a term typed with Arabic `ي` and `ك` finds a message stored with
   Persian `ی` and `ک`, and one with a ZWNJ inside the word.
 - [ ] **SC-027.** A `429` with `retryAfterSeconds` over 30 drops the batch at once and sets
@@ -1262,9 +1275,9 @@ any live test.
   500-row cap, cascade delete, audit rows.
 - `apps/api/services/orchestrator/tests/test_chats_admin_api.py`: Group D, SC-009 caplog, SC-013.
 - `apps/frontend/tests/unit/features/chat/chatPoster.test.ts`: every REQ-056 row with fake timers,
-  the held greeting (SC-023), the `429` cap (SC-027), the background signal (SC-025).
-- `apps/frontend/tests/unit/shared/platform/appLifecycle.test.ts`: the adapter fires on native
-  only.
+  the held greeting (SC-023), the `429` cap (SC-027), the background and resume signals (SC-025).
+- `apps/frontend/tests/unit/shared/platform/appLifecycle.test.ts`: the adapter fires both signals
+  on native only.
 - `apps/frontend/tests/unit/features/chat/contextText.test.ts`: REQ-082 and REQ-083.
 - `apps/frontend/tests/unit/entities/chat.test.ts`: the Zod schemas.
 - `apps/frontend/tests/unit/data/mockChats.test.ts`: the mock routes.
@@ -1305,5 +1318,5 @@ This spec reopens none of them.
 | A server-side consent record (REQ-072, SEC-009) | it would prove which person agreed to which version and when, on every device, and survive cleared storage; it adds a column or a table the ADR does not list | nothing; the client-reported version ships as a known limit |
 | The agent's greeting may play before the context, and greeting by name (`0016:260-261`, `:382-383`) | the ElevenLabs agent prompt is outside this repository | nothing here |
 | The provider cost of one contextual update (`0016:409`) | not published; measured with the item above | Group G |
-| `@capacitor/app` for the exact `pause` signal (REQ-065) | a new dependency; the build uses `visibilitychange` on native, which is not checked on a device | nothing; check on a device before Group E ships on `mobile` |
+| `@capacitor/app` for the exact `pause` and `resume` signals (REQ-065) | a new dependency; the build uses `visibilitychange` on native, which is not checked on a device | nothing; check on a device before Group E ships on `mobile` |
 | A `pg_trgm` index for message search (REQ-041) | a new Postgres extension; the scan is fine until a few million messages (inference) | nothing now |
