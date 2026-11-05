@@ -18,7 +18,8 @@ import pytest
 from services.orchestrator.src.database import Database
 from services.orchestrator.src.errors import ProviderError
 from services.orchestrator.src.jobs import HANDLERS, JobRunner
-from services.orchestrator.src.main import app
+from services.orchestrator.src.main import REVIEW_TRANSITIONS, app
+from services.orchestrator.src.schemas import AssetStatus
 
 from .conftest import ADMIN_PHONE, build_settings
 
@@ -589,3 +590,134 @@ async def test_finalize_then_poll_shows_the_result(admin_api, database, tmp_path
             "probe": PROBE,
         },
     }
+
+
+# A video a reviewer decided on (KOH-23). The decision comes from the real review path, with its
+# audit row, so these tests also prove finalize never adds or removes one.
+
+# Other values than PROBE, so a finalize that overwrote the row would show.
+EARLIER_PROBE = {**PROBE, "duration_ms": 1500, "width": 640, "height": 360}
+
+REVIEW_DECISIONS = ["REJECTED", "VIDEO_APPROVED"]
+
+
+async def _generate(db: Database, asset_id: UUID) -> None:
+    assert await db.mark_video_generated(asset_id, EARLIER_PROBE["duration_ms"], EARLIER_PROBE)
+
+
+async def _review(db: Database, asset_id: UUID, decision: str) -> None:
+    reviewer = await db.create_user(ADMIN_PHONE, "admin")
+    allowed_from = REVIEW_TRANSITIONS["video"][AssetStatus(decision)]
+    reviewed = await db.review_asset(
+        "video",
+        asset_id,
+        decision=decision,
+        allowed_from=[status.value for status in allowed_from],
+        reviewer_user_id=reviewer["id"],
+    )
+    assert reviewed is not None
+
+
+async def _audit_rows(db: Database, asset_id: UUID) -> list[dict]:
+    rows = await db.pool.fetch(
+        "SELECT * FROM asset_reviews WHERE asset_kind='video' AND asset_id=$1 ORDER BY created_at, id",
+        asset_id,
+    )
+    return [dict(row) for row in rows]
+
+
+async def _video_state(db: Database, asset_id: UUID) -> tuple:
+    row = await db.get_video_asset(asset_id)
+    return row["status"], row["duration_ms"], json.loads(row["metadata"])
+
+
+@pytest.mark.parametrize("decision", REVIEW_DECISIONS)
+async def test_finalize_of_a_video_a_reviewer_decided_on_is_409_and_changes_nothing(
+    admin_api, database, tmp_path, decision
+):
+    asset_id = await _video(database, tmp_path)
+    await _write_mp4(database, asset_id)
+    await _generate(database, asset_id)
+    reviewed = await admin_api.client.patch(f"/assets/video/{asset_id}/status", json={"status": decision})
+    assert reviewed.status_code == 200
+    admin = await database.get_user_by_phone(ADMIN_PHONE)
+    audit = await _audit_rows(database, asset_id)
+    assert [(row["decision"], row["previous_status"], row["reviewer_user_id"]) for row in audit] == [
+        (decision, "VIDEO_GENERATED", admin["id"])
+    ]
+    before = await _video_state(database, asset_id)
+
+    response = await admin_api.client.post(f"/assets/video/{asset_id}/finalize")
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == "invalid_status_transition"
+    assert error["details"] == {"currentStatus": decision}
+    assert await _video_state(database, asset_id) == before
+    assert before[0] == decision
+    assert await database.pool.fetchval("SELECT count(*) FROM generation_jobs") == 0
+    assert _stops(admin_api) == []
+    assert await _audit_rows(database, asset_id) == audit
+
+
+@pytest.mark.parametrize("decision", REVIEW_DECISIONS)
+async def test_a_queued_job_never_overwrites_a_video_a_reviewer_decided_on(database, tmp_path, decision):
+    asset_id = await _video(database, tmp_path)
+    job = await _enqueue_finalize(database, asset_id)
+    await _write_mp4(database, asset_id)
+    await _generate(database, asset_id)
+    await _review(database, asset_id, decision)
+    before = await _video_state(database, asset_id)
+    audit = await _audit_rows(database, asset_id)
+    assert len(audit) == 1
+
+    await _runner(database).run_once()
+
+    row = await _job(database, job["id"])
+    assert (row["status"], row["error_code"]) == ("failed", "invalid_status_transition")
+    assert await _video_state(database, asset_id) == before
+    assert before == (decision, EARLIER_PROBE["duration_ms"], {"ffprobe": EARLIER_PROBE})
+    assert await _audit_rows(database, asset_id) == audit
+
+
+@pytest.mark.parametrize("decision", REVIEW_DECISIONS)
+async def test_a_review_decision_that_lands_during_the_probe_wins_over_the_final_write(
+    database, tmp_path, decision
+):
+    """The job read a DRAFT row, so only the status check inside the final UPDATE stands between
+    the probe result and the reviewer's decision."""
+    asset_id = await _video(database, tmp_path)
+    await _write_mp4(database, asset_id)
+    job = await _enqueue_finalize(database, asset_id)
+
+    async def probe_while_reviewed(path: Path) -> dict:
+        await _generate(database, asset_id)
+        await _review(database, asset_id, decision)
+        return dict(PROBE)
+
+    await _runner(database, probe=probe_while_reviewed).run_once()
+
+    row = await _job(database, job["id"])
+    assert (row["status"], row["error_code"]) == ("failed", "invalid_status_transition")
+    assert await _video_state(database, asset_id) == (
+        decision,
+        EARLIER_PROBE["duration_ms"],
+        {"ffprobe": EARLIER_PROBE},
+    )
+    audit = await _audit_rows(database, asset_id)
+    assert [(row["decision"], row["previous_status"]) for row in audit] == [(decision, "VIDEO_GENERATED")]
+
+
+async def test_finalizing_a_draft_marks_it_generated_and_writes_no_audit_row(admin_api, database, tmp_path):
+    """The allow-control of the cases above: a generated status is not a review decision."""
+    asset_id = await _video(database, tmp_path)
+
+    response = await admin_api.client.post(f"/assets/video/{asset_id}/finalize")
+    assert response.status_code == 202
+    assert set(response.json()) == {"jobId"}
+    await _write_mp4(database, asset_id)
+    await _runner(database).run_once()
+
+    assert (await _job(database, response.json()["jobId"]))["status"] == "done"
+    assert await _video_state(database, asset_id) == ("VIDEO_GENERATED", 4200, {"ffprobe": PROBE})
+    assert await _audit_rows(database, asset_id) == []
